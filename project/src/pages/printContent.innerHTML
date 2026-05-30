@@ -1,0 +1,297 @@
+const printInvoice = (
+order: any
+) => {
+
+const rows =
+order.items
+?.map(
+(item: any, index: number) => `
+
+```
+    <tr>
+      <td>${index + 1}</td>
+      <td>${item.products?.part_name}</td>
+      <td>${item.part_number || '-'}</td>
+      <td>${item.quantity}</td>
+      <td>${item.price} ر.س</td>
+      <td>
+        ${item.price * item.quantity} ر.س
+      </td>
+    </tr>
+
+  `
+  )
+  .join('');
+```
+
+const printWindow =
+window.open(
+'',
+'_blank'
+);
+
+if (!printWindow) return;
+
+printWindow.document.write(`
+
+```
+<html dir="rtl">
+
+  <head>
+
+    <title>
+      فاتورة الطلب
+    </title>
+
+    <style>
+
+      @page {
+
+        size: A4;
+
+        margin: 12mm;
+
+      }
+
+      body {
+
+        font-family: Arial;
+
+        background: white;
+
+        color: black;
+
+        padding: 0;
+
+        margin: 0;
+
+      }
+
+      .invoice {
+
+        width: 100%;
+
+        max-width: 100%;
+
+        padding: 20px;
+
+      }
+
+      .header {
+
+        display: flex;
+
+        justify-content: space-between;
+
+        align-items: center;
+
+        margin-bottom: 30px;
+
+        border-bottom: 2px solid #2563eb;
+
+        padding-bottom: 15px;
+
+      }
+
+      .title {
+
+        font-size: 28px;
+
+        font-weight: bold;
+
+        color: #2563eb;
+
+      }
+
+      .info {
+
+        margin-top: 10px;
+
+        line-height: 1.9;
+
+        font-size: 15px;
+
+      }
+
+      table {
+
+        width: 100%;
+
+        border-collapse: collapse;
+
+        margin-top: 25px;
+
+      }
+
+      th {
+
+        background: #2563eb;
+
+        color: white;
+
+        font-size: 14px;
+
+      }
+
+      th,
+      td {
+
+        border: 1px solid #ddd;
+
+        padding: 12px;
+
+        text-align: center;
+
+      }
+
+      .total {
+
+        margin-top: 25px;
+
+        text-align: left;
+
+        font-size: 24px;
+
+        font-weight: bold;
+
+        color: #059669;
+
+      }
+
+      .footer {
+
+        margin-top: 40px;
+
+        text-align: center;
+
+        color: #666;
+
+        font-size: 13px;
+
+      }
+
+    </style>
+
+  </head>
+
+  <body>
+
+    <div class="invoice">
+
+      <div class="header">
+
+        <div>
+
+          <div class="title">
+
+            فاتورة طلب
+
+          </div>
+
+          <div class="info">
+
+            رقم الطلب:
+            #${order.id}
+
+            <br/>
+
+            التاريخ:
+            ${new Date(
+              order.created_at
+            ).toLocaleString()}
+
+          </div>
+
+        </div>
+
+        <div class="info">
+
+          الحالة:
+          ${order.status}
+
+        </div>
+
+      </div>
+
+      <div class="info">
+
+        <strong>
+          البائع:
+        </strong>
+
+        ${order.from_shop_name}
+
+        <br/>
+
+        <strong>
+          المشتري:
+        </strong>
+
+        ${order.to_shop_name}
+
+      </div>
+
+      <table>
+
+        <thead>
+
+          <tr>
+
+            <th>#</th>
+
+            <th>القطعة</th>
+
+            <th>رقم القطعة</th>
+
+            <th>الكمية</th>
+
+            <th>السعر</th>
+
+            <th>الإجمالي</th>
+
+          </tr>
+
+        </thead>
+
+        <tbody>
+
+          ${rows}
+
+        </tbody>
+
+      </table>
+
+      <div class="total">
+
+        الإجمالي:
+        ${order.total_amount} ر.س
+
+      </div>
+
+      <div class="footer">
+
+        IsuzuParts — B2B Platform
+
+      </div>
+
+    </div>
+
+  </body>
+
+</html>
+```
+
+`);
+
+printWindow.document.close();
+
+setTimeout(() => {
+
+```
+printWindow.focus();
+
+printWindow.print();
+```
+
+}, 500);
+};

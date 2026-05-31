@@ -40,13 +40,15 @@ export default function SearchPage() {
   const isArabic = lang === 'ar';
 
   const [products, setProducts] = useState<Product[]>([]);
-  const [shops, setShops] = useState<Shop[]>([]);   // ← أُعيد كما كان
+  const [shops, setShops] = useState<Shop[]>([]);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState('');
   const [brandFilter, setBrandFilter] = useState('all');
   const [cart, setCart] = useState<any[]>([]);
 
   useEffect(() => {
+    // ── LOG 1: قيمة ownedShopId عند كل re-render ─────────────────────────
+    console.log('[SearchPage] useEffect fired | ownedShopId:', ownedShopId, '| type:', typeof ownedShopId);
     fetchData();
   }, [ownedShopId]);
 
@@ -54,56 +56,66 @@ export default function SearchPage() {
     try {
       setLoading(true);
 
-      // ── جلب المنتجات أولاً (بدون أي join) ───────────────────────────────
+      // ── LOG 2: بداية الجلب ────────────────────────────────────────────────
+      console.log('[SearchPage] fetchData START | ownedShopId:', ownedShopId, '| type:', typeof ownedShopId);
+
+      // ── الاستعلام الأساسي بدون neq أولاً لاختبار RLS ────────────────────
+      const { data: rawCount, error: rawError } = await supabase
+        .from('products')
+        .select('id', { count: 'exact' })
+        .gt('quantity', 0);
+
+      // ── LOG 3: هل RLS تسمح بقراءة products أصلاً؟ ───────────────────────
+      console.log('[SearchPage] RAW count (no neq, no limit):', rawCount?.length ?? 0, '| error:', rawError);
+
+      // ── بناء الاستعلام الفعلي ─────────────────────────────────────────────
       let productsQuery = supabase
         .from('products')
         .select('*')
         .gt('quantity', 0)
         .order('created_at', { ascending: false });
 
+      // ── LOG 4: هل سيُطبَّق neq؟ ──────────────────────────────────────────
+      const willApplyNeq = Boolean(ownedShopId) && ownedShopId !== null && ownedShopId !== undefined;
+      console.log('[SearchPage] willApplyNeq:', willApplyNeq, '| ownedShopId value:', ownedShopId);
+
       if (ownedShopId) {
         productsQuery = productsQuery.neq('shop_id', ownedShopId);
+        console.log('[SearchPage] Applied .neq("shop_id",', ownedShopId, ')');
+      } else {
+        console.log('[SearchPage] neq NOT applied — ownedShopId is falsy');
       }
 
       const { data: productsData, error: productsError } = await productsQuery;
 
-      if (productsError) {
-        console.error('خطأ في جلب المنتجات:', productsError);
+      // ── LOG 5: نتيجة استعلام المنتجات ────────────────────────────────────
+      console.log('[SearchPage] productsData length:', productsData?.length ?? 0);
+      console.log('[SearchPage] productsError:', productsError);
+      if (productsData && productsData.length > 0) {
+        console.log('[SearchPage] productsData sample (first 2):', productsData.slice(0, 2));
+      } else {
+        console.warn('[SearchPage] ⚠️ productsData is EMPTY or NULL');
       }
 
-      // ── جلب المحلات ثانياً (استعلام مستقل) ──────────────────────────────
+      // ── جلب المحلات ───────────────────────────────────────────────────────
       const { data: shopsData, error: shopsError } = await supabase
         .from('shops')
         .select('id, shop_name, phone');
 
-      if (shopsError) {
-        console.error('خطأ في جلب المحلات:', shopsError);
+      // ── LOG 6: نتيجة استعلام المحلات ─────────────────────────────────────
+      console.log('[SearchPage] shopsData length:', shopsData?.length ?? 0);
+      console.log('[SearchPage] shopsError:', shopsError);
+      if (shopsData && shopsData.length > 0) {
+        console.log('[SearchPage] shopsData sample (first 2):', shopsData.slice(0, 2));
+      } else {
+        console.warn('[SearchPage] ⚠️ shopsData is EMPTY — check RLS on shops table');
       }
 
-      // ── console logs للتشخيص ──────────────────────────────────────────────
-      const fetchedProducts = productsData || [];
-      const fetchedShops    = shopsData    || [];
-
-      console.log(`[SearchPage] عدد المنتجات المُجلَبة: ${fetchedProducts.length}`);
-      console.log(`[SearchPage] عدد المحلات المُجلَبة:  ${fetchedShops.length}`);
-
-      // المنتجات التي لا يوجد لها محل مطابق
-      const shopIds = new Set(fetchedShops.map((s: Shop) => String(s.id)));
-      const orphans = fetchedProducts.filter(
-        (p: Product) => !shopIds.has(String(p.shop_id))
-      );
-      if (orphans.length > 0) {
-        console.warn(
-          `[SearchPage] منتجات بدون محل مطابق (${orphans.length}):`,
-          orphans.map((p: Product) => ({ id: p.id, shop_id: p.shop_id, part_name: p.part_name }))
-        );
-      }
-
-      setProducts(fetchedProducts);
-      setShops(fetchedShops);
+      setProducts(productsData || []);
+      setShops(shopsData || []);
 
     } catch (error) {
-      console.error('[SearchPage] fetchData exception:', error);
+      console.error('[SearchPage] fetchData EXCEPTION:', error);
     } finally {
       setLoading(false);
     }
@@ -126,11 +138,8 @@ export default function SearchPage() {
 
   const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
-  // ── Mapping يدوي: ربط product.shop_id بـ shop.id داخل React ─────────────
-  // لا يعتمد على Foreign Key في قاعدة البيانات.
-  // نحوّل كلا الجانبين إلى String لتفادي عدم تطابق number vs string.
   const mergedProducts = useMemo(() => {
-    return products.map((p) => {
+    const result = products.map((p) => {
       const shop = shops.find((s) => String(s.id) === String(p.shop_id));
       return {
         ...p,
@@ -138,6 +147,16 @@ export default function SearchPage() {
         shop_phone: shop?.phone     ?? '-',
       };
     });
+
+    // ── LOG 7: نتيجة المدمج ───────────────────────────────────────────────
+    const noShopMatch = result.filter((p) => p.shop_name === 'محل غير معروف');
+    console.log('[SearchPage] mergedProducts.length:', result.length);
+    if (noShopMatch.length > 0) {
+      console.warn('[SearchPage] ⚠️ منتجات بدون محل مطابق:', noShopMatch.length,
+        '| shop_ids:', [...new Set(noShopMatch.map((p) => p.shop_id))]);
+    }
+
+    return result;
   }, [products, shops]);
 
   const brands = [
@@ -145,17 +164,25 @@ export default function SearchPage() {
     ...new Set(mergedProducts.map((p) => p.brand).filter(Boolean)),
   ];
 
-  const filtered = mergedProducts.filter((p) => {
-    const matchesQuery =
-      query === '' ||
-      p.part_name?.toLowerCase().includes(query.toLowerCase()) ||
-      p.part_number?.toLowerCase().includes(query.toLowerCase()) ||
-      p.model?.toLowerCase().includes(query.toLowerCase());
+  const filtered = useMemo(() => {
+    const result = mergedProducts.filter((p) => {
+      const matchesQuery =
+        query === '' ||
+        p.part_name?.toLowerCase().includes(query.toLowerCase()) ||
+        p.part_number?.toLowerCase().includes(query.toLowerCase()) ||
+        p.model?.toLowerCase().includes(query.toLowerCase());
 
-    const matchesBrand = brandFilter === 'all' || p.brand === brandFilter;
+      const matchesBrand = brandFilter === 'all' || p.brand === brandFilter;
 
-    return matchesQuery && matchesBrand;
-  });
+      return matchesQuery && matchesBrand;
+    });
+
+    // ── LOG 8: النتيجة النهائية بعد الفلاتر ──────────────────────────────
+    console.log('[SearchPage] filtered.length:', result.length,
+      '| query:', query, '| brandFilter:', brandFilter);
+
+    return result;
+  }, [mergedProducts, query, brandFilter]);
 
   const stockBadge = (quantity: number) => {
     if (quantity > 5) {
@@ -213,7 +240,7 @@ export default function SearchPage() {
 
         const items = grouped[shopId];
 
-        const orderTotal = items.reduce(
+        const total = items.reduce(
           (sum: number, item: any) => sum + item.price * item.quantity,
           0
         );
@@ -225,7 +252,7 @@ export default function SearchPage() {
             from_shop_id: myShop.id,
             to_shop_id: Number(shopId),
             status: 'pending',
-            total_amount: orderTotal,
+            total_amount: total,
           })
           .select()
           .single();

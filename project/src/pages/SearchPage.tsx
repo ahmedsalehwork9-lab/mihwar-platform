@@ -15,6 +15,12 @@ import {
 
 import { useLang } from '../context/LanguageContext';
 
+type Shop = {
+  id: number;
+  shop_name: string;
+  phone: string;
+};
+
 type Product = {
   id: number;
   part_name: string;
@@ -24,12 +30,8 @@ type Product = {
   quantity: number;
   price: number;
   shop_id: number;
-};
-
-type Shop = {
-  id: number;
-  shop_name: string;
-  phone: string;
+  // Supabase embeds the joined shop here — may be object or single-element array
+  shops: Shop | Shop[] | null;
 };
 
 export default function SearchPage() {
@@ -40,7 +42,6 @@ export default function SearchPage() {
   const isArabic = lang === 'ar';
 
   const [products, setProducts] = useState<Product[]>([]);
-  const [shops, setShops] = useState<Shop[]>([]);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState('');
   const [brandFilter, setBrandFilter] = useState('all');
@@ -54,9 +55,13 @@ export default function SearchPage() {
     try {
       setLoading(true);
 
+      // ── Single query: embed shop via foreign-key join ──────────────────────
+      // Supabase resolves `shops(...)` using the FK products.shop_id → shops.id.
+      // The result shape is products[].shops === { id, shop_name, phone }
+      // (object, not array) when the FK is many-to-one.
       let productsQuery = supabase
         .from('products')
-        .select('*')
+        .select('*, shops(id, shop_name, phone)')
         .gt('quantity', 0)
         .order('created_at', { ascending: false });
 
@@ -64,20 +69,52 @@ export default function SearchPage() {
         productsQuery = productsQuery.neq('shop_id', ownedShopId);
       }
 
-      const { data: productsData } = await productsQuery;
-      const { data: shopsData } = await supabase
-        .from('shops')
-        .select('id, shop_name, phone');
+      const { data: productsData, error } = await productsQuery;
 
-      setProducts(productsData || []);
-      setShops(shopsData || []);
+      if (error) {
+        console.error('Supabase fetch error:', error);
+      }
+
+      // ── Debug logs (requirement #3 & #4) ──────────────────────────────────
+      console.log('Fetched products (raw):', productsData);
+
+      if (productsData) {
+        productsData.forEach((p: any) => {
+          console.log(
+            `product.id=${p.id} | product.shop_id=${p.shop_id} | product.shops=`,
+            p.shops
+          );
+        });
+      }
+
+      setProducts((productsData as Product[]) || []);
 
     } catch (error) {
-      console.error(error);
+      console.error('fetchData exception:', error);
     } finally {
       setLoading(false);
     }
   };
+
+  // ── Normalise the embedded shop regardless of object vs array shape ────────
+  // Requirement #5: handle both products.shops.shop_name and products.shops[0].shop_name
+  const resolveShop = (shops: Shop | Shop[] | null): Shop | null => {
+    if (!shops) return null;
+    if (Array.isArray(shops)) return shops[0] ?? null;
+    return shops;
+  };
+
+  // ── Flatten products for easy consumption by the UI ───────────────────────
+  const mergedProducts = useMemo(() => {
+    return products.map((p) => {
+      const shop = resolveShop(p.shops);
+      return {
+        ...p,
+        shop_name: shop?.shop_name ?? '',
+        shop_phone: shop?.phone ?? '-',
+      };
+    });
+  }, [products]);
 
   const addToCart = (product: any) => {
     const exists = cart.find((item) => item.id === product.id);
@@ -95,17 +132,6 @@ export default function SearchPage() {
   };
 
   const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-
-  const mergedProducts = useMemo(() => {
-    return products.map((p) => {
-      const shop = shops.find((s) => String(s.id) === String(p.shop_id));
-      return {
-        ...p,
-        shop_name: shop?.shop_name || 'Unknown Shop',
-        shop_phone: shop?.phone || '-',
-      };
-    });
-  }, [products, shops]);
 
   const brands = [
     'all',
@@ -142,95 +168,78 @@ export default function SearchPage() {
   const createOrder = async () => {
 
     try {
-  
+
       const {
         data: { user },
       } = await supabase.auth.getUser();
-  
+
       if (!user) {
         alert('يجب تسجيل الدخول');
         return;
       }
-  
-      // جلب متجر المستخدم الحالي
+
       const { data: myShop, error: shopError } = await supabase
         .from('shops')
         .select('*')
         .eq('owner_id', user.id)
         .single();
-  
+
       if (shopError || !myShop) {
         console.error(shopError);
         alert('المحل غير موجود');
         return;
       }
-  
-      // تجميع المنتجات حسب المتجر
-      const grouped: any = {};
-  
+
+      // Group cart items by destination shop
+      const grouped: Record<number, any[]> = {};
+
       cart.forEach((item) => {
-  
         if (!grouped[item.shop_id]) {
           grouped[item.shop_id] = [];
         }
-  
         grouped[item.shop_id].push(item);
-  
       });
-  
-      // إنشاء طلب لكل متجر
+
       for (const shopId in grouped) {
-  
-        const items = grouped[shopId];
-  
-        const total = items.reduce(
-          (sum: number, item: any) =>
-            sum + item.price * item.quantity,
+
+        const items = grouped[shopId as any];
+
+        const orderTotal = items.reduce(
+          (sum: number, item: any) => sum + item.price * item.quantity,
           0
         );
-  
-        // إنشاء الطلب
+
         const { data: order, error: orderError } = await supabase
           .from('orders')
           .insert({
             from_shop_id: myShop.id,
             to_shop_id: Number(shopId),
             status: 'pending',
-            total_amount: total,
+            total_amount: orderTotal,
           })
           .select()
           .single();
-  
+
         if (orderError || !order) {
           console.error('ORDER ERROR:', orderError);
           continue;
         }
-  
-        // إنشاء عناصر الطلب
+
         const orderItems = items.map((item: any) => ({
           order_id: order.id,
           product_id: item.id,
           quantity: item.quantity,
           price: item.price,
         }));
-  
+
         const { error: itemsError } = await supabase
           .from('order_items')
           .insert(orderItems);
-          await supabase
-  .from('notifications')
-  .insert({
-    shop_id: Number(shopId),
-    title: 'طلب جديد',
-    message: `تم استلام طلب جديد رقم #${order.id}`,
-    type: 'new_order',
-  });
-  
+
         if (itemsError) {
           console.error('ITEMS ERROR:', itemsError);
         }
-  
-        // إنشاء إشعار
+
         const { error: notificationError } = await supabase
           .from('notifications')
           .insert({
@@ -239,31 +248,24 @@ export default function SearchPage() {
             message: `تم استلام طلب جديد رقم #${order.id}`,
             type: 'new_order',
           });
-  
+
         if (notificationError) {
           console.error('NOTIFICATION ERROR:', notificationError);
         }
-  
+
       }
-  
-      // تنظيف السلة
+
       setCart([]);
-  
       alert('تم إنشاء الطلب بنجاح');
-  
+
     } catch (error: any) {
-  
       console.error('CREATE ORDER ERROR:', error);
-  
-      alert(
-        error?.message ||
-        'حدث خطأ أثناء إنشاء الطلب'
-      );
-  
+      alert(error?.message || 'حدث خطأ أثناء إنشاء الطلب');
     }
-  
+
   };
-    return (
+
+  return (
     <div
       className="max-w-7xl mx-auto p-4 lg:p-6 text-white"
       dir={isRTL ? 'rtl' : 'ltr'}

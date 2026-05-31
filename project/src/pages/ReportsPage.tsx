@@ -85,6 +85,13 @@ export default function ReportsPage() {
   // ── Step 2: جلب بيانات inventory مع join على products ────────────────────
 
   async function loadReport(currentShopId: number) {
+    console.log("🔥 REPORTS PAGE LOADED");
+
+    const { data: sessionData } = await supabase.auth.getSession();
+
+    console.log("USER ID:", sessionData?.session?.user?.id);
+    console.log("EMAIL:", sessionData?.session?.user?.email);
+
     // الاستعلام الصحيح: من inventory مع فلترة shop_id + join على products
     const { data, error } = await supabase
       .from("inventory")
@@ -103,6 +110,19 @@ export default function ReportsPage() {
       console.error("[ReportsPage] inventory query error:", error.message);
       return;
     }
+
+    console.log("REPORT PRODUCTS:", data?.length);
+    console.log("FIRST ROW:", data?.[0]);
+
+    const uniqueShops = [
+      ...new Set(
+        (data || []).map(
+          (p: any) => p.shop_id
+        )
+      ),
+    ];
+
+    console.log("SHOP IDS:", uniqueShops);
 
     console.log("[ReportsPage] inventory rows returned:", data?.length);
 

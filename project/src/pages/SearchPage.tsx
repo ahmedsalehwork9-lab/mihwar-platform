@@ -15,12 +15,6 @@ import {
 
 import { useLang } from '../context/LanguageContext';
 
-type Shop = {
-  id: number;
-  shop_name: string;
-  phone: string;
-};
-
 type Product = {
   id: number;
   part_name: string;
@@ -30,8 +24,12 @@ type Product = {
   quantity: number;
   price: number;
   shop_id: number;
-  // Supabase embeds the joined shop here — may be object or single-element array
-  shops: Shop | Shop[] | null;
+};
+
+type Shop = {
+  id: number;
+  shop_name: string;
+  phone: string;
 };
 
 export default function SearchPage() {
@@ -42,6 +40,7 @@ export default function SearchPage() {
   const isArabic = lang === 'ar';
 
   const [products, setProducts] = useState<Product[]>([]);
+  const [shops, setShops] = useState<Shop[]>([]);   // ← أُعيد كما كان
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState('');
   const [brandFilter, setBrandFilter] = useState('all');
@@ -55,13 +54,10 @@ export default function SearchPage() {
     try {
       setLoading(true);
 
-      // ── Single query: embed shop via foreign-key join ──────────────────────
-      // Supabase resolves `shops(...)` using the FK products.shop_id → shops.id.
-      // The result shape is products[].shops === { id, shop_name, phone }
-      // (object, not array) when the FK is many-to-one.
+      // ── جلب المنتجات أولاً (بدون أي join) ───────────────────────────────
       let productsQuery = supabase
         .from('products')
-        .select('*, shops(id, shop_name, phone)')
+        .select('*')
         .gt('quantity', 0)
         .order('created_at', { ascending: false });
 
@@ -69,52 +65,49 @@ export default function SearchPage() {
         productsQuery = productsQuery.neq('shop_id', ownedShopId);
       }
 
-      const { data: productsData, error } = await productsQuery;
+      const { data: productsData, error: productsError } = await productsQuery;
 
-      if (error) {
-        console.error('Supabase fetch error:', error);
+      if (productsError) {
+        console.error('خطأ في جلب المنتجات:', productsError);
       }
 
-      // ── Debug logs (requirement #3 & #4) ──────────────────────────────────
-      console.log('Fetched products (raw):', productsData);
+      // ── جلب المحلات ثانياً (استعلام مستقل) ──────────────────────────────
+      const { data: shopsData, error: shopsError } = await supabase
+        .from('shops')
+        .select('id, shop_name, phone');
 
-      if (productsData) {
-        productsData.forEach((p: any) => {
-          console.log(
-            `product.id=${p.id} | product.shop_id=${p.shop_id} | product.shops=`,
-            p.shops
-          );
-        });
+      if (shopsError) {
+        console.error('خطأ في جلب المحلات:', shopsError);
       }
 
-      setProducts((productsData as Product[]) || []);
+      // ── console logs للتشخيص ──────────────────────────────────────────────
+      const fetchedProducts = productsData || [];
+      const fetchedShops    = shopsData    || [];
+
+      console.log(`[SearchPage] عدد المنتجات المُجلَبة: ${fetchedProducts.length}`);
+      console.log(`[SearchPage] عدد المحلات المُجلَبة:  ${fetchedShops.length}`);
+
+      // المنتجات التي لا يوجد لها محل مطابق
+      const shopIds = new Set(fetchedShops.map((s: Shop) => String(s.id)));
+      const orphans = fetchedProducts.filter(
+        (p: Product) => !shopIds.has(String(p.shop_id))
+      );
+      if (orphans.length > 0) {
+        console.warn(
+          `[SearchPage] منتجات بدون محل مطابق (${orphans.length}):`,
+          orphans.map((p: Product) => ({ id: p.id, shop_id: p.shop_id, part_name: p.part_name }))
+        );
+      }
+
+      setProducts(fetchedProducts);
+      setShops(fetchedShops);
 
     } catch (error) {
-      console.error('fetchData exception:', error);
+      console.error('[SearchPage] fetchData exception:', error);
     } finally {
       setLoading(false);
     }
   };
-
-  // ── Normalise the embedded shop regardless of object vs array shape ────────
-  // Requirement #5: handle both products.shops.shop_name and products.shops[0].shop_name
-  const resolveShop = (shops: Shop | Shop[] | null): Shop | null => {
-    if (!shops) return null;
-    if (Array.isArray(shops)) return shops[0] ?? null;
-    return shops;
-  };
-
-  // ── Flatten products for easy consumption by the UI ───────────────────────
-  const mergedProducts = useMemo(() => {
-    return products.map((p) => {
-      const shop = resolveShop(p.shops);
-      return {
-        ...p,
-        shop_name: shop?.shop_name ?? '',
-        shop_phone: shop?.phone ?? '-',
-      };
-    });
-  }, [products]);
 
   const addToCart = (product: any) => {
     const exists = cart.find((item) => item.id === product.id);
@@ -132,6 +125,20 @@ export default function SearchPage() {
   };
 
   const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+  // ── Mapping يدوي: ربط product.shop_id بـ shop.id داخل React ─────────────
+  // لا يعتمد على Foreign Key في قاعدة البيانات.
+  // نحوّل كلا الجانبين إلى String لتفادي عدم تطابق number vs string.
+  const mergedProducts = useMemo(() => {
+    return products.map((p) => {
+      const shop = shops.find((s) => String(s.id) === String(p.shop_id));
+      return {
+        ...p,
+        shop_name:  shop?.shop_name ?? 'محل غير معروف',
+        shop_phone: shop?.phone     ?? '-',
+      };
+    });
+  }, [products, shops]);
 
   const brands = [
     'all',
@@ -178,6 +185,7 @@ export default function SearchPage() {
         return;
       }
 
+      // جلب متجر المستخدم الحالي
       const { data: myShop, error: shopError } = await supabase
         .from('shops')
         .select('*')
@@ -190,8 +198,8 @@ export default function SearchPage() {
         return;
       }
 
-      // Group cart items by destination shop
-      const grouped: Record<number, any[]> = {};
+      // تجميع المنتجات حسب المتجر
+      const grouped: any = {};
 
       cart.forEach((item) => {
         if (!grouped[item.shop_id]) {
@@ -200,15 +208,17 @@ export default function SearchPage() {
         grouped[item.shop_id].push(item);
       });
 
+      // إنشاء طلب لكل متجر
       for (const shopId in grouped) {
 
-        const items = grouped[shopId as any];
+        const items = grouped[shopId];
 
         const orderTotal = items.reduce(
           (sum: number, item: any) => sum + item.price * item.quantity,
           0
         );
 
+        // إنشاء الطلب
         const { data: order, error: orderError } = await supabase
           .from('orders')
           .insert({
@@ -225,6 +235,7 @@ export default function SearchPage() {
           continue;
         }
 
+        // إنشاء عناصر الطلب
         const orderItems = items.map((item: any) => ({
           order_id: order.id,
           product_id: item.id,
@@ -240,6 +251,7 @@ export default function SearchPage() {
           console.error('ITEMS ERROR:', itemsError);
         }
 
+        // إنشاء إشعار
         const { error: notificationError } = await supabase
           .from('notifications')
           .insert({
@@ -255,6 +267,7 @@ export default function SearchPage() {
 
       }
 
+      // تنظيف السلة
       setCart([]);
       alert('تم إنشاء الطلب بنجاح');
 
@@ -366,11 +379,13 @@ export default function SearchPage() {
                   {p.brand} • {p.model}
                 </div>
 
+                {/* اسم المحل */}
                 <div className="flex items-center gap-2 text-slate-300 text-sm mb-2">
                   <Store size={14} className="text-emerald-400" />
                   {p.shop_name}
                 </div>
 
+                {/* رقم هاتف المحل */}
                 <div className="flex items-center gap-2 text-slate-400 text-sm mb-5">
                   <Phone size={14} className="text-amber-400" />
                   {p.shop_phone}

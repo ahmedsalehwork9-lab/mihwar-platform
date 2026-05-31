@@ -178,8 +178,8 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
               <Truck size={20} className="text-white" />
             </div>
             <div>
-              <div className="text-white font-bold text-sm">{t('IsuzuParts', 'إيسوزو بارتس')}</div>
-              <div className="text-slate-500 text-[10px]">PLATFORM OWNER</div>
+              <div className="text-white font-bold text-sm">{t('MIHWAR', 'مِحور')}</div>
+              <div className="text-slate-500 text-[10px] tracking-widest">MIHWAR PLATFORM</div>
             </div>
           </div>
         </div>

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
 import LoginPage from './pages/LoginPage';
+import LandingPage from './pages/LandingPage'; // Added Import
 import Layout, { Page } from './components/Layout';
 
 // Pages
@@ -24,6 +25,9 @@ import GlobalOrdersPage from './pages/GlobalOrdersPage';
 function AppContent() {
   const { session, loading, isAdmin } = useAuth();
   const [page, setPage] = useState<Page>('dashboard');
+  
+  // Local state to toggle between Landing and Login when not authenticated
+  const [showLanding, setShowLanding] = useState(true);
 
   if (loading) {
     return (
@@ -33,8 +37,15 @@ function AppContent() {
     );
   }
 
-  if (!session) return <LoginPage />;
+  // If there is no active session (user not logged in)
+  if (!session) {
+    if (showLanding) {
+      return <LandingPage onLogin={() => setShowLanding(false)} />;
+    }
+    return <LoginPage />;
+  }
 
+  // If session exists, render the Authenticated Application
   const renderAdminPlaceholder = (title: string) => (
     <div className="flex items-center justify-center h-[70vh]">
       <div className="bg-blue-500/10 border border-blue-500/20 rounded-3xl p-10 text-center">

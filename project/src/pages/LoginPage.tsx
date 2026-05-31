@@ -143,14 +143,14 @@ export default function LoginPage() {
 
             <h1 className="text-3xl font-bold text-white text-center">
               {lang === "ar"
-                ? "إيسوزو بارتس السعودية"
-                : "Isuzu Parts Saudi"}
+                ? "MIHWAR | مِحور"
+                : "MIHWAR | مِحور"}
             </h1>
 
             <p className="text-slate-400 mt-2 text-center">
               {lang === "ar"
-                ? "منصة قطع الغيار للشركات"
-                : "B2B Spare Parts Platform"}
+                ? "شبكة تجارة قطع الغيار الذكية"
+                : "Smart Spare Parts Trading Network"}
             </p>
           </div>
 
@@ -292,7 +292,7 @@ export default function LoginPage() {
 
           {/* FOOTER */}
           <div className="mt-8 text-center text-sm text-slate-500">
-            support@isuzuparts.sa
+            support@mihwar.sa
           </div>
         </div>
       </div>

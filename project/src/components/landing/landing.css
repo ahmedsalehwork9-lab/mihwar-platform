@@ -1,0 +1,150 @@
+/**
+ * File: src/components/landing/landing.css
+ *
+ * Import once in LandingPage.tsx or in your global index.css:
+ *   import "../components/landing/landing.css";
+ *
+ * Uses Google Fonts — add to index.html <head>:
+ * <link rel="preconnect" href="https://fonts.googleapis.com">
+ * <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+ */
+
+/* ── Tokens ─────────────────────────────────────────────────────────────── */
+:root {
+    --c-bg:        #0A1220;
+    --c-dark:      #0F1923;
+    --c-surface:   #111C2E;
+    --c-card:      #162035;
+    --c-border:    rgba(30,144,255,0.15);
+    --c-blue:      #1E90FF;
+    --c-blue-dim:  rgba(30,144,255,0.12);
+    --c-blue-glow: rgba(30,144,255,0.25);
+    --c-gold:      #C8A96E;
+    --c-text:      #E8EDF5;
+    --c-muted:     #7A8BA8;
+    --c-subtle:    #2A3A54;
+    --r-md:        10px;
+    --r-lg:        16px;
+    --r-xl:        24px;
+  }
+  
+  /* ── Arabic font ─────────────────────────────────────────────────────────── */
+  .lp-root, .lp-root * {
+    font-family: 'Cairo', 'Segoe UI', system-ui, sans-serif;
+  }
+  
+  /* ── Noise overlay on hero ───────────────────────────────────────────────── */
+  .lp-noise {
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    opacity: 0.4;
+  }
+  
+  /* ── Grid pattern ────────────────────────────────────────────────────────── */
+  .lp-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(30,144,255,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(30,144,255,0.04) 1px, transparent 1px);
+    background-size: 48px 48px;
+    pointer-events: none;
+  }
+  
+  /* ── Glow blobs ──────────────────────────────────────────────────────────── */
+  .lp-blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    pointer-events: none;
+  }
+  
+  /* ── Scroll reveal ───────────────────────────────────────────────────────── */
+  @keyframes lp-fadein {
+    from { opacity: 0; transform: translateY(24px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .lp-reveal {
+    opacity: 0;
+    animation: lp-fadein 0.7s ease forwards;
+  }
+  .lp-reveal-1 { animation-delay: 0.05s; }
+  .lp-reveal-2 { animation-delay: 0.15s; }
+  .lp-reveal-3 { animation-delay: 0.25s; }
+  .lp-reveal-4 { animation-delay: 0.35s; }
+  .lp-reveal-5 { animation-delay: 0.45s; }
+  .lp-reveal-6 { animation-delay: 0.55s; }
+  
+  /* ── Shimmer on badge ────────────────────────────────────────────────────── */
+  @keyframes lp-shimmer {
+    0%   { background-position: -200% center; }
+    100% { background-position:  200% center; }
+  }
+  .lp-shimmer {
+    background: linear-gradient(
+      105deg,
+      rgba(200,169,110,0.2) 0%,
+      rgba(200,169,110,0.7) 40%,
+      rgba(200,169,110,0.2) 60%,
+      rgba(200,169,110,0.7) 100%
+    );
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: lp-shimmer 3s linear infinite;
+  }
+  
+  /* ── Blue pulse ring ─────────────────────────────────────────────────────── */
+  @keyframes lp-pulse {
+    0%   { box-shadow: 0 0 0 0   rgba(30,144,255,0.4); }
+    70%  { box-shadow: 0 0 0 12px rgba(30,144,255,0);   }
+    100% { box-shadow: 0 0 0 0   rgba(30,144,255,0);    }
+  }
+  .lp-pulse { animation: lp-pulse 2.4s ease infinite; }
+  
+  /* ── Float animation ─────────────────────────────────────────────────────── */
+  @keyframes lp-float {
+    0%, 100% { transform: translateY(0); }
+    50%       { transform: translateY(-10px); }
+  }
+  .lp-float { animation: lp-float 4s ease-in-out infinite; }
+  
+  /* ── Hex clip ────────────────────────────────────────────────────────────── */
+  .lp-hex {
+    clip-path: polygon(50% 0%, 93% 25%, 93% 75%, 50% 100%, 7% 75%, 7% 25%);
+  }
+  
+  /* ── Screenshot frame ────────────────────────────────────────────────────── */
+  .lp-screen-frame {
+    border: 0.5px solid rgba(30,144,255,0.2);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.6), 0 0 0 1px rgba(30,144,255,0.1);
+  }
+  .lp-screen-bar {
+    background: #0F1923;
+    padding: 8px 14px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border-bottom: 0.5px solid rgba(30,144,255,0.1);
+  }
+  .lp-screen-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+  
+  /* ── Step connector line ─────────────────────────────────────────────────── */
+  .lp-step-line {
+    position: absolute;
+    top: 28px;
+    right: calc(50% + 36px);
+    left: calc(-50% + 36px);
+    height: 1px;
+    background: linear-gradient(90deg, var(--c-blue), var(--c-subtle));
+  }
+  

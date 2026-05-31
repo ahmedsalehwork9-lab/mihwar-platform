@@ -18,7 +18,7 @@ type AuthType = {
   session: Session | null;
   ownedShopId: number | null;
   role: string | null;
-  isAdmin: boolean; // Full Access
+  isAdmin: boolean;
   loading: boolean;
   signOut: () => Promise<void>;
 };
@@ -60,6 +60,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const getInitialSession = async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
+
+      // 🔍 Debug
+      console.log("AUTH USER:", session?.user?.id);
+
       setSession(session);
       setUser(session?.user ?? null);
 
@@ -87,8 +91,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      // 🔍 Debug
+      console.log("PROFILE:", data);
+
       setRole(data?.role || null);
-      // Admin هو فقط من لديه is_admin = true في قاعدة البيانات
       setIsAdmin(data?.is_admin === true);
     } catch (err) {
       console.error("LOAD PROFILE FAILED", err);
@@ -97,15 +103,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loadShop = async (userId: string) => {
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("shops")
         .select("id")
         .eq("owner_id", userId)
         .maybeSingle();
 
+      // 🔍 Debug — هذا هو المفتاح
+      console.log("LOAD SHOP — userId:", userId);
+      console.log("LOAD SHOP — raw data:", data);
+      console.log("LOAD SHOP — error:", error);
+
       if (data?.id) {
-        setOwnedShopId(Number(data.id));
+        const shopId = Number(data.id);
+        console.log("OWNED SHOP ID:", shopId);
+        setOwnedShopId(shopId);
       } else {
+        console.warn("OWNED SHOP ID: null — no shop found for this user");
         setOwnedShopId(null);
       }
     } catch (err) {

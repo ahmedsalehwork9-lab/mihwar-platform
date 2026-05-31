@@ -1,17 +1,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { useAuth } from "../context/AuthContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-type InventoryRow = {
-  id: number;
-  quantity: number;
-  price: number;
-  products: {
-    id: number;
-    part_name: string;
-  } | null;
-};
 
 type ProductReport = {
   id: number;
@@ -23,120 +14,67 @@ type ProductReport = {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function ReportsPage() {
+  const { ownedShopId, loading: authLoading } = useAuth();
+
   const [loading, setLoading] = useState(true);
-  const [shopId, setShopId] = useState<number | null>(null);
 
-  const [totalProducts, setTotalProducts] = useState(0);
-  const [totalQuantity, setTotalQuantity] = useState(0);
+  const [totalProducts, setTotalProducts]   = useState(0);
+  const [totalQuantity, setTotalQuantity]   = useState(0);
   const [inventoryValue, setInventoryValue] = useState(0);
-  const [lowStockCount, setLowStockCount] = useState(0);
+  const [lowStockCount, setLowStockCount]   = useState(0);
 
-  const [topProducts, setTopProducts] = useState<ProductReport[]>([]);
+  const [topProducts, setTopProducts]         = useState<ProductReport[]>([]);
   const [reorderProducts, setReorderProducts] = useState<ProductReport[]>([]);
 
   useEffect(() => {
-    initReport();
-  }, []);
-
-  // ── Step 1: تحديد shop_id للمستخدم الحالي ────────────────────────────────
-
-  async function initReport() {
-    try {
-      setLoading(true);
-
-      // جلب الجلسة الحالية
-      const {
-        data: { session },
-        error: sessionError,
-      } = await supabase.auth.getSession();
-
-      if (sessionError || !session) {
-        console.error("[ReportsPage] No active session");
-        return;
-      }
-
-      const userId = session.user.id;
-      console.log("[ReportsPage] userId:", userId);
-
-      // جلب shop_id المرتبط بهذا المستخدم
-      const { data: shopData, error: shopError } = await supabase
-        .from("shops")
-        .select("id")
-        .eq("owner_id", userId)
-        .single();
-
-      if (shopError || !shopData) {
-        console.error("[ReportsPage] Could not find shop for user:", shopError?.message);
-        return;
-      }
-
-      const currentShopId = shopData.id;
-      console.log("[ReportsPage] shopId:", currentShopId);
-      setShopId(currentShopId);
-
-      await loadReport(currentShopId);
-    } catch (err) {
-      console.error("[ReportsPage] initReport error:", err);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // ── Step 2: جلب بيانات inventory مع join على products ────────────────────
-
-  async function loadReport(currentShopId: number) {
-    console.log("🔥 REPORTS PAGE LOADED");
-
-    const { data: sessionData } = await supabase.auth.getSession();
-
-    console.log("USER ID:", sessionData?.session?.user?.id);
-    console.log("EMAIL:", sessionData?.session?.user?.email);
-
-    // الاستعلام الصحيح: من inventory مع فلترة shop_id + join على products
-    const { data, error } = await supabase
-      .from("inventory")
-      .select(`
-        id,
-        quantity,
-        price,
-        products (
-          id,
-          part_name
-        )
-      `)
-      .eq("shop_id", currentShopId);
-
-    if (error) {
-      console.error("[ReportsPage] inventory query error:", error.message);
+    // انتظر حتى ينتهي AuthContext من التحميل
+    if (authLoading) {
+      console.log("REPORTS PAGE: auth still loading — waiting...");
       return;
     }
 
-    console.log("REPORT PRODUCTS:", data?.length);
-    console.log("FIRST ROW:", data?.[0]);
+    if (!ownedShopId) {
+      console.warn("REPORTS PAGE: ownedShopId is null after auth loaded");
+      setLoading(false);
+      return;
+    }
 
-    const uniqueShops = [
-      ...new Set(
-        (data || []).map(
-          (p: any) => p.shop_id
-        )
-      ),
-    ];
+    loadReport(ownedShopId);
+  }, [ownedShopId, authLoading]); // ← يعيد التشغيل عند تغيّر أي منهما
 
-    console.log("SHOP IDS:", uniqueShops);
+  async function loadReport(currentShopId: number) {
+    console.log("REPORTS PAGE LOADED");
 
-    console.log("[ReportsPage] inventory rows returned:", data?.length);
+    const { data: sessionData } = await supabase.auth.getSession();
+    console.log("CURRENT USER:", sessionData?.session?.user?.id);
+    console.log("EMAIL:", sessionData?.session?.user?.email);
+    console.log("STORE ID:", currentShopId);
 
-    const rows = (data as InventoryRow[]) || [];
+    setLoading(true);
 
-    // تحويل إلى قائمة مسطحة
-    const products: ProductReport[] = rows
-      .filter((row) => row.products !== null)
-      .map((row) => ({
-        id: row.products!.id,
-        part_name: row.products!.part_name,
-        quantity: row.quantity || 0,
-        price: row.price || 0,
-      }));
+    const { data, error } = await supabase
+      .from("products")
+      .select("id, part_name, quantity, price, shop_id")
+      .eq("shop_id", currentShopId);
+
+    if (error) {
+      console.error("[ReportsPage] products query error:", error.message);
+      setLoading(false);
+      return;
+    }
+
+    console.log("PRODUCTS COUNT:", data?.length);
+    console.log("PRODUCTS:", data?.slice(0, 5));
+
+    const uniqueShops = [...new Set((data || []).map((p: any) => p.shop_id))];
+    console.log("SHOP IDS IN RESULT:", uniqueShops);
+
+    const products: ProductReport[] = (data || []).map((p: any) => ({
+      id:        p.id,
+      part_name: p.part_name,
+      quantity:  p.quantity || 0,
+      price:     p.price    || 0,
+    }));
 
     // ── الإحصاءات ─────────────────────────────────────────────────────────
 
@@ -152,7 +90,9 @@ export default function ReportsPage() {
       0
     );
 
-    const lowStock = products.filter((item) => item.quantity > 0 && item.quantity <= 3);
+    const lowStock = products.filter(
+      (item) => item.quantity > 0 && item.quantity <= 3
+    );
 
     const topMoving = [...products]
       .sort((a, b) => b.quantity - a.quantity)
@@ -164,11 +104,12 @@ export default function ReportsPage() {
     setLowStockCount(lowStock.length);
     setTopProducts(topMoving);
     setReorderProducts(lowStock);
+    setLoading(false);
   }
 
-  // ── Loading ───────────────────────────────────────────────────────────────
+  // ── Loading — ينتظر AuthContext أولاً ────────────────────────────────────
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-slate-400 text-lg">جاري تحميل التقارير...</div>
@@ -176,7 +117,7 @@ export default function ReportsPage() {
     );
   }
 
-  if (!shopId) {
+  if (!ownedShopId) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-red-400 text-lg">

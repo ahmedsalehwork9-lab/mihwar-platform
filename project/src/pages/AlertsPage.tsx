@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { useAuth } from "../context/AuthContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -17,134 +18,59 @@ type PendingOrder = {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function AlertsPage() {
+  const { ownedShopId, loading: authLoading } = useAuth();
+
   const [outOfStock, setOutOfStock] = useState<ProductAlert[]>([]);
   const [lowStock, setLowStock] = useState<ProductAlert[]>([]);
   const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
   const [loading, setLoading] = useState(true);
-  const [shopId, setShopId] = useState<number | null>(null);
 
   useEffect(() => {
-    initAlerts();
-  }, []);
+    if (authLoading) return;
 
-  // ── Step 1: تحديد shop_id للمستخدم الحالي ────────────────────────────────
-
-  async function initAlerts() {
-    try {
-      setLoading(true);
-
-      const {
-        data: { session },
-        error: sessionError,
-      } = await supabase.auth.getSession();
-
-      if (sessionError || !session) {
-        console.error("[AlertsPage] No active session");
-        return;
-      }
-
-      const userId = session.user.id;
-      console.log("[AlertsPage] userId:", userId);
-
-      const { data: shopData, error: shopError } = await supabase
-        .from("shops")
-        .select("id")
-        .eq("owner_id", userId)
-        .single();
-
-      if (shopError || !shopData) {
-        console.error("[AlertsPage] Could not find shop for user:", shopError?.message);
-        return;
-      }
-
-      const currentShopId = shopData.id;
-      console.log("[AlertsPage] shopId:", currentShopId);
-      setShopId(currentShopId);
-
-      await loadAlerts(currentShopId);
-    } catch (err) {
-      console.error("[AlertsPage] initAlerts error:", err);
-    } finally {
+    if (!ownedShopId) {
       setLoading(false);
+      return;
     }
-  }
 
-  // ── Step 2: جلب التنبيهات مع فلترة shop_id ────────────────────────────────
+    loadAlerts(ownedShopId);
+  }, [ownedShopId, authLoading]);
 
   async function loadAlerts(currentShopId: number) {
+    setLoading(true);
 
     // ── نفد المخزون (quantity = 0) ────────────────────────────────────────
-    const { data: outData, error: outError } = await supabase
-      .from("inventory")
-      .select(`
-        id,
-        quantity,
-        products (
-          id,
-          part_name
-        )
-      `)
+    const { data: outData } = await supabase
+      .from("products")
+      .select("id, part_name, quantity")
       .eq("shop_id", currentShopId)
       .eq("quantity", 0);
 
-    if (outError) {
-      console.error("[AlertsPage] outOfStock query error:", outError.message);
-    }
-
     // ── منخفض المخزون (1 <= quantity <= 3) ───────────────────────────────
-    const { data: lowData, error: lowError } = await supabase
-      .from("inventory")
-      .select(`
-        id,
-        quantity,
-        products (
-          id,
-          part_name
-        )
-      `)
+    const { data: lowData } = await supabase
+      .from("products")
+      .select("id, part_name, quantity")
       .eq("shop_id", currentShopId)
       .lte("quantity", 3)
       .gt("quantity", 0);
 
-    if (lowError) {
-      console.error("[AlertsPage] lowStock query error:", lowError.message);
-    }
-
     // ── الطلبات المعلقة الخاصة بهذا المحل ───────────────────────────────
-    const { data: ordersData, error: ordersError } = await supabase
+    const { data: ordersData } = await supabase
       .from("orders")
       .select("id, status")
       .eq("from_shop_id", currentShopId)
       .eq("status", "pending")
       .order("created_at", { ascending: false });
 
-    if (ordersError) {
-      console.error("[AlertsPage] orders query error:", ordersError.message);
-    }
-
-    // ── تحويل النتائج ─────────────────────────────────────────────────────
-
-    const mapToAlert = (rows: any[]): ProductAlert[] =>
-      (rows || [])
-        .filter((r) => r.products !== null)
-        .map((r) => ({
-          id: r.products.id,
-          part_name: r.products.part_name,
-          quantity: r.quantity,
-        }));
-
-    setOutOfStock(mapToAlert(outData || []));
-    setLowStock(mapToAlert(lowData || []));
+    setOutOfStock(outData || []);
+    setLowStock(lowData || []);
     setPendingOrders(ordersData || []);
-
-    console.log("[AlertsPage] outOfStock:", (outData || []).length);
-    console.log("[AlertsPage] lowStock:", (lowData || []).length);
-    console.log("[AlertsPage] pendingOrders:", (ordersData || []).length);
+    setLoading(false);
   }
 
   // ── Loading ───────────────────────────────────────────────────────────────
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-slate-400 text-lg">جاري تحميل التنبيهات...</div>
@@ -152,7 +78,7 @@ export default function AlertsPage() {
     );
   }
 
-  if (!shopId) {
+  if (!ownedShopId) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-red-400 text-lg">

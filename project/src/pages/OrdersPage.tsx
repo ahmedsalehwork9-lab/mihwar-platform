@@ -122,16 +122,8 @@ function buildPrintHTML(order: Order, items: OrderItem[]): string {
           padding-bottom: 18px;
           margin-bottom: 24px;
         }
-        .header-title h1 {
-          font-size: 22px;
-          font-weight: 700;
-          color: #1a56db;
-        }
-        .header-title p {
-          font-size: 13px;
-          color: #6b7280;
-          margin-top: 4px;
-        }
+        .header-title h1 { font-size: 22px; font-weight: 700; color: #1a56db; }
+        .header-title p  { font-size: 13px; color: #6b7280; margin-top: 4px; }
         .badge {
           display: inline-block;
           padding: 4px 14px;
@@ -157,68 +149,37 @@ function buildPrintHTML(order: Order, items: OrderItem[]): string {
           padding: 14px 18px;
         }
         .info-card .label {
-          font-size: 11px;
-          color: #9ca3af;
-          text-transform: uppercase;
-          letter-spacing: .05em;
-          margin-bottom: 5px;
+          font-size: 11px; color: #9ca3af;
+          text-transform: uppercase; letter-spacing: .05em; margin-bottom: 5px;
         }
-        .info-card .value {
-          font-size: 15px;
-          font-weight: 600;
-          color: #111827;
-        }
+        .info-card .value { font-size: 15px; font-weight: 600; color: #111827; }
         .section-title {
-          font-size: 13px;
-          font-weight: 700;
-          color: #6b7280;
-          text-transform: uppercase;
-          letter-spacing: .06em;
-          margin-bottom: 10px;
+          font-size: 13px; font-weight: 700; color: #6b7280;
+          text-transform: uppercase; letter-spacing: .06em; margin-bottom: 10px;
         }
-        table {
-          width: 100%;
-          border-collapse: collapse;
-          margin-bottom: 24px;
-          font-size: 13px;
-        }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 13px; }
         thead tr { background: #1a56db; color: #fff; }
         thead th { padding: 10px 12px; text-align: right; font-weight: 600; }
         tbody tr:nth-child(even) { background: #f9fafb; }
         tbody tr:hover { background: #eff6ff; }
-        tbody td {
-          padding: 10px 12px;
-          border-bottom: 1px solid #e5e7eb;
-          color: #374151;
-        }
+        tbody td { padding: 10px 12px; border-bottom: 1px solid #e5e7eb; color: #374151; }
         .total-box {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          background: #eff6ff;
-          border: 1px solid #bfdbfe;
-          border-radius: 10px;
-          padding: 14px 20px;
-          margin-bottom: 20px;
+          display: flex; justify-content: space-between; align-items: center;
+          background: #eff6ff; border: 1px solid #bfdbfe;
+          border-radius: 10px; padding: 14px 20px; margin-bottom: 20px;
         }
         .total-box .total-label { font-size: 15px; color: #374151; font-weight: 500; }
         .total-box .total-value { font-size: 22px; font-weight: 700; color: #1a56db; }
         .notes-box {
-          background: #fffbeb;
-          border: 1px solid #fcd34d;
-          border-radius: 10px;
-          padding: 12px 16px;
-          margin-bottom: 20px;
+          background: #fffbeb; border: 1px solid #fcd34d;
+          border-radius: 10px; padding: 12px 16px; margin-bottom: 20px;
         }
         .notes-box .label { font-size: 11px; color: #92400e; font-weight: 600; margin-bottom: 4px; }
         .notes-box p { font-size: 13px; color: #78350f; }
         .footer {
-          border-top: 1px solid #e5e7eb;
-          padding-top: 14px;
-          font-size: 11px;
-          color: #9ca3af;
-          display: flex;
-          justify-content: space-between;
+          border-top: 1px solid #e5e7eb; padding-top: 14px;
+          font-size: 11px; color: #9ca3af;
+          display: flex; justify-content: space-between;
         }
         @media print {
           body { padding: 16px; }
@@ -248,12 +209,8 @@ function buildPrintHTML(order: Order, items: OrderItem[]): string {
       <table>
         <thead>
           <tr>
-            <th>#</th>
-            <th>اسم القطعة</th>
-            <th>رقم القطعة</th>
-            <th>الكمية</th>
-            <th>سعر الوحدة</th>
-            <th>الإجمالي</th>
+            <th>#</th><th>اسم القطعة</th><th>رقم القطعة</th>
+            <th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th>
           </tr>
         </thead>
         <tbody>
@@ -285,15 +242,7 @@ function buildPrintHTML(order: Order, items: OrderItem[]): string {
 
 export default function OrdersPage() {
 
-  // ── تعديل: دعم Admin الذي لا يملك متجر ──────────────────────
-  const {
-    ownedShopId,
-    role,
-    isAdmin,
-  } = useAuth() as any;
-  console.log("ORDERS PAGE ROLE =", role);
-console.log("ORDERS PAGE ADMIN =", isAdmin);
-console.log("ORDERS PAGE SHOP =", ownedShopId);
+  const { ownedShopId, role, isAdmin } = useAuth() as any;
 
   /* ── data ─────────────────────────────────── */
   const [orders,   setOrders]   = useState<Order[]>([]);
@@ -309,9 +258,10 @@ console.log("ORDERS PAGE SHOP =", ownedShopId);
   const [page,         setPage]         = useState(1);
 
   /* ── detail drawer ────────────────────────── */
-  const [detailOrder,   setDetailOrder]   = useState<Order | null>(null);
-  const [detailItems,   setDetailItems]   = useState<OrderItem[]>([]);
-  const [detailLoading, setDetailLoading] = useState(false);
+  // FIX: detailOrderId فقط — نشتق detailOrder من orders لتجنب stale state
+  const [detailOrderId,  setDetailOrderId]  = useState<number | null>(null);
+  const [detailItems,    setDetailItems]    = useState<OrderItem[]>([]);
+  const [detailLoading,  setDetailLoading]  = useState(false);
 
   /* ── new order modal ──────────────────────── */
   const [showModal,        setShowModal]        = useState(false);
@@ -327,48 +277,52 @@ console.log("ORDERS PAGE SHOP =", ownedShopId);
   /* ── action loading ───────────────────────── */
   const [actionId, setActionId] = useState<number | null>(null);
 
-  // ── fetch orders ────────────────────────────────────────────
-  // تعديل: Admin يرى جميع الطلبات — Shop Owner يرى طلباته فقط
-  const fetchOrders = async () => {
-    // Admin لا يحتاج ownedShopId — Shop Owner يحتاجه
-    if (!isAdmin && !ownedShopId) return;
+  // FIX: detailOrder مشتق مباشرة من orders — مصدر حقيقة واحد
+  const detailOrder = useMemo(
+    () => orders.find(o => o.id === detailOrderId) ?? null,
+    [orders, detailOrderId]
+  );
+
+  // ── fetch orders ─────────────────────────────────────────────
+  const fetchOrders = async (): Promise<Order[]> => {
+    if (!isAdmin && !ownedShopId) return [];
 
     setLoading(true);
     setError(null);
 
-    let query = supabase
-      .from("orders")
-      .select(`
-        *,
-        from_shop:shops!orders_from_shop_id_fkey(shop_name),
-        to_shop:shops!orders_to_shop_id_fkey(shop_name),
-        order_items(id)
-      `);
+    try {
+      let query = supabase
+        .from("orders")
+        .select(`
+          *,
+          from_shop:shops!orders_from_shop_id_fkey(shop_name),
+          to_shop:shops!orders_to_shop_id_fkey(shop_name),
+          order_items(id)
+        `);
 
-    // تعديل: تصفية الطلبات حسب الدور
-    if (!isAdmin) {
-      query = query.or(
-        `from_shop_id.eq.${ownedShopId},to_shop_id.eq.${ownedShopId}`
-      );
-    }
+      if (!isAdmin) {
+        query = query.or(
+          `from_shop_id.eq.${ownedShopId},to_shop_id.eq.${ownedShopId}`
+        );
+      }
 
-    const { data, error } = await query.order("created_at", {
-      ascending: false,
-    });
-    
-    console.log("ORDERS DATA:", data);
-    console.log("ORDERS ERROR:", error);
-    console.log("ORDERS COUNT:", data?.length);
-    
-    if (error) {
-      console.error(error);
-      setError(error.message);
-    } else {
-      setOrders((data as Order[]) || []);
+      const { data, error: fetchError } = await query.order("created_at", { ascending: false });
+
+      if (fetchError) {
+        console.error("fetchOrders error:", fetchError);
+        setError(fetchError.message);
+        return [];
+      }
+
+      const fetched = (data as Order[]) || [];
+      // FIX: تحديث الـ state مرة واحدة فقط — detailOrder يُشتق تلقائياً
+      setOrders(fetched);
+      return fetched;
+
+    } finally {
+      setLoading(false);
     }
-    
-    setLoading(false);
-    };
+  };
 
   // ── fetch all shops ──────────────────────────────────────────
   const fetchShops = async () => {
@@ -382,6 +336,7 @@ console.log("ORDERS PAGE SHOP =", ownedShopId);
   useEffect(() => {
     fetchOrders();
     fetchShops();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ownedShopId, isAdmin]);
 
   // ── fetch supplier products when supplier changes ────────────
@@ -405,7 +360,6 @@ console.log("ORDERS PAGE SHOP =", ownedShopId);
     const q = search.trim().toLowerCase();
     return orders
       .filter(o => {
-        // تعديل: Admin يرى الكل في جميع التبويبات
         if (isAdmin) return true;
         if (tab === "incoming") return o.to_shop_id   === ownedShopId;
         if (tab === "outgoing") return o.from_shop_id === ownedShopId;
@@ -425,15 +379,15 @@ console.log("ORDERS PAGE SHOP =", ownedShopId);
 
   const counts = useMemo(() => ({
     all:      orders.length,
-    // تعديل: Admin يرى عدد الكل في كل تبويب
     incoming: isAdmin ? orders.length : orders.filter(o => o.to_shop_id   === ownedShopId).length,
     outgoing: isAdmin ? orders.length : orders.filter(o => o.from_shop_id === ownedShopId).length,
     pending:  orders.filter(o => o.status === "pending").length,
   }), [orders, ownedShopId, isAdmin]);
 
   // ── open detail ──────────────────────────────────────────────
+  // FIX: نحفظ ID فقط، لا نحفظ الـ object كاملاً
   const openDetail = async (order: Order) => {
-    setDetailOrder(order);
+    setDetailOrderId(order.id);
     setDetailItems([]);
     setDetailLoading(true);
     const { data } = await supabase
@@ -444,50 +398,74 @@ console.log("ORDERS PAGE SHOP =", ownedShopId);
     setDetailLoading(false);
   };
 
+  const closeDetail = () => {
+    setDetailOrderId(null);
+    setDetailItems([]);
+  };
+
   // ── PRINT / PDF ──────────────────────────────────────────────
-  const handlePrint = (asPDF = false) => {
+  const handlePrint = () => {
     if (!detailOrder) return;
     const html = buildPrintHTML(detailOrder, detailItems);
     const win = window.open("", "_blank", "width=900,height=700");
     if (!win) return;
     win.document.write(html);
     win.document.close();
-    win.onload = () => {
-      win.focus();
-      win.print();
-    };
+    win.onload = () => { win.focus(); win.print(); };
   };
 
   // ── approve ──────────────────────────────────────────────────
+  // FIX:
+  //   1. استدعاء RPC مرة واحدة فقط
+  //   2. await fetchOrders() — ثم detailOrder يُحدَّث تلقائياً من الـ derived state
+  //   3. finally يضمن إزالة actionId دائماً
   const handleApprove = async (orderId: number) => {
+    if (actionId !== null) return; // منع الضغط المتزامن
     setActionId(orderId);
-    const { error } = await supabase.rpc("approve_order", { p_order_id: orderId });
-    if (error) {
-      showError(error.message);
-    } else {
-      showToast("تم اعتماد الطلب وتحديث المخزون ✓");
+
+    try {
+      const { error: rpcError } = await supabase.rpc("approve_order", { p_order_id: orderId });
+
+      if (rpcError) {
+        setError(rpcError.message);
+        return;
+      }
+
+      // FIX: fetchOrders يُحدِّث setOrders → detailOrder يُشتق تلقائياً من الـ useMemo
+      // لا يوجد setDetailOrder منفصل — لا race condition
       await fetchOrders();
-      setDetailOrder(prev => prev?.id === orderId ? { ...prev, status: "completed" } : prev);
+      showToast("تم اعتماد الطلب وتحديث المخزون ✓");
+
+    } finally {
+      setActionId(null);
     }
-    setActionId(null);
   };
 
   // ── reject ───────────────────────────────────────────────────
+  // FIX: نفس النمط — finally يضمن إزالة actionId
   const handleReject = async (orderId: number) => {
     if (!confirm("هل أنت متأكد من رفض هذا الطلب؟")) return;
+    if (actionId !== null) return;
     setActionId(orderId);
-    const { error } = await supabase
-      .from("orders")
-      .update({ status: "rejected" })
-      .eq("id", orderId);
-    if (error) {
-      showError(error.message);
-    } else {
-      showToast("تم رفض الطلب");
+
+    try {
+      const { error: rejectError } = await supabase
+        .from("orders")
+        .update({ status: "rejected" })
+        .eq("id", orderId);
+
+      if (rejectError) {
+        setError(rejectError.message);
+        return;
+      }
+
+      // FIX: نفس النمط — fetchOrders يُحدِّث كل شيء مرة واحدة
       await fetchOrders();
-      setDetailOrder(prev => prev?.id === orderId ? { ...prev, status: "rejected" } : prev);
+      showToast("تم رفض الطلب");
+
+    } finally {
+      setActionId(null);
     }
-    setActionId(null);
   };
 
   // ── cart helpers ─────────────────────────────────────────────
@@ -557,6 +535,7 @@ console.log("ORDERS PAGE SHOP =", ownedShopId);
       closeModal();
       showToast("تم إرسال الطلب بنجاح ✓");
       await fetchOrders();
+
     } catch (e: any) {
       setModalError(e?.message ?? "حدث خطأ");
     } finally {
@@ -579,7 +558,6 @@ console.log("ORDERS PAGE SHOP =", ownedShopId);
     setToast(msg);
     setTimeout(() => setToast(null), 3500);
   };
-  const showError = (msg: string) => setError(msg);
 
   const filteredProducts = useMemo(() => {
     const q = productSearch.trim().toLowerCase();
@@ -591,7 +569,6 @@ console.log("ORDERS PAGE SHOP =", ownedShopId);
 
   const otherShops = shops.filter(s => s.id !== ownedShopId);
 
-  // تعديل: Admin يستطيع الاعتماد/الرفض على أي طلب معلق
   const canActOnOrder = (order: Order): boolean => {
     if (isAdmin) return order.status === "pending";
     return order.to_shop_id === ownedShopId && order.status === "pending";
@@ -623,7 +600,6 @@ console.log("ORDERS PAGE SHOP =", ownedShopId);
               {counts.pending > 0 && (
                 <span className="mr-1 text-amber-400 font-medium">· {counts.pending} معلق</span>
               )}
-              {/* تعديل: شارة Admin */}
               {isAdmin && (
                 <span className="mr-2 text-xs bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded-full">
                   Admin — عرض جميع الطلبات
@@ -639,7 +615,6 @@ console.log("ORDERS PAGE SHOP =", ownedShopId);
           >
             <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
           </button>
-          {/* تعديل: زر طلب جديد يظهر فقط لأصحاب المتاجر وليس للأدمن */}
           {!isAdmin && (
             <button
               onClick={() => setShowModal(true)}
@@ -655,10 +630,10 @@ console.log("ORDERS PAGE SHOP =", ownedShopId);
       {/* ══════ STATS ══════ */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
         {[
-          { label: "إجمالي الطلبات", value: counts.all,      color: "text-slate-300"   },
-          { label: "واردة",          value: counts.incoming,  color: "text-blue-400"    },
-          { label: "صادرة",          value: counts.outgoing,  color: "text-emerald-400" },
-          { label: "معلقة",          value: counts.pending,   color: "text-amber-400"   },
+          { label: "إجمالي الطلبات", value: counts.all,     color: "text-slate-300"   },
+          { label: "واردة",          value: counts.incoming, color: "text-blue-400"    },
+          { label: "صادرة",          value: counts.outgoing, color: "text-emerald-400" },
+          { label: "معلقة",          value: counts.pending,  color: "text-amber-400"   },
         ].map(s => (
           <div key={s.label} className="bg-slate-900 border border-slate-700/50 rounded-xl p-3">
             <p className="text-slate-500 text-xs mb-1">{s.label}</p>
@@ -675,7 +650,6 @@ console.log("ORDERS PAGE SHOP =", ownedShopId);
         </div>
       )}
 
-      {/* تعديل: رسالة عدم وجود متجر تظهر فقط لغير الأدمن */}
       {!isAdmin && !ownedShopId && !loading && (
         <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 text-amber-400 mb-5 text-sm">
           <AlertCircle size={15} /> لم يتم ربط حسابك بمتجر. تأكد من إعداد المتجر أو تواصل مع الدعم.
@@ -762,7 +736,6 @@ console.log("ORDERS PAGE SHOP =", ownedShopId);
               ) : pageItems.map(order => {
                 const meta     = STATUS_META[order.status] ?? STATUS_META["pending"];
                 const isActing = actionId === order.id;
-                // تعديل: Admin يستطيع التصرف على أي طلب معلق
                 const canAct   = canActOnOrder(order);
 
                 return (
@@ -808,7 +781,6 @@ console.log("ORDERS PAGE SHOP =", ownedShopId);
                         >
                           <Eye size={12} />
                         </button>
-                        {/* تعديل: أزرار الاعتماد والرفض تظهر للأدمن وللمورد */}
                         {canAct && (
                           <>
                             <button
@@ -867,7 +839,7 @@ console.log("ORDERS PAGE SHOP =", ownedShopId);
       ══════════════════════════════════════════════════════ */}
       {detailOrder && (
         <div className="fixed inset-0 z-50 flex" dir="rtl">
-          <div className="flex-1 bg-black/50 backdrop-blur-sm" onClick={() => setDetailOrder(null)} />
+          <div className="flex-1 bg-black/50 backdrop-blur-sm" onClick={closeDetail} />
           <div className="w-full max-w-md bg-slate-900 border-r border-slate-700 flex flex-col shadow-2xl">
 
             {/* header */}
@@ -877,27 +849,23 @@ console.log("ORDERS PAGE SHOP =", ownedShopId);
                 <p className="text-slate-500 text-xs mt-0.5">{new Date(detailOrder.created_at).toLocaleString("ar-SA")}</p>
               </div>
               <div className="flex items-center gap-2">
-                {/* PRINT BUTTON */}
                 <button
-                  onClick={() => handlePrint(false)}
+                  onClick={handlePrint}
                   disabled={detailLoading}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-700 text-slate-400 hover:border-slate-500 hover:text-white text-xs transition-colors disabled:opacity-40"
                   title="طباعة"
                 >
-                  <Printer size={13} />
-                  طباعة
+                  <Printer size={13} /> طباعة
                 </button>
-                {/* PDF BUTTON */}
                 <button
-                  onClick={() => handlePrint(true)}
+                  onClick={handlePrint}
                   disabled={detailLoading}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-500/40 text-blue-400 hover:bg-blue-500/10 text-xs transition-colors disabled:opacity-40"
                   title="تصدير PDF"
                 >
-                  <FileText size={13} />
-                  PDF
+                  <FileText size={13} /> PDF
                 </button>
-                <button onClick={() => setDetailOrder(null)} className="text-slate-400 hover:text-white">
+                <button onClick={closeDetail} className="text-slate-400 hover:text-white">
                   <X size={18} />
                 </button>
               </div>
@@ -966,7 +934,7 @@ console.log("ORDERS PAGE SHOP =", ownedShopId);
               )}
             </div>
 
-            {/* تعديل: أزرار الاعتماد/الرفض في الـ Drawer تظهر للأدمن وللمورد */}
+            {/* approve / reject buttons */}
             {canActOnOrder(detailOrder) && (
               <div className="flex gap-2 p-5 border-t border-slate-700">
                 <button
@@ -994,13 +962,12 @@ console.log("ORDERS PAGE SHOP =", ownedShopId);
       )}
 
       {/* ══════════════════════════════════════════════════════
-          NEW ORDER MODAL — يظهر فقط لأصحاب المتاجر
+          NEW ORDER MODAL
       ══════════════════════════════════════════════════════ */}
       {showModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" dir="rtl">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl">
 
-            {/* header */}
             <div className="flex items-center justify-between p-5 border-b border-slate-700">
               <div className="flex items-center gap-2">
                 <ShoppingCart size={16} className="text-blue-400" />
@@ -1009,7 +976,6 @@ console.log("ORDERS PAGE SHOP =", ownedShopId);
               <button onClick={closeModal} className="text-slate-400 hover:text-white"><X size={18} /></button>
             </div>
 
-            {/* body */}
             <div className="flex-1 overflow-y-auto p-5 space-y-5">
 
               {modalError && (
@@ -1018,7 +984,6 @@ console.log("ORDERS PAGE SHOP =", ownedShopId);
                 </div>
               )}
 
-              {/* supplier select */}
               <div>
                 <label className="block text-slate-400 text-xs mb-2 font-medium uppercase tracking-wide">المحل المورد *</label>
                 <select
@@ -1033,7 +998,6 @@ console.log("ORDERS PAGE SHOP =", ownedShopId);
                 </select>
               </div>
 
-              {/* products list */}
               {supplierShopId && (
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -1099,7 +1063,6 @@ console.log("ORDERS PAGE SHOP =", ownedShopId);
                 </div>
               )}
 
-              {/* cart */}
               {cart.length > 0 && (
                 <div>
                   <h3 className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-2">
@@ -1145,7 +1108,6 @@ console.log("ORDERS PAGE SHOP =", ownedShopId);
                 </div>
               )}
 
-              {/* notes */}
               <div>
                 <label className="block text-slate-400 text-xs mb-2 font-medium">ملاحظات (اختياري)</label>
                 <textarea
@@ -1158,7 +1120,6 @@ console.log("ORDERS PAGE SHOP =", ownedShopId);
               </div>
             </div>
 
-            {/* footer */}
             <div className="flex items-center justify-end gap-2 p-5 border-t border-slate-700">
               <button
                 onClick={closeModal}

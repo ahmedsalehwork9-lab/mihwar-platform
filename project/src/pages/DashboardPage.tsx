@@ -99,19 +99,19 @@ export default function DashboardPage() {
   }
 
   return (
-    <div dir={isRTL ? 'rtl' : 'ltr'} className="space-y-4 p-4 lg:p-6 text-white">
+    <div dir={isRTL ? 'rtl' : 'ltr'} className="space-y-3 lg:space-y-4 p-3 lg:p-6 text-white">
 
       {/* ── HEADER ─────────────────────────────────────────────────── */}
-      <div className="bg-gradient-to-br from-slate-900 to-slate-900/80 border border-slate-800 rounded-2xl p-5">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+      <div className="bg-gradient-to-br from-slate-900 to-slate-900/80 border border-slate-800 rounded-2xl p-4 lg:p-5">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 lg:gap-4">
 
           {/* Greeting */}
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 lg:w-11 lg:h-11 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0">
               <Store size={20} className="text-blue-400" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-white leading-tight">
+              <h1 className="text-lg lg:text-xl font-bold text-white leading-tight">
                 {isArabic ? 'مرحباً،' : 'Welcome,'}{' '}
                 <span className="text-blue-400">{shop?.shop_name || user?.email?.split('@')[0]}</span>
               </h1>
@@ -144,7 +144,7 @@ export default function DashboardPage() {
       </div>
 
       {/* ── STATS CARDS ────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 lg:gap-3">
 
         {[
           {
@@ -184,7 +184,7 @@ export default function DashboardPage() {
             badgeColor: stats.lowStock > 0 ? 'text-red-400 bg-red-500/10' : 'text-emerald-400 bg-emerald-500/10',
           },
         ].map((card, i) => (
-          <div key={i} className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col gap-3">
+          <div key={i} className="bg-slate-900 border border-slate-800 rounded-xl p-3 lg:p-4 flex flex-col gap-2 lg:gap-3">
             <div className="flex items-center justify-between">
               <div className={`p-2 rounded-lg border ${card.bg}`}>{card.icon}</div>
               <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${card.badgeColor}`}>
@@ -192,7 +192,7 @@ export default function DashboardPage() {
               </span>
             </div>
             <div>
-              <div className="text-2xl font-black text-white leading-none">{card.value}</div>
+              <div className="text-xl lg:text-2xl font-black text-white leading-none">{card.value}</div>
               <div className="text-slate-400 text-xs mt-1">{card.label}</div>
               <div className="text-slate-600 text-[10px] mt-0.5">{card.sub}</div>
             </div>
@@ -201,11 +201,11 @@ export default function DashboardPage() {
       </div>
 
       {/* ── CHARTS ROW ─────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-4">
 
         {/* Bar Chart */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-          <div className="flex items-center gap-2 mb-4">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 lg:p-5">
+          <div className="flex items-center gap-2 mb-3 lg:mb-4">
             <div className="p-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20">
               <Activity size={14} className="text-blue-400" />
             </div>
@@ -250,8 +250,8 @@ export default function DashboardPage() {
         </div>
 
         {/* Donut Chart */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-          <div className="flex items-center gap-2 mb-4">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 lg:p-5">
+          <div className="flex items-center gap-2 mb-3 lg:mb-4">
             <div className="p-1.5 rounded-lg bg-purple-500/10 border border-purple-500/20">
               <TrendingUp size={14} className="text-purple-400" />
             </div>
@@ -318,11 +318,11 @@ export default function DashboardPage() {
       </div>
 
       {/* ── BOTTOM ROW ─────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-4">
 
         {/* Low Stock */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-          <div className="flex items-center gap-2 mb-4">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 lg:p-5">
+          <div className="flex items-center gap-2 mb-3 lg:mb-4">
             <div className="p-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
               <AlertTriangle size={14} className="text-amber-400" />
             </div>
@@ -369,8 +369,8 @@ export default function DashboardPage() {
         </div>
 
         {/* Recently Added */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-          <div className="flex items-center gap-2 mb-4">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 lg:p-5">
+          <div className="flex items-center gap-2 mb-3 lg:mb-4">
             <div className="p-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20">
               <Activity size={14} className="text-blue-400" />
             </div>
@@ -384,7 +384,7 @@ export default function DashboardPage() {
               {isArabic ? 'لا توجد منتجات بعد' : 'No products yet'}
             </div>
           ) : (
-            <div className="space-y-2.5">
+            <div className="space-y-2 lg:space-y-2.5">
               {products.slice(0, 5).map((p, i) => (
                 <div key={p.id} className="flex items-center gap-3">
                   <div

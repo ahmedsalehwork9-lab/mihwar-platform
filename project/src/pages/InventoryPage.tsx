@@ -321,7 +321,7 @@ export default function InventoryPage() {
   };
 
   return (
-    <div className="p-4 lg:p-6 min-h-screen" dir="rtl">
+    <div className="p-3 sm:p-4 lg:p-6 min-h-screen" dir="rtl">
 
       {/* SUCCESS TOAST */}
       {successMsg && (
@@ -331,32 +331,37 @@ export default function InventoryPage() {
       )}
 
       {/* HEADER */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-        <div className="flex items-center gap-3">
-          <div className="bg-emerald-500/10 p-2 rounded-xl border border-emerald-500/20">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 sm:mb-5">
+
+        {/* Title row */}
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="bg-emerald-500/10 p-2 rounded-xl border border-emerald-500/20 shrink-0">
             <RefreshCw
               size={18}
               className={`text-emerald-400 cursor-pointer ${loading ? 'animate-spin' : ''}`}
               onClick={fetchProducts}
             />
           </div>
-          <div>
-            <h1 className="text-white font-semibold text-lg">مخزون محلي</h1>
-            <p className="text-slate-500 text-xs">
-              {loading ? 'جاري التحميل...' : `${products.length} قطعة — قيمة إجمالية: ${totalValue.toLocaleString()} ر.س`}
+          <div className="min-w-0">
+            <h1 className="text-white font-semibold text-base sm:text-lg leading-tight">مخزون محلي</h1>
+            <p className="text-slate-500 text-xs truncate">
+              {loading ? 'جاري التحميل...' : `${products.length} قطعة — ${totalValue.toLocaleString()} ر.س`}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="relative">
+        {/* Controls row */}
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+
+          {/* Search — full width on mobile, fixed on sm+ */}
+          <div className="relative w-full sm:w-44 order-first sm:order-none">
             <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" />
             <input
               type="text"
               value={search}
               onChange={e => { setSearch(e.target.value); setPage(1); }}
               placeholder="ابحث في مخزونك..."
-              className="bg-slate-800 border border-slate-700 text-white placeholder-slate-500 text-sm rounded-lg py-2 pr-9 pl-4 w-44 focus:outline-none focus:border-emerald-500"
+              className="bg-slate-800 border border-slate-700 text-white placeholder-slate-500 text-sm rounded-lg py-2 pr-9 pl-8 w-full focus:outline-none focus:border-emerald-500"
             />
             {search && (
               <button onClick={() => setSearch('')} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white">
@@ -365,53 +370,56 @@ export default function InventoryPage() {
             )}
           </div>
 
-          {/* ─── زر الاستيراد ─── */}
-          <input
-            ref={importRef}
-            type="file"
-            accept=".csv"
-            onChange={handleImportFile}
-            className="hidden"
-          />
-          <button
-            onClick={handleImportClick}
-            disabled={importing}
-            className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 hover:border-slate-500 text-slate-300 text-sm px-3 py-2 rounded-lg transition-colors disabled:opacity-50"
-          >
-            <Upload size={14} />
-            {importing ? 'جاري الاستيراد...' : 'استيراد'}
-          </button>
+          {/* Action buttons row */}
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            {/* ─── زر الاستيراد ─── */}
+            <input
+              ref={importRef}
+              type="file"
+              accept=".csv"
+              onChange={handleImportFile}
+              className="hidden"
+            />
+            <button
+              onClick={handleImportClick}
+              disabled={importing}
+              className="flex items-center justify-center gap-1.5 bg-slate-800 border border-slate-700 hover:border-slate-500 text-slate-300 text-sm px-3 py-2 rounded-lg transition-colors disabled:opacity-50 flex-1 sm:flex-none"
+            >
+              <Upload size={14} className="shrink-0" />
+              <span>{importing ? 'جاري...' : 'استيراد'}</span>
+            </button>
 
-          {/* ─── زر التصدير ─── */}
-          <button
-            onClick={handleExport}
-            className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 hover:border-slate-500 text-slate-300 text-sm px-3 py-2 rounded-lg transition-colors"
-          >
-            <Download size={14} />
-            تصدير
-          </button>
+            {/* ─── زر التصدير ─── */}
+            <button
+              onClick={handleExport}
+              className="flex items-center justify-center gap-1.5 bg-slate-800 border border-slate-700 hover:border-slate-500 text-slate-300 text-sm px-3 py-2 rounded-lg transition-colors flex-1 sm:flex-none"
+            >
+              <Download size={14} className="shrink-0" />
+              <span>تصدير</span>
+            </button>
 
-          <button
-            onClick={openAdd}
-            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm px-4 py-2 rounded-lg font-medium transition-colors"
-          >
-            <Plus size={14} />
-            إضافة قطعة
-          </button>
+            <button
+              onClick={openAdd}
+              className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm px-3 sm:px-4 py-2 rounded-lg font-medium transition-colors flex-1 sm:flex-none"
+            >
+              <Plus size={14} className="shrink-0" />
+              <span>إضافة</span>
+            </button>
+          </div>
         </div>
       </div>
 
       {/* ERROR */}
       {error && (
-        <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/20 rounded-xl p-4 text-red-400 mb-5 text-sm">
-          <AlertCircle size={16} />
-          {error}
-          <button onClick={fetchProducts} className="mr-auto underline text-xs">إعادة المحاولة</button>
+        <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/20 rounded-xl p-3 sm:p-4 text-red-400 mb-4 sm:mb-5 text-xs sm:text-sm">
+          <AlertCircle size={16} className="shrink-0" />
+          <span className="flex-1 min-w-0">{error}</span>
+          <button onClick={fetchProducts} className="mr-auto underline text-xs shrink-0">إعادة المحاولة</button>
         </div>
       )}
 
-      {/* FILTERS */}
-      <div className="flex items-center gap-2 mb-4 flex-wrap">
+      {/* FILTERS — horizontally scrollable on mobile */}
+      <div className="flex items-center gap-1.5 sm:gap-2 mb-3 sm:mb-4 overflow-x-auto pb-1 scrollbar-hide -mx-3 px-3 sm:mx-0 sm:px-0 sm:flex-wrap">
         {([
           { key: 'all',          label: 'الكل'    },
           { key: 'in_stock',     label: 'متوفر'   },
@@ -421,14 +429,14 @@ export default function InventoryPage() {
           <button
             key={f.key}
             onClick={() => { setFilter(f.key); setPage(1); }}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+            className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs font-medium border transition-all whitespace-nowrap shrink-0 ${
               filter === f.key
                 ? 'bg-emerald-600 text-white border-emerald-600'
                 : 'text-slate-400 border-slate-700 hover:border-slate-500 hover:text-white'
             }`}
           >
             {f.label}
-            <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+            <span className={`text-xs px-1 sm:px-1.5 py-0.5 rounded-full ${
               filter === f.key ? 'bg-white/20' : 'bg-slate-700'
             }`}>
               {counts[f.key]}
@@ -436,8 +444,8 @@ export default function InventoryPage() {
           </button>
         ))}
         {search && (
-          <span className="text-slate-500 text-xs mr-auto">
-            {filtered.length} نتيجة لـ "{search}"
+          <span className="text-slate-500 text-xs mr-auto shrink-0">
+            {filtered.length} نتيجة
           </span>
         )}
       </div>
@@ -448,7 +456,7 @@ export default function InventoryPage() {
           <table className="w-full text-sm min-w-[700px]">
             <thead>
               <tr className="border-b border-slate-700/50 bg-slate-800/50">
-                <th className="p-3 w-10 text-center">
+                <th className="p-2 sm:p-3 w-10 text-center">
                   <input
                     type="checkbox"
                     checked={selected.size === pageItems.length && pageItems.length > 0}
@@ -456,26 +464,26 @@ export default function InventoryPage() {
                     className="accent-emerald-500"
                   />
                 </th>
-                <th className="p-3 text-right text-slate-400 font-medium text-xs">رقم القطعة</th>
-                <th className="p-3 text-right text-slate-400 font-medium text-xs">اسم القطعة</th>
-                <th className="p-3 text-right text-slate-400 font-medium text-xs">الماركة / الموديل</th>
-                <th className="p-3 text-right text-slate-400 font-medium text-xs">الكمية</th>
-                <th className="p-3 text-right text-slate-400 font-medium text-xs">السعر</th>
-                <th className="p-3 text-right text-slate-400 font-medium text-xs">الحالة</th>
-                <th className="p-3 text-center text-slate-400 font-medium text-xs">إجراء</th>
+                <th className="p-2 sm:p-3 text-right text-slate-400 font-medium text-xs">رقم القطعة</th>
+                <th className="p-2 sm:p-3 text-right text-slate-400 font-medium text-xs">اسم القطعة</th>
+                <th className="p-2 sm:p-3 text-right text-slate-400 font-medium text-xs">الماركة / الموديل</th>
+                <th className="p-2 sm:p-3 text-right text-slate-400 font-medium text-xs">الكمية</th>
+                <th className="p-2 sm:p-3 text-right text-slate-400 font-medium text-xs">السعر</th>
+                <th className="p-2 sm:p-3 text-right text-slate-400 font-medium text-xs">الحالة</th>
+                <th className="p-2 sm:p-3 text-center text-slate-400 font-medium text-xs">إجراء</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="p-12 text-center text-slate-500">
+                  <td colSpan={8} className="p-10 sm:p-12 text-center text-slate-500">
                     <RefreshCw size={20} className="animate-spin mx-auto mb-2 text-emerald-500" />
                     جاري تحميل البيانات...
                   </td>
                 </tr>
               ) : pageItems.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-12 text-center text-slate-500">
+                  <td colSpan={8} className="p-10 sm:p-12 text-center text-slate-500">
                     <Package size={40} className="mx-auto mb-3 opacity-20" />
                     لا توجد قطع في مخزونك
                   </td>
@@ -487,7 +495,7 @@ export default function InventoryPage() {
                     selected.has(p.id) ? 'bg-emerald-500/5' : ''
                   }`}
                 >
-                  <td className="p-3 text-center">
+                  <td className="p-2 sm:p-3 text-center">
                     <input
                       type="checkbox"
                       checked={selected.has(p.id)}
@@ -495,33 +503,33 @@ export default function InventoryPage() {
                       className="accent-emerald-500"
                     />
                   </td>
-                  <td className="p-3">
+                  <td className="p-2 sm:p-3">
                     <span className="font-mono text-xs text-slate-400">{p.part_number}</span>
                   </td>
-                  <td className="p-3">
+                  <td className="p-2 sm:p-3">
                     <span className="text-white font-medium">{p.part_name}</span>
                   </td>
-                  <td className="p-3">
+                  <td className="p-2 sm:p-3">
                     <span className="text-slate-400 text-xs">{p.brand} · {p.model}</span>
                   </td>
-                  <td className="p-3">
+                  <td className="p-2 sm:p-3">
                     <span className={qtyColor(p.quantity)}>{p.quantity}</span>
                   </td>
-                  <td className="p-3">
+                  <td className="p-2 sm:p-3">
                     <span className="text-white font-medium">{p.price.toLocaleString()} ر.س</span>
                   </td>
-                  <td className="p-3">{statusBadge(p.quantity)}</td>
-                  <td className="p-3">
-                    <div className="flex items-center justify-center gap-1.5">
+                  <td className="p-2 sm:p-3">{statusBadge(p.quantity)}</td>
+                  <td className="p-2 sm:p-3">
+                    <div className="flex items-center justify-center gap-1 sm:gap-1.5">
                       <button
                         onClick={() => openEdit(p)}
-                        className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-700 text-slate-400 hover:border-emerald-500 hover:text-emerald-400 transition-colors"
+                        className="w-7 h-7 sm:w-7 sm:h-7 flex items-center justify-center rounded-lg border border-slate-700 text-slate-400 hover:border-emerald-500 hover:text-emerald-400 transition-colors"
                       >
                         <Edit2 size={13} />
                       </button>
                       <button
                         onClick={() => handleDelete(p.id)}
-                        className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-700 text-slate-400 hover:border-red-500 hover:text-red-400 transition-colors"
+                        className="w-7 h-7 sm:w-7 sm:h-7 flex items-center justify-center rounded-lg border border-slate-700 text-slate-400 hover:border-red-500 hover:text-red-400 transition-colors"
                       >
                         <Trash2 size={13} />
                       </button>
@@ -535,15 +543,15 @@ export default function InventoryPage() {
 
         {/* PAGINATION */}
         {!loading && filtered.length > PAGE_SIZE && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-slate-700/50 text-xs text-slate-500">
-            <span>
-              عرض {(page - 1) * PAGE_SIZE + 1} - {Math.min(page * PAGE_SIZE, filtered.length)} من {filtered.length}
+          <div className="flex items-center justify-between px-3 sm:px-4 py-3 border-t border-slate-700/50 text-xs text-slate-500 gap-2">
+            <span className="shrink-0">
+              {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} / {filtered.length}
             </span>
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-700 text-slate-400 hover:border-slate-500 disabled:opacity-30 transition-colors"
+                className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-700 text-slate-400 hover:border-slate-500 disabled:opacity-30 transition-colors"
               >
                 <ChevronRight size={13} />
               </button>
@@ -551,7 +559,7 @@ export default function InventoryPage() {
                 <button
                   key={n}
                   onClick={() => setPage(n)}
-                  className={`w-7 h-7 flex items-center justify-center rounded-lg border text-xs transition-colors ${
+                  className={`w-8 h-8 flex items-center justify-center rounded-lg border text-xs transition-colors ${
                     page === n
                       ? 'bg-emerald-600 text-white border-emerald-600'
                       : 'border-slate-700 text-slate-400 hover:border-slate-500'
@@ -563,7 +571,7 @@ export default function InventoryPage() {
               <button
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
-                className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-700 text-slate-400 hover:border-slate-500 disabled:opacity-30 transition-colors"
+                className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-700 text-slate-400 hover:border-slate-500 disabled:opacity-30 transition-colors"
               >
                 <ChevronLeft size={13} />
               </button>
@@ -574,87 +582,87 @@ export default function InventoryPage() {
 
       {/* MODAL */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl" dir="rtl">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md shadow-2xl" dir="rtl">
 
-            <div className="flex items-center justify-between p-5 border-b border-slate-700">
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-700">
               <h2 className="text-white font-semibold text-base">
                 {editItem ? 'تعديل القطعة' : 'إضافة قطعة جديدة'}
               </h2>
-              <button onClick={closeModal} className="text-slate-400 hover:text-white transition-colors">
+              <button onClick={closeModal} className="text-slate-400 hover:text-white transition-colors p-1">
                 <X size={18} />
               </button>
             </div>
 
-            <div className="p-5 space-y-4">
-              <div className="grid grid-cols-2 gap-3">
+            <div className="p-4 sm:p-5 space-y-3 sm:space-y-4">
+              <div className="grid grid-cols-2 gap-2 sm:gap-3">
                 <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">رقم القطعة *</label>
+                  <label className="block text-slate-400 text-xs mb-1 sm:mb-1.5">رقم القطعة *</label>
                   <input
                     value={form.part_number}
                     onChange={e => setForm(f => ({ ...f, part_number: e.target.value }))}
                     placeholder="OF-001"
-                    className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-sm focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-2 sm:p-2.5 text-sm focus:outline-none focus:border-emerald-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">اسم القطعة *</label>
+                  <label className="block text-slate-400 text-xs mb-1 sm:mb-1.5">اسم القطعة *</label>
                   <input
                     value={form.part_name}
                     onChange={e => setForm(f => ({ ...f, part_name: e.target.value }))}
                     placeholder="فلتر زيت"
-                    className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-sm focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-2 sm:p-2.5 text-sm focus:outline-none focus:border-emerald-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">الماركة</label>
+                  <label className="block text-slate-400 text-xs mb-1 sm:mb-1.5">الماركة</label>
                   <input
                     value={form.brand}
                     onChange={e => setForm(f => ({ ...f, brand: e.target.value }))}
                     placeholder="Isuzu"
-                    className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-sm focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-2 sm:p-2.5 text-sm focus:outline-none focus:border-emerald-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">الموديل</label>
+                  <label className="block text-slate-400 text-xs mb-1 sm:mb-1.5">الموديل</label>
                   <input
                     value={form.model}
                     onChange={e => setForm(f => ({ ...f, model: e.target.value }))}
                     placeholder="NQR"
-                    className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-sm focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-2 sm:p-2.5 text-sm focus:outline-none focus:border-emerald-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">الكمية *</label>
+                  <label className="block text-slate-400 text-xs mb-1 sm:mb-1.5">الكمية *</label>
                   <input
                     type="number" min="0"
                     value={form.quantity}
                     onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))}
                     placeholder="0"
-                    className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-sm focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-2 sm:p-2.5 text-sm focus:outline-none focus:border-emerald-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">السعر (ريال)</label>
+                  <label className="block text-slate-400 text-xs mb-1 sm:mb-1.5">السعر (ريال)</label>
                   <input
                     type="number" min="0" step="0.01"
                     value={form.price}
                     onChange={e => setForm(f => ({ ...f, price: e.target.value }))}
                     placeholder="0.00"
-                    className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-sm focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-2 sm:p-2.5 text-sm focus:outline-none focus:border-emerald-500"
                   />
                 </div>
               </div>
 
               {formError && (
                 <div className="flex items-center gap-2 text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg p-3">
-                  <AlertCircle size={14} />
+                  <AlertCircle size={14} className="shrink-0" />
                   {formError}
                 </div>
               )}
             </div>
 
-            <div className="flex items-center justify-end gap-2 px-5 pb-5">
+            <div className="flex items-center justify-end gap-2 px-4 sm:px-5 pb-4 sm:pb-5">
               <button
                 onClick={closeModal}
                 className="px-4 py-2 text-sm text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 rounded-lg transition-colors"
@@ -670,7 +678,7 @@ export default function InventoryPage() {
                 {saving ? 'جاري الحفظ...' : 'حفظ'}
               </button>
             </div>
-        </div>
+          </div>
         </div>
       )}
     </div>

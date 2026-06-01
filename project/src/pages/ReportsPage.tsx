@@ -130,45 +130,45 @@ export default function ReportsPage() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 lg:space-y-6">
 
       <div>
-        <h1 className="text-3xl font-bold text-white">التقارير</h1>
-        <p className="text-slate-400 mt-2">ملخص أداء المحل والمخزون</p>
+        <h1 className="text-2xl lg:text-3xl font-bold text-white">التقارير</h1>
+        <p className="text-slate-400 text-sm lg:text-base mt-1">ملخص أداء المحل والمخزون</p>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-2 xl:grid-cols-4 gap-3 lg:gap-6">
 
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-          <p className="text-slate-400 text-sm">إجمالي المنتجات</p>
-          <h2 className="text-3xl font-bold text-white mt-3">{totalProducts}</h2>
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 lg:p-6">
+          <p className="text-slate-400 text-xs lg:text-sm">إجمالي المنتجات</p>
+          <h2 className="text-2xl lg:text-3xl font-bold text-white mt-2">{totalProducts}</h2>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-          <p className="text-slate-400 text-sm">إجمالي الكمية</p>
-          <h2 className="text-3xl font-bold text-white mt-3">{totalQuantity}</h2>
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 lg:p-6">
+          <p className="text-slate-400 text-xs lg:text-sm">إجمالي الكمية</p>
+          <h2 className="text-2xl lg:text-3xl font-bold text-white mt-2">{totalQuantity}</h2>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-          <p className="text-slate-400 text-sm">قيمة المخزون</p>
-          <h2 className="text-3xl font-bold text-green-400 mt-3">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 lg:p-6">
+          <p className="text-slate-400 text-xs lg:text-sm">قيمة المخزون</p>
+          <h2 className="text-xl lg:text-3xl font-bold text-green-400 mt-2">
             {inventoryValue.toLocaleString("ar-SA")} ر.س
           </h2>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-          <p className="text-slate-400 text-sm">منخفض المخزون</p>
-          <h2 className="text-3xl font-bold text-yellow-400 mt-3">{lowStockCount}</h2>
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 lg:p-6">
+          <p className="text-slate-400 text-xs lg:text-sm">منخفض المخزون</p>
+          <h2 className="text-2xl lg:text-3xl font-bold text-yellow-400 mt-2">{lowStockCount}</h2>
         </div>
 
       </div>
 
       {/* Tables */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 lg:gap-6">
 
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-          <h3 className="text-xl font-bold text-white mb-4">أعلى المنتجات كمية</h3>
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 lg:p-6">
+          <h3 className="text-base lg:text-xl font-bold text-white mb-3 lg:mb-4">أعلى المنتجات كمية</h3>
 
           {topProducts.length === 0 ? (
             <div className="text-slate-400">لا توجد منتجات</div>
@@ -176,15 +176,15 @@ export default function ReportsPage() {
             <table className="w-full">
               <thead>
                 <tr className="text-slate-400 text-right border-b border-slate-800">
-                  <th className="pb-3">المنتج</th>
-                  <th className="pb-3">الكمية</th>
+                  <th className="pb-2 lg:pb-3 text-sm lg:text-base font-medium">المنتج</th>
+                  <th className="pb-2 lg:pb-3 text-sm lg:text-base font-medium">الكمية</th>
                 </tr>
               </thead>
               <tbody>
                 {topProducts.map((item) => (
                   <tr key={item.id} className="border-b border-slate-800">
-                    <td className="py-3 text-white">{item.part_name}</td>
-                    <td className="py-3 text-blue-400">{item.quantity}</td>
+                    <td className="py-2 lg:py-3 text-white text-sm lg:text-base">{item.part_name}</td>
+                    <td className="py-2 lg:py-3 text-blue-400 text-sm lg:text-base">{item.quantity}</td>
                   </tr>
                 ))}
               </tbody>
@@ -192,21 +192,21 @@ export default function ReportsPage() {
           )}
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-          <h3 className="text-xl font-bold text-white mb-4">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 lg:p-6">
+          <h3 className="text-base lg:text-xl font-bold text-white mb-3 lg:mb-4">
             منتجات تحتاج إعادة طلب
           </h3>
 
-          <div className="space-y-4">
+          <div className="space-y-2.5 lg:space-y-4">
             {reorderProducts.length === 0 ? (
               <div className="text-slate-400">
                 لا توجد منتجات تحتاج إعادة طلب
               </div>
             ) : (
               reorderProducts.map((item) => (
-                <div key={item.id} className="bg-slate-950 rounded-xl p-4">
-                  <p className="text-white">{item.part_name}</p>
-                  <p className="text-yellow-400 text-sm">الكمية: {item.quantity}</p>
+                <div key={item.id} className="bg-slate-950 rounded-xl p-3 lg:p-4">
+                  <p className="text-white text-sm lg:text-base">{item.part_name}</p>
+                  <p className="text-yellow-400 text-xs lg:text-sm mt-0.5">الكمية: {item.quantity}</p>
                 </div>
               ))
             )}

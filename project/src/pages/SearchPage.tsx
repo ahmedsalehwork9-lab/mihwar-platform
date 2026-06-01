@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+
 import {
   Search,
   Phone,
@@ -10,13 +11,6 @@ import {
   Tag,
   ShoppingCart,
   Plus,
-  MessageCircle,
-  MapPin,
-  X,
-  ChevronDown,
-  Package,
-  Layers,
-  AlertCircle
 } from 'lucide-react';
 
 import { useLang } from '../context/LanguageContext';
@@ -36,12 +30,14 @@ type Shop = {
   id: number;
   shop_name: string;
   phone: string;
-  city?: string;
 };
 
 export default function SearchPage() {
+
   const { lang, isRTL } = useLang();
   const { ownedShopId } = useAuth();
+
+  const isArabic = lang === 'ar';
 
   const [products, setProducts] = useState<Product[]>([]);
   const [shops, setShops] = useState<Shop[]>([]);
@@ -51,44 +47,75 @@ export default function SearchPage() {
   const [cart, setCart] = useState<any[]>([]);
 
   useEffect(() => {
+    // ── LOG 1: قيمة ownedShopId عند كل re-render ─────────────────────────
+    console.log('[SearchPage] useEffect fired | ownedShopId:', ownedShopId, '| type:', typeof ownedShopId);
     fetchData();
   }, [ownedShopId]);
 
-  // ─── EXISTING LOGIC PRESERVED ───
   const fetchData = async () => {
     try {
       setLoading(true);
 
+      // ── LOG 2: بداية الجلب ────────────────────────────────────────────────
+      console.log('[SearchPage] fetchData START | ownedShopId:', ownedShopId, '| type:', typeof ownedShopId);
+
+      // ── الاستعلام الأساسي بدون neq أولاً لاختبار RLS ────────────────────
+      const { data: rawCount, error: rawError } = await supabase
+        .from('products')
+        .select('id', { count: 'exact' })
+        .gt('quantity', 0);
+
+      // ── LOG 3: هل RLS تسمح بقراءة products أصلاً؟ ───────────────────────
+      console.log('[SearchPage] RAW count (no neq, no limit):', rawCount?.length ?? 0, '| error:', rawError);
+
+      // ── بناء الاستعلام الفعلي ─────────────────────────────────────────────
       let productsQuery = supabase
         .from('products')
         .select('*')
         .gt('quantity', 0)
         .order('created_at', { ascending: false });
 
+      // ── LOG 4: هل سيُطبَّق neq؟ ──────────────────────────────────────────
+      const willApplyNeq = Boolean(ownedShopId) && ownedShopId !== null && ownedShopId !== undefined;
+      console.log('[SearchPage] willApplyNeq:', willApplyNeq, '| ownedShopId value:', ownedShopId);
+
       if (ownedShopId) {
         productsQuery = productsQuery.neq('shop_id', ownedShopId);
+        console.log('[SearchPage] Applied .neq("shop_id",', ownedShopId, ')');
+      } else {
+        console.log('[SearchPage] neq NOT applied — ownedShopId is falsy');
       }
 
       const { data: productsData, error: productsError } = await productsQuery;
-      if (productsError) console.error('خطأ في جلب المنتجات:', productsError);
 
-      const fetchedProducts: Product[] = productsData || [];
-      const shopIds = [...new Set(fetchedProducts.map((p) => p.shop_id))];
-
-      let fetchedShops: Shop[] = [];
-      if (shopIds.length > 0) {
-        const { data: shopsData, error: shopsError } = await supabase
-          .from('shops')
-          .select('id, shop_name, phone, city')
-          .in('id', shopIds);
-        if (shopsError) console.error('خطأ في جلب المحلات:', shopsError);
-        fetchedShops = shopsData || [];
+      // ── LOG 5: نتيجة استعلام المنتجات ────────────────────────────────────
+      console.log('[SearchPage] productsData length:', productsData?.length ?? 0);
+      console.log('[SearchPage] productsError:', productsError);
+      if (productsData && productsData.length > 0) {
+        console.log('[SearchPage] productsData sample (first 2):', productsData.slice(0, 2));
+      } else {
+        console.warn('[SearchPage] ⚠️ productsData is EMPTY or NULL');
       }
 
-      setProducts(fetchedProducts);
-      setShops(fetchedShops);
+      // ── جلب المحلات ───────────────────────────────────────────────────────
+      const { data: shopsData, error: shopsError } = await supabase
+        .from('shops')
+        .select('id, shop_name, phone');
+
+      // ── LOG 6: نتيجة استعلام المحلات ─────────────────────────────────────
+      console.log('[SearchPage] shopsData length:', shopsData?.length ?? 0);
+      console.log('[SearchPage] shopsError:', shopsError);
+      if (shopsData && shopsData.length > 0) {
+        console.log('[SearchPage] shopsData sample (first 2):', shopsData.slice(0, 2));
+      } else {
+        console.warn('[SearchPage] ⚠️ shopsData is EMPTY — check RLS on shops table');
+      }
+
+      setProducts(productsData || []);
+      setShops(shopsData || []);
+
     } catch (error) {
-      console.error('[SearchPage] fetchData exception:', error);
+      console.error('[SearchPage] fetchData EXCEPTION:', error);
     } finally {
       setLoading(false);
     }
@@ -97,11 +124,9 @@ export default function SearchPage() {
   const addToCart = (product: any) => {
     const exists = cart.find((item) => item.id === product.id);
     if (exists) {
-      setCart(
-        cart.map((item) =>
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
-        )
-      );
+      setCart(cart.map((item) =>
+        item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+      ));
     } else {
       setCart([...cart, { ...product, quantity: 1 }]);
     }
@@ -114,271 +139,331 @@ export default function SearchPage() {
   const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
   const mergedProducts = useMemo(() => {
-    return products.map((p) => {
+    const result = products.map((p) => {
       const shop = shops.find((s) => String(s.id) === String(p.shop_id));
       return {
         ...p,
-        shop_name: shop?.shop_name ?? 'محل غير معروف',
-        shop_phone: shop?.phone ?? '-',
-        shop_city: shop?.city ?? 'المنطقة غير محددة',
+        shop_name:  shop?.shop_name ?? 'محل غير معروف',
+        shop_phone: shop?.phone     ?? '-',
       };
     });
+
+    // ── LOG 7: نتيجة المدمج ───────────────────────────────────────────────
+    const noShopMatch = result.filter((p) => p.shop_name === 'محل غير معروف');
+    console.log('[SearchPage] mergedProducts.length:', result.length);
+    if (noShopMatch.length > 0) {
+      console.warn('[SearchPage] ⚠️ منتجات بدون محل مطابق:', noShopMatch.length,
+        '| shop_ids:', [...new Set(noShopMatch.map((p) => p.shop_id))]);
+    }
+
+    return result;
   }, [products, shops]);
 
-  const brands = ['all', ...new Set(mergedProducts.map((p) => p.brand).filter(Boolean))];
+  const brands = [
+    'all',
+    ...new Set(mergedProducts.map((p) => p.brand).filter(Boolean)),
+  ];
 
-  const filtered = mergedProducts.filter((p) => {
-    const matchesQuery =
-      query === '' ||
-      p.part_name?.toLowerCase().includes(query.toLowerCase()) ||
-      p.part_number?.toLowerCase().includes(query.toLowerCase()) ||
-      p.model?.toLowerCase().includes(query.toLowerCase());
+  const filtered = useMemo(() => {
+    const result = mergedProducts.filter((p) => {
+      const matchesQuery =
+        query === '' ||
+        p.part_name?.toLowerCase().includes(query.toLowerCase()) ||
+        p.part_number?.toLowerCase().includes(query.toLowerCase()) ||
+        p.model?.toLowerCase().includes(query.toLowerCase());
 
-    const matchesBrand = brandFilter === 'all' || p.brand === brandFilter;
-    return matchesQuery && matchesBrand;
-  });
+      const matchesBrand = brandFilter === 'all' || p.brand === brandFilter;
 
-  const getStockStatus = (quantity: number) => {
+      return matchesQuery && matchesBrand;
+    });
+
+    // ── LOG 8: النتيجة النهائية بعد الفلاتر ──────────────────────────────
+    console.log('[SearchPage] filtered.length:', result.length,
+      '| query:', query, '| brandFilter:', brandFilter);
+
+    return result;
+  }, [mergedProducts, query, brandFilter]);
+
+  const stockBadge = (quantity: number) => {
     if (quantity > 5) {
-      return {
-        label: isRTL ? 'متوفر' : 'Available',
-        color: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
-        dot: 'bg-emerald-500'
-      };
+      return (
+        <span className="text-xs px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+          متوفر
+        </span>
+      );
     }
-    return {
-      label: isRTL ? 'كمية منخفضة' : 'Low Stock',
-      color: 'bg-amber-500/10 text-amber-500 border-amber-500/20',
-      dot: 'bg-amber-500'
-    };
+    return (
+      <span className="text-xs px-3 py-1 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+        كمية منخفضة
+      </span>
+    );
   };
 
   const createOrder = async () => {
+
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { alert('يجب تسجيل الدخول'); return; }
 
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        alert('يجب تسجيل الدخول');
+        return;
+      }
+
+      // جلب متجر المستخدم الحالي
       const { data: myShop, error: shopError } = await supabase
-        .from('shops').select('*').eq('owner_id', user.id).single();
-      if (shopError || !myShop) { console.error(shopError); alert('المحل غير موجود'); return; }
+        .from('shops')
+        .select('*')
+        .eq('owner_id', user.id)
+        .single();
 
+      if (shopError || !myShop) {
+        console.error(shopError);
+        alert('المحل غير موجود');
+        return;
+      }
+
+      // تجميع المنتجات حسب المتجر
       const grouped: any = {};
+
       cart.forEach((item) => {
-        if (!grouped[item.shop_id]) grouped[item.shop_id] = [];
+        if (!grouped[item.shop_id]) {
+          grouped[item.shop_id] = [];
+        }
         grouped[item.shop_id].push(item);
       });
 
+      // إنشاء طلب لكل متجر
       for (const shopId in grouped) {
-        const items = grouped[shopId];
-        const orderTotal = items.reduce((sum: number, item: any) => sum + item.price * item.quantity, 0);
 
+        const items = grouped[shopId];
+
+        const total = items.reduce(
+          (sum: number, item: any) => sum + item.price * item.quantity,
+          0
+        );
+
+        // إنشاء الطلب
         const { data: order, error: orderError } = await supabase
           .from('orders')
-          .insert({ from_shop_id: myShop.id, to_shop_id: Number(shopId), status: 'pending', total_amount: orderTotal })
-          .select().single();
-        if (orderError || !order) { console.error('ORDER ERROR:', orderError); continue; }
+          .insert({
+            from_shop_id: myShop.id,
+            to_shop_id: Number(shopId),
+            status: 'pending',
+            total_amount: total,
+          })
+          .select()
+          .single();
 
+        if (orderError || !order) {
+          console.error('ORDER ERROR:', orderError);
+          continue;
+        }
+
+        // إنشاء عناصر الطلب
         const orderItems = items.map((item: any) => ({
-          order_id: order.id, product_id: item.id, quantity: item.quantity, price: item.price,
+          order_id: order.id,
+          product_id: item.id,
+          quantity: item.quantity,
+          price: item.price,
         }));
-        const { error: itemsError } = await supabase.from('order_items').insert(orderItems);
-        if (itemsError) console.error('ITEMS ERROR:', itemsError);
 
-        await supabase.from('notifications').insert({
-          shop_id: Number(order.to_shop_id),
-          title: 'طلب جديد',
-          message: `تم استلام طلب جديد رقم #${order.id}`,
-          type: 'new_order',
-        });
+        const { error: itemsError } = await supabase
+          .from('order_items')
+          .insert(orderItems);
+
+        if (itemsError) {
+          console.error('ITEMS ERROR:', itemsError);
+        }
+
+        // إنشاء إشعار
+        const { error: notificationError } = await supabase
+          .from('notifications')
+          .insert({
+            shop_id: Number(order.to_shop_id),
+            title: 'طلب جديد',
+            message: `تم استلام طلب جديد رقم #${order.id}`,
+            type: 'new_order',
+          });
+
+        if (notificationError) {
+          console.error('NOTIFICATION ERROR:', notificationError);
+        }
+
       }
 
+      // تنظيف السلة
       setCart([]);
       alert('تم إنشاء الطلب بنجاح');
+
     } catch (error: any) {
       console.error('CREATE ORDER ERROR:', error);
       alert(error?.message || 'حدث خطأ أثناء إنشاء الطلب');
     }
+
   };
 
   return (
-    <div className="min-h-screen bg-[#0b0f1a] pb-32" dir={isRTL ? 'rtl' : 'ltr'}>
-      {/* ─── HERO SEARCH SECTION ─── */}
-      <div className="relative bg-gradient-to-b from-blue-900/20 to-transparent pt-12 pb-8 px-4 md:px-8">
-        <div className="max-w-4xl mx-auto space-y-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-black text-white italic tracking-tighter">
-                {isRTL ? 'بحث قطع الغيار' : 'Search Spare Parts'}
-              </h1>
-              <p className="text-slate-400 text-sm mt-1 font-medium">
-                {isRTL ? `تم العثور على ${filtered.length} منتج في السوق` : `Found ${filtered.length} products in market`}
-              </p>
+    <div
+      className="max-w-7xl mx-auto p-4 lg:p-6 text-white"
+      dir={isRTL ? 'rtl' : 'ltr'}
+    >
+
+      {/* HEADER */}
+      <div className="bg-slate-900 border border-slate-700 rounded-3xl p-5 mb-6">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <div className="bg-blue-500/10 p-2 rounded-xl border border-blue-500/20">
+                <Search size={18} className="text-blue-400" />
+              </div>
+              <h1 className="text-2xl font-bold">بحث قطع الغيار</h1>
             </div>
-            <button
-              onClick={fetchData}
-              className="self-start md:self-center h-10 px-4 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white transition-all flex items-center gap-2 text-xs font-bold"
-            >
-              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-              {isRTL ? 'تحديث البيانات' : 'Sync Data'}
-            </button>
+            <p className="text-slate-400 text-sm">
+              تم العثور على {filtered.length} منتج
+            </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <div className="md:col-span-3 relative group">
-              <Search size={20} className="absolute top-1/2 -translate-y-1/2 right-4 text-slate-500 group-focus-within:text-blue-500 transition-colors" />
+          <div className="flex flex-wrap items-center gap-3">
+
+            <div className="relative">
+              <Search size={16} className="absolute top-1/2 -translate-y-1/2 right-3 text-slate-500" />
               <input
                 type="text"
-                placeholder={isRTL ? "ابحث باسم القطعة أو رقمها..." : "Search by name or part number..."}
+                placeholder="ابحث باسم القطعة أو رقمها..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                className="w-full bg-slate-900/80 border border-slate-800 rounded-2xl h-14 text-white pr-12 pl-4 placeholder-slate-600 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-base font-medium"
+                className="w-72 bg-slate-950 border border-slate-700 rounded-xl h-11 text-sm text-white pr-10 pl-4 placeholder-slate-500 focus:outline-none focus:border-blue-500"
               />
             </div>
+
             <div className="relative">
-              <Filter size={16} className="absolute top-1/2 -translate-y-1/2 right-4 text-slate-500" />
+              <Filter size={15} className="absolute top-1/2 -translate-y-1/2 right-3 text-slate-500" />
               <select
                 value={brandFilter}
                 onChange={(e) => setBrandFilter(e.target.value)}
-                className="w-full bg-slate-900/80 border border-slate-800 rounded-2xl h-14 text-white pr-11 pl-4 appearance-none focus:outline-none focus:border-blue-500 text-sm font-bold cursor-pointer"
+                className="bg-slate-950 border border-slate-700 rounded-xl h-11 text-sm text-white pr-10 pl-8 appearance-none focus:outline-none focus:border-blue-500"
               >
-                <option value="all">{isRTL ? 'كل الماركات' : 'All Brands'}</option>
+                <option value="all">كل الماركات</option>
                 {brands.filter((b) => b !== 'all').map((brand) => (
                   <option key={brand} value={brand}>{brand}</option>
                 ))}
               </select>
-              <ChevronDown size={14} className="absolute top-1/2 -translate-y-1/2 left-4 text-slate-600 pointer-events-none" />
             </div>
+
+            <button
+              onClick={fetchData}
+              className="h-11 px-4 rounded-xl border border-slate-700 hover:border-slate-500 text-slate-300 flex items-center gap-2 transition-all"
+            >
+              <RefreshCw size={15} />
+              تحديث
+            </button>
+
           </div>
         </div>
       </div>
 
-      {/* ─── LOADING STATE ─── */}
+      {/* LOADING */}
       {loading && (
-        <div className="max-w-7xl mx-auto px-4 py-20 text-center space-y-4">
-          <div className="w-12 h-12 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin mx-auto" />
-          <p className="text-slate-500 font-black italic tracking-widest uppercase text-xs">{isRTL ? 'جاري جلب أفضل الأسعار...' : 'Fetching best prices...'}</p>
+        <div className="bg-slate-900 border border-slate-700 rounded-3xl p-10 text-center text-slate-400">
+          جاري التحميل...
         </div>
       )}
 
-      {/* ─── EMPTY STATE ─── */}
-      {!loading && filtered.length === 0 && (
-        <div className="max-w-7xl mx-auto px-4 py-32 text-center space-y-6">
-          <div className="bg-slate-900 w-24 h-24 rounded-[2rem] flex items-center justify-center mx-auto text-slate-700">
-            <Package size={48} />
-          </div>
-          <div>
-            <h3 className="text-xl font-bold text-white">{isRTL ? 'لا توجد نتائج' : 'No Results Found'}</h3>
-            <p className="text-slate-500 text-sm mt-1">{isRTL ? 'جرب كلمات بحث مختلفة أو تغيير الماركة' : 'Try different keywords or brand filters'}</p>
-          </div>
-        </div>
-      )}
-
-      {/* ─── PRODUCTS GRID ─── */}
+      {/* PRODUCTS */}
       {!loading && (
-        <div className="max-w-7xl mx-auto px-4 md:px-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filtered.map((p) => {
-            const status = getStockStatus(p.quantity);
-            return (
-              <div
-                key={p.id}
-                className="group bg-slate-900 border border-slate-800 hover:border-blue-500/40 rounded-[2.5rem] p-6 transition-all duration-300 shadow-2xl relative flex flex-col"
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+          {filtered.map((p) => (
+            <div
+              key={p.id}
+              className="relative bg-slate-900 border border-slate-700 hover:border-slate-500 rounded-3xl p-5 transition-all duration-300"
+            >
+
+              <div className="absolute top-4 left-4 z-10">
+                {stockBadge(p.quantity)}
+              </div>
+
+              <button
+                onClick={() => addToCart(p)}
+                className="absolute bottom-4 left-4 w-11 h-11 rounded-2xl bg-blue-600 hover:bg-blue-500 transition-all flex items-center justify-center shadow-lg z-20"
               >
-                <div className="flex justify-between items-start mb-6">
-                  <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-black uppercase italic ${status.color}`}>
-                    <div className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
-                    {status.label}
-                  </div>
-                  <div className="text-left">
-                    <p className="text-slate-600 text-[10px] font-black uppercase mb-1 tracking-tighter">{isRTL ? 'السعر' : 'Price'}</p>
-                    <div className="text-2xl font-black italic text-blue-400 tracking-tighter">
-                      {p.price} <span className="text-[10px] not-italic font-bold">ر.س</span>
-                    </div>
-                  </div>
+                <Plus size={18} />
+              </button>
+
+              <div className="pt-10">
+                <h2 className="text-lg font-bold text-white mb-1 leading-relaxed">
+                  {p.part_name}
+                </h2>
+                <div className="text-xs text-slate-400 font-mono mb-5">
+                  {p.part_number}
                 </div>
 
-                <div className="flex-1 space-y-1 mb-6">
-                  <h2 className="text-xl font-black text-white italic tracking-tight leading-tight">
-                    {p.part_name}
-                  </h2>
-                  <div className="inline-block bg-slate-950 border border-slate-800 px-3 py-1 rounded-xl text-blue-500 font-black italic tracking-widest text-xs font-mono">
-                    {p.part_number}
-                  </div>
+                <div className="flex items-center gap-2 text-slate-300 text-sm mb-2">
+                  <Tag size={14} className="text-blue-400" />
+                  {p.brand} • {p.model}
                 </div>
 
-                <div className="bg-slate-950/50 rounded-3xl p-4 space-y-3 mb-6 border border-slate-800/50">
-                  <div className="flex items-center gap-3 text-slate-400 text-xs font-bold italic">
-                    <Tag size={14} className="text-blue-500" />
-                    {p.brand} <span className="text-slate-700">|</span> {p.model}
-                  </div>
-                  <div className="flex items-center gap-3 text-slate-400 text-xs font-bold italic">
-                    <Store size={14} className="text-emerald-500" />
-                    <span className="truncate text-white">{p.shop_name}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-slate-500 text-[10px] font-black italic uppercase">
-                    <MapPin size={14} className="text-amber-500" />
-                    {p.shop_city}
-                  </div>
+                {/* اسم المحل */}
+                <div className="flex items-center gap-2 text-slate-300 text-sm mb-2">
+                  <Store size={14} className="text-emerald-400" />
+                  {p.shop_name}
                 </div>
 
-                <div className="grid grid-cols-4 gap-2">
-                  <a 
-                    href={`tel:${p.shop_phone}`}
-                    className="h-12 rounded-2xl bg-slate-800 text-blue-400 flex items-center justify-center hover:bg-blue-600 hover:text-white transition-all border border-slate-700"
-                  >
-                    <Phone size={20} />
-                  </a>
-                  <a 
-                    href={`https://wa.me/${p.shop_phone.replace(/\s+/g, '')}`}
-                    target="_blank"
-                    className="h-12 rounded-2xl bg-slate-800 text-emerald-400 flex items-center justify-center hover:bg-emerald-600 hover:text-white transition-all border border-slate-700"
-                  >
-                    <MessageCircle size={20} />
-                  </a>
-                  <button 
-                    className="h-12 rounded-2xl bg-slate-800 text-amber-500 flex items-center justify-center hover:bg-amber-600 hover:text-white transition-all border border-slate-700"
-                  >
-                    <MapPin size={20} />
-                  </button>
-                  <button
-                    onClick={() => addToCart(p)}
-                    className="h-12 rounded-2xl bg-blue-600 text-white flex flex-col items-center justify-center shadow-lg shadow-blue-900/20 active:scale-95 transition-all font-black italic uppercase"
-                  >
-                    <Plus size={20} strokeWidth={3} />
-                    <span className="text-[8px] -mt-0.5 tracking-tighter">{isRTL ? 'إضافة' : 'Add'}</span>
-                  </button>
+                {/* رقم هاتف المحل */}
+                <div className="flex items-center gap-2 text-slate-400 text-sm mb-5">
+                  <Phone size={14} className="text-amber-400" />
+                  {p.shop_phone}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3">
+                    <div className="text-xs text-slate-400 mb-2">الكمية</div>
+                    <div className="text-xl font-bold">{p.quantity}</div>
+                  </div>
+                  <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3">
+                    <div className="text-xs text-slate-400 mb-2">السعر</div>
+                    <div className="text-xl font-bold text-emerald-400">{p.price} ر.س</div>
+                  </div>
                 </div>
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       )}
 
-      {/* ─── CART OVERLAY ─── */}
+      {/* CART */}
       {cart.length > 0 && (
-        <div className="fixed bottom-6 left-4 right-4 md:left-auto md:w-[450px] bg-slate-900 border border-slate-800 rounded-[2.5rem] p-6 shadow-[0_20px_60px_rgba(0,0,0,0.8)] z-50 animate-in slide-in-from-bottom-10">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="relative bg-blue-600 p-2.5 rounded-2xl">
-                <ShoppingCart size={22} className="text-white" />
-                <span className="absolute -top-2 -right-2 bg-white text-blue-600 text-[10px] font-black h-5 w-5 rounded-full flex items-center justify-center ring-4 ring-slate-900">
-                  {cart.length}
-                </span>
-              </div>
-              <h3 className="font-black italic text-xl text-white italic tracking-tight">{isRTL ? 'سلة الطلب' : 'Order Basket'}</h3>
+        <div className="fixed bottom-5 left-5 right-5 lg:left-auto lg:w-[400px] bg-slate-900 border border-slate-700 rounded-3xl p-5 shadow-2xl z-50">
+
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <ShoppingCart size={18} className="text-blue-400" />
+              <h3 className="font-bold text-white">سلة الطلب</h3>
             </div>
-            <button onClick={() => setCart([])} className="text-slate-500 hover:text-white p-2 transition-colors">
-              <X size={20} />
-            </button>
+            <div className="text-sm text-slate-400">{cart.length} أصناف</div>
           </div>
 
-          <div className="space-y-3 max-h-56 overflow-auto mb-6 px-1 scrollbar-hide">
+          <div className="space-y-3 max-h-72 overflow-auto pr-1">
             {cart.map((item) => (
-              <div key={item.id} className="bg-slate-950 border border-slate-800 rounded-2xl p-4 flex items-center gap-4">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-white truncate italic">{item.part_name}</p>
-                  <p className="text-[10px] text-slate-500 mt-1 font-black italic uppercase tracking-tighter">{item.price} ر.س / {isRTL ? 'قطعة' : 'Unit'}</p>
+              <div key={item.id} className="bg-slate-950 border border-slate-800 rounded-2xl p-3">
+
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex-1">
+                    <div className="text-sm font-medium leading-relaxed">{item.part_name}</div>
+                    <div className="text-xs text-slate-400 mt-1">{item.price} ر.س / الوحدة</div>
+                  </div>
+                  <button
+                    onClick={() => removeFromCart(item.id)}
+                    className="text-red-400 text-xs hover:text-red-300"
+                  >
+                    حذف
+                  </button>
                 </div>
-                <div className="flex items-center gap-3 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
+
+                <div className="flex items-center justify-between">
                   <input
                     type="number"
                     min="1"
@@ -391,30 +476,26 @@ export default function SearchPage() {
                           : cartItem
                       ));
                     }}
-                    className="w-10 bg-transparent text-center text-white text-sm font-black italic focus:outline-none"
+                    className="w-24 h-11 rounded-xl bg-slate-800 border border-slate-700 text-center text-white focus:outline-none focus:border-blue-500"
                   />
+                  <div className="text-emerald-400 font-bold text-lg">
+                    {item.price * item.quantity} ر.س
+                  </div>
                 </div>
-                <button
-                  onClick={() => removeFromCart(item.id)}
-                  className="text-slate-600 hover:text-rose-500 p-1 transition-colors"
-                >
-                  <X size={16} />
-                </button>
               </div>
             ))}
           </div>
 
-          <div className="pt-6 border-t border-slate-800">
-            <div className="flex items-center justify-between mb-6">
-              <span className="text-slate-500 font-black italic uppercase text-xs tracking-widest">{isRTL ? 'الإجمالي' : 'Subtotal'}</span>
-              <span className="text-3xl font-black italic text-blue-400 tracking-tighter">{total} <span className="text-[10px] not-italic font-bold">ر.س</span></span>
+          <div className="mt-5 pt-5 border-t border-slate-800">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-slate-400">الإجمالي</span>
+              <span className="text-3xl font-bold text-emerald-400">{total} ر.س</span>
             </div>
             <button
               onClick={createOrder}
-              className="w-full h-16 rounded-2xl bg-blue-600 text-white font-black italic text-lg shadow-xl shadow-blue-900/30 active:scale-95 transition-all flex items-center justify-center gap-3"
+              className="w-full h-14 rounded-2xl bg-emerald-600 hover:bg-emerald-500 transition-all font-bold text-lg"
             >
-              <ShoppingCart size={20} />
-              {isRTL ? 'تأكيد الطلب الآن' : 'Confirm Order Now'}
+              إنشاء الطلب
             </button>
           </div>
         </div>

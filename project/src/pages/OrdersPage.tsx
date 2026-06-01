@@ -1,328 +1,1175 @@
-import { useEffect, useState, useMemo } from 'react';
-import { supabase } from '../lib/supabase';
-import { useAuth } from '../context/AuthContext';
+import { useEffect, useState, useMemo } from "react";
+import { supabase } from "../lib/supabase";
+import { useAuth } from "../context/AuthContext";
 import {
-  FileText,
-  Download,
-  Share2,
-  Phone,
-  MessageCircle,
-  Clock,
-  CheckCircle2,
-  Printer,
-  ChevronRight,
-  ArrowRight,
-  Store,
-  User,
-  MoreVertical,
-  X,
-  AlertCircle
-} from 'lucide-react';
-import QRCode from 'react-qr-code';
+  ShoppingCart, RefreshCw, Package, Plus, X,
+  Check, XCircle, Clock, PackageCheck,
+  Eye, Trash2, AlertCircle, ChevronLeft, ChevronRight,
+  ArrowLeftRight, Search, Save, ChevronDown,
+  Printer, FileText,
+} from "lucide-react";
+
+// ─────────────────────────────────────────────────────────────
+// TYPES
+// ─────────────────────────────────────────────────────────────
+
+type OrderStatus = "pending" | "approved" | "rejected" | "completed";
 
 type Order = {
   id: number;
-  created_at: string;
-  status: string;
-  total_amount: number;
   from_shop_id: number;
   to_shop_id: number;
-  notes?: string;
-  from_shop?: { shop_name: string; city: string; phone: string };
-  to_shop?: { shop_name: string; city: string; phone: string };
+  status: OrderStatus;
+  total_amount: number;
+  notes: string | null;
+  created_at: string;
+  from_shop?: { shop_name: string };
+  to_shop?:   { shop_name: string };
+  order_items?: { id: number }[];
 };
 
+type OrderItem = {
+  id: number;
+  order_id: number;
+  product_id: number;
+  quantity: number;
+  price: number;
+  product?: Product;
+};
+
+type Shop = {
+  id: number;
+  shop_name: string;
+};
+
+type Product = {
+  id: number;
+  part_name: string;
+  part_number: string;
+  brand: string;
+  model: string;
+  quantity: number;
+  price: number;
+  shop_id: number;
+};
+
+type CartItem = {
+  product: Product;
+  quantity: number;
+};
+
+// ─────────────────────────────────────────────────────────────
+// CONSTANTS
+// ─────────────────────────────────────────────────────────────
+
+const PAGE_SIZE = 10;
+
+const STATUS_META: Record<OrderStatus, { label: string; color: string; dot: string }> = {
+  pending:   { label: "معلق",   color: "bg-amber-500/10 text-amber-400 border border-amber-500/20",      dot: "bg-amber-400"   },
+  approved:  { label: "مقبول",  color: "bg-blue-500/10 text-blue-400 border border-blue-500/20",         dot: "bg-blue-400"    },
+  rejected:  { label: "مرفوض", color: "bg-red-500/10 text-red-400 border border-red-500/20",             dot: "bg-red-400"     },
+  completed: { label: "مكتمل", color: "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20", dot: "bg-emerald-400" },
+};
+
+const STATUS_LABEL_AR: Record<OrderStatus, string> = {
+  pending:   "معلق",
+  approved:  "مقبول",
+  rejected:  "مرفوض",
+  completed: "مكتمل",
+};
+
+// ─────────────────────────────────────────────────────────────
+// PRINT / PDF HELPER
+// ─────────────────────────────────────────────────────────────
+
+function buildPrintHTML(order: Order, items: OrderItem[]): string {
+  const date = new Date(order.created_at).toLocaleString("ar-SA", {
+    day: "numeric", month: "long", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+
+  const rows = items.map((item, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td>${item.product?.part_name ?? "—"}</td>
+      <td>${item.product?.part_number ?? "—"}</td>
+      <td>${item.quantity}</td>
+      <td>${item.price.toLocaleString()} ر.س</td>
+      <td>${(item.price * item.quantity).toLocaleString()} ر.س</td>
+    </tr>
+  `).join("");
+
+  return `
+    <!DOCTYPE html>
+    <html lang="ar" dir="rtl">
+    <head>
+      <meta charset="UTF-8" />
+      <title>طلب #${String(order.id).padStart(5, "0")}</title>
+      <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+          font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+          background: #fff;
+          color: #1a1a2e;
+          padding: 32px;
+          direction: rtl;
+        }
+        .header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          border-bottom: 2px solid #1a56db;
+          padding-bottom: 18px;
+          margin-bottom: 24px;
+        }
+        .header-title h1 {
+          font-size: 22px;
+          font-weight: 700;
+          color: #1a56db;
+        }
+        .header-title p {
+          font-size: 13px;
+          color: #6b7280;
+          margin-top: 4px;
+        }
+        .badge {
+          display: inline-block;
+          padding: 4px 14px;
+          border-radius: 999px;
+          font-size: 13px;
+          font-weight: 600;
+          border: 1px solid;
+        }
+        .badge-pending   { background:#fffbeb; color:#92400e; border-color:#fcd34d; }
+        .badge-approved  { background:#eff6ff; color:#1e40af; border-color:#93c5fd; }
+        .badge-rejected  { background:#fef2f2; color:#991b1b; border-color:#fca5a5; }
+        .badge-completed { background:#ecfdf5; color:#065f46; border-color:#6ee7b7; }
+        .info-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 16px;
+          margin-bottom: 24px;
+        }
+        .info-card {
+          background: #f9fafb;
+          border: 1px solid #e5e7eb;
+          border-radius: 10px;
+          padding: 14px 18px;
+        }
+        .info-card .label {
+          font-size: 11px;
+          color: #9ca3af;
+          text-transform: uppercase;
+          letter-spacing: .05em;
+          margin-bottom: 5px;
+        }
+        .info-card .value {
+          font-size: 15px;
+          font-weight: 600;
+          color: #111827;
+        }
+        .section-title {
+          font-size: 13px;
+          font-weight: 700;
+          color: #6b7280;
+          text-transform: uppercase;
+          letter-spacing: .06em;
+          margin-bottom: 10px;
+        }
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-bottom: 24px;
+          font-size: 13px;
+        }
+        thead tr { background: #1a56db; color: #fff; }
+        thead th { padding: 10px 12px; text-align: right; font-weight: 600; }
+        tbody tr:nth-child(even) { background: #f9fafb; }
+        tbody tr:hover { background: #eff6ff; }
+        tbody td {
+          padding: 10px 12px;
+          border-bottom: 1px solid #e5e7eb;
+          color: #374151;
+        }
+        .total-box {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          background: #eff6ff;
+          border: 1px solid #bfdbfe;
+          border-radius: 10px;
+          padding: 14px 20px;
+          margin-bottom: 20px;
+        }
+        .total-box .total-label { font-size: 15px; color: #374151; font-weight: 500; }
+        .total-box .total-value { font-size: 22px; font-weight: 700; color: #1a56db; }
+        .notes-box {
+          background: #fffbeb;
+          border: 1px solid #fcd34d;
+          border-radius: 10px;
+          padding: 12px 16px;
+          margin-bottom: 20px;
+        }
+        .notes-box .label { font-size: 11px; color: #92400e; font-weight: 600; margin-bottom: 4px; }
+        .notes-box p { font-size: 13px; color: #78350f; }
+        .footer {
+          border-top: 1px solid #e5e7eb;
+          padding-top: 14px;
+          font-size: 11px;
+          color: #9ca3af;
+          display: flex;
+          justify-content: space-between;
+        }
+        @media print {
+          body { padding: 16px; }
+          @page { margin: 12mm; size: A4; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <div class="header-title">
+          <h1>طلب شراء #${String(order.id).padStart(5, "0")}</h1>
+          <p>${date}</p>
+        </div>
+        <span class="badge badge-${order.status}">${STATUS_LABEL_AR[order.status]}</span>
+      </div>
+      <div class="info-grid">
+        <div class="info-card">
+          <div class="label">الطالب</div>
+          <div class="value">${order.from_shop?.shop_name ?? "—"}</div>
+        </div>
+        <div class="info-card">
+          <div class="label">المورد</div>
+          <div class="value">${order.to_shop?.shop_name ?? "—"}</div>
+        </div>
+      </div>
+      <div class="section-title">الأصناف</div>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>اسم القطعة</th>
+            <th>رقم القطعة</th>
+            <th>الكمية</th>
+            <th>سعر الوحدة</th>
+            <th>الإجمالي</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows || '<tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:20px">لا توجد أصناف</td></tr>'}
+        </tbody>
+      </table>
+      <div class="total-box">
+        <span class="total-label">الإجمالي الكلي</span>
+        <span class="total-value">${Number(order.total_amount).toLocaleString()} ر.س</span>
+      </div>
+      ${order.notes ? `
+        <div class="notes-box">
+          <div class="label">ملاحظات</div>
+          <p>${order.notes}</p>
+        </div>
+      ` : ""}
+      <div class="footer">
+        <span>IsuzuParts — B2B Spare Parts Platform</span>
+        <span>تم الإنشاء: ${new Date().toLocaleString("ar-SA")}</span>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
+// ─────────────────────────────────────────────────────────────
+// COMPONENT
+// ─────────────────────────────────────────────────────────────
+
 export default function OrdersPage() {
-  const { ownedShopId } = useAuth();
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [selectedOrder, setSelectedOrder] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<'list' | 'details'>('list');
 
-  useEffect(() => {
-    if (ownedShopId) fetchOrders();
-  }, [ownedShopId]);
+  // ── تعديل: دعم Admin الذي لا يملك متجر ──────────────────────
+  const {
+    ownedShopId,
+    role,
+    isAdmin,
+  } = useAuth() as any;
 
+  /* ── data ─────────────────────────────────── */
+  const [orders,   setOrders]   = useState<Order[]>([]);
+  const [shops,    setShops]    = useState<Shop[]>([]);
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState<string | null>(null);
+  const [toast,    setToast]    = useState<string | null>(null);
+
+  /* ── table ────────────────────────────────── */
+  const [tab,          setTab]          = useState<"all"|"incoming"|"outgoing">("all");
+  const [statusFilter, setStatusFilter] = useState<"all"|OrderStatus>("all");
+  const [search,       setSearch]       = useState("");
+  const [page,         setPage]         = useState(1);
+
+  /* ── detail drawer ────────────────────────── */
+  const [detailOrder,   setDetailOrder]   = useState<Order | null>(null);
+  const [detailItems,   setDetailItems]   = useState<OrderItem[]>([]);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  /* ── new order modal ──────────────────────── */
+  const [showModal,        setShowModal]        = useState(false);
+  const [supplierShopId,   setSupplierShopId]   = useState<number | "">("");
+  const [supplierProducts, setSupplierProducts] = useState<Product[]>([]);
+  const [loadingProducts,  setLoadingProducts]  = useState(false);
+  const [productSearch,    setProductSearch]    = useState("");
+  const [cart,             setCart]             = useState<CartItem[]>([]);
+  const [orderNotes,       setOrderNotes]       = useState("");
+  const [modalError,       setModalError]       = useState<string | null>(null);
+  const [saving,           setSaving]           = useState(false);
+
+  /* ── action loading ───────────────────────── */
+  const [actionId, setActionId] = useState<number | null>(null);
+
+  // ── fetch orders ────────────────────────────────────────────
+  // تعديل: Admin يرى جميع الطلبات — Shop Owner يرى طلباته فقط
   const fetchOrders = async () => {
+    // Admin لا يحتاج ownedShopId — Shop Owner يحتاجه
+    if (!isAdmin && !ownedShopId) return;
+
     setLoading(true);
-    const { data, error } = await supabase
-      .from('orders')
+    setError(null);
+
+    let query = supabase
+      .from("orders")
       .select(`
         *,
-        from_shop:from_shop_id(shop_name, city, phone),
-        to_shop:to_shop_id(shop_name, city, phone)
-      `)
-      .or(`from_shop_id.eq.${ownedShopId},to_shop_id.eq.${ownedShopId}`)
-      .order('created_at', { ascending: false });
+        from_shop:shops!orders_from_shop_id_fkey(shop_name),
+        to_shop:shops!orders_to_shop_id_fkey(shop_name),
+        order_items(id)
+      `);
 
-    if (!error && data) setOrders(data);
+    // تعديل: تصفية الطلبات حسب الدور
+    if (!isAdmin) {
+      query = query.or(
+        `from_shop_id.eq.${ownedShopId},to_shop_id.eq.${ownedShopId}`
+      );
+    }
+
+    const { data, error } = await query.order("created_at", { ascending: false });
+
+    if (error) {
+      setError(error.message);
+    } else {
+      setOrders((data as Order[]) || []);
+    }
     setLoading(false);
   };
 
-  const openOrderDetails = async (order: Order) => {
-    const { data, error } = await supabase
-      .from('order_items')
-      .select(`*, product:product_id(part_name, part_number)`)
-      .eq('order_id', order.id);
+  // ── fetch all shops ──────────────────────────────────────────
+  const fetchShops = async () => {
+    const { data } = await supabase
+      .from("shops")
+      .select("id, shop_name")
+      .order("shop_name");
+    setShops((data as Shop[]) || []);
+  };
 
-    if (!error && data) {
-      setSelectedOrder({ ...order, items: data });
-      setView('details');
+  useEffect(() => {
+    fetchOrders();
+    fetchShops();
+  }, [ownedShopId, isAdmin]);
+
+  // ── fetch supplier products when supplier changes ────────────
+  useEffect(() => {
+    if (!supplierShopId) { setSupplierProducts([]); return; }
+    setLoadingProducts(true);
+    supabase
+      .from("products")
+      .select("*")
+      .eq("shop_id", supplierShopId)
+      .gt("quantity", 0)
+      .order("part_name")
+      .then(({ data }) => {
+        setSupplierProducts((data as Product[]) || []);
+        setLoadingProducts(false);
+      });
+  }, [supplierShopId]);
+
+  // ── filtered & paged orders ──────────────────────────────────
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return orders
+      .filter(o => {
+        // تعديل: Admin يرى الكل في جميع التبويبات
+        if (isAdmin) return true;
+        if (tab === "incoming") return o.to_shop_id   === ownedShopId;
+        if (tab === "outgoing") return o.from_shop_id === ownedShopId;
+        return true;
+      })
+      .filter(o => statusFilter === "all" || o.status === statusFilter)
+      .filter(o =>
+        !q ||
+        String(o.id).includes(q) ||
+        o.from_shop?.shop_name?.toLowerCase().includes(q) ||
+        o.to_shop?.shop_name?.toLowerCase().includes(q)
+      );
+  }, [orders, tab, statusFilter, search, ownedShopId, isAdmin]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageItems  = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const counts = useMemo(() => ({
+    all:      orders.length,
+    // تعديل: Admin يرى عدد الكل في كل تبويب
+    incoming: isAdmin ? orders.length : orders.filter(o => o.to_shop_id   === ownedShopId).length,
+    outgoing: isAdmin ? orders.length : orders.filter(o => o.from_shop_id === ownedShopId).length,
+    pending:  orders.filter(o => o.status === "pending").length,
+  }), [orders, ownedShopId, isAdmin]);
+
+  // ── open detail ──────────────────────────────────────────────
+  const openDetail = async (order: Order) => {
+    setDetailOrder(order);
+    setDetailItems([]);
+    setDetailLoading(true);
+    const { data } = await supabase
+      .from("order_items")
+      .select("*, product:products(*)")
+      .eq("order_id", order.id);
+    setDetailItems((data as OrderItem[]) || []);
+    setDetailLoading(false);
+  };
+
+  // ── PRINT / PDF ──────────────────────────────────────────────
+  const handlePrint = (asPDF = false) => {
+    if (!detailOrder) return;
+    const html = buildPrintHTML(detailOrder, detailItems);
+    const win = window.open("", "_blank", "width=900,height=700");
+    if (!win) return;
+    win.document.write(html);
+    win.document.close();
+    win.onload = () => {
+      win.focus();
+      win.print();
+    };
+  };
+
+  // ── approve ──────────────────────────────────────────────────
+  const handleApprove = async (orderId: number) => {
+    setActionId(orderId);
+    const { error } = await supabase.rpc("approve_order", { p_order_id: orderId });
+    if (error) {
+      showError(error.message);
+    } else {
+      showToast("تم اعتماد الطلب وتحديث المخزون ✓");
+      await fetchOrders();
+      setDetailOrder(prev => prev?.id === orderId ? { ...prev, status: "completed" } : prev);
+    }
+    setActionId(null);
+  };
+
+  // ── reject ───────────────────────────────────────────────────
+  const handleReject = async (orderId: number) => {
+    if (!confirm("هل أنت متأكد من رفض هذا الطلب؟")) return;
+    setActionId(orderId);
+    const { error } = await supabase
+      .from("orders")
+      .update({ status: "rejected" })
+      .eq("id", orderId);
+    if (error) {
+      showError(error.message);
+    } else {
+      showToast("تم رفض الطلب");
+      await fetchOrders();
+      setDetailOrder(prev => prev?.id === orderId ? { ...prev, status: "rejected" } : prev);
+    }
+    setActionId(null);
+  };
+
+  // ── cart helpers ─────────────────────────────────────────────
+  const addToCart = (product: Product) => {
+    setCart(prev => {
+      if (prev.find(c => c.product.id === product.id)) return prev;
+      return [...prev, { product, quantity: 1 }];
+    });
+  };
+
+  const updateQty = (productId: number, qty: number) => {
+    const max = supplierProducts.find(p => p.id === productId)?.quantity ?? 1;
+    setCart(prev =>
+      prev.map(c =>
+        c.product.id === productId
+          ? { ...c, quantity: Math.max(1, Math.min(qty, max)) }
+          : c
+      )
+    );
+  };
+
+  const removeFromCart = (productId: number) =>
+    setCart(prev => prev.filter(c => c.product.id !== productId));
+
+  const cartTotal = cart.reduce((s, c) => s + c.product.price * c.quantity, 0);
+
+  // ── submit new order ─────────────────────────────────────────
+  const handleSubmit = async () => {
+    setModalError(null);
+    if (!supplierShopId)                { setModalError("اختر المحل المورد أولاً"); return; }
+    if (supplierShopId === ownedShopId) { setModalError("لا يمكنك الطلب من محلك"); return; }
+    if (cart.length === 0)              { setModalError("أضف منتجاً واحداً على الأقل"); return; }
+
+    for (const item of cart) {
+      const fresh = supplierProducts.find(p => p.id === item.product.id);
+      if (fresh && item.quantity > fresh.quantity) {
+        setModalError(`الكمية لـ "${item.product.part_name}" تتجاوز المتوفر (${fresh.quantity})`);
+        return;
+      }
+    }
+
+    setSaving(true);
+    try {
+      const { data: orderData, error: oErr } = await supabase
+        .from("orders")
+        .insert({
+          from_shop_id: ownedShopId,
+          to_shop_id:   supplierShopId,
+          status:       "pending",
+          total_amount: cartTotal,
+          notes:        orderNotes || null,
+        })
+        .select()
+        .single();
+      if (oErr) throw oErr;
+
+      const { error: iErr } = await supabase.from("order_items").insert(
+        cart.map(c => ({
+          order_id:   orderData.id,
+          product_id: c.product.id,
+          quantity:   c.quantity,
+          price:      c.product.price,
+        }))
+      );
+      if (iErr) throw iErr;
+
+      closeModal();
+      showToast("تم إرسال الطلب بنجاح ✓");
+      await fetchOrders();
+    } catch (e: any) {
+      setModalError(e?.message ?? "حدث خطأ");
+    } finally {
+      setSaving(false);
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    const styles: any = {
-      completed: { label: 'مكتمل', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
-      pending: { label: 'قيد الانتظار', color: 'bg-amber-100 text-amber-700 border-amber-200' },
-      approved: { label: 'تم الاعتماد', color: 'bg-blue-100 text-blue-700 border-blue-200' },
-    };
-    const current = styles[status] || { label: status, color: 'bg-slate-100 text-slate-700 border-slate-200' };
-    return <span className={`px-4 py-1 rounded-full text-xs font-bold border ${current.color}`}>{current.label}</span>;
+  // ── close modal ──────────────────────────────────────────────
+  const closeModal = () => {
+    setShowModal(false);
+    setSupplierShopId("");
+    setSupplierProducts([]);
+    setProductSearch("");
+    setCart([]);
+    setOrderNotes("");
+    setModalError(null);
   };
 
-  // --- شاشة تفاصيل الطلب (تصميم الفاتورة) ---
-  if (view === 'details' && selectedOrder) {
-    const vat = selectedOrder.total_amount * 0.15;
-    const subtotal = selectedOrder.total_amount;
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3500);
+  };
+  const showError = (msg: string) => setError(msg);
 
-    return (
-      <div className="min-h-screen bg-slate-100 pb-20 font-sans" dir="rtl">
-        {/* Navigation Header */}
-        <div className="bg-white border-b border-slate-200 px-4 py-3 sticky top-0 z-30 shadow-sm">
-          <div className="max-w-5xl mx-auto flex justify-between items-center">
-            <button onClick={() => setView('list')} className="flex items-center gap-2 text-slate-600 hover:text-blue-600 font-bold">
-              <ArrowRight size={20} /> العودة للطلبات
-            </button>
-            <div className="flex gap-2">
-              <button className="p-2 text-slate-400 hover:text-blue-600"><Printer size={20} /></button>
-              <button className="p-2 text-slate-400 hover:text-blue-600"><Share2 size={20} /></button>
-            </div>
+  const filteredProducts = useMemo(() => {
+    const q = productSearch.trim().toLowerCase();
+    if (!q) return supplierProducts;
+    return supplierProducts.filter(
+      p => p.part_name?.toLowerCase().includes(q) || p.part_number?.toLowerCase().includes(q)
+    );
+  }, [supplierProducts, productSearch]);
+
+  const otherShops = shops.filter(s => s.id !== ownedShopId);
+
+  // تعديل: Admin يستطيع الاعتماد/الرفض على أي طلب معلق
+  const canActOnOrder = (order: Order): boolean => {
+    if (isAdmin) return order.status === "pending";
+    return order.to_shop_id === ownedShopId && order.status === "pending";
+  };
+
+  // ─────────────────────────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────────────────────────
+  return (
+    <div className="p-4 lg:p-6 min-h-screen" dir="rtl">
+
+      {/* ── TOAST ── */}
+      {toast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[60] bg-emerald-600 text-white text-sm px-5 py-2.5 rounded-xl shadow-xl flex items-center gap-2">
+          <Check size={14} /> {toast}
+        </div>
+      )}
+
+      {/* ══════ HEADER ══════ */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <div className="flex items-center gap-3">
+          <div className="bg-blue-500/10 p-2 rounded-xl border border-blue-500/20">
+            <ShoppingCart size={18} className="text-blue-400" />
+          </div>
+          <div>
+            <h1 className="text-white font-semibold text-lg">الطلبات</h1>
+            <p className="text-slate-500 text-xs">
+              {orders.length} طلب إجمالي
+              {counts.pending > 0 && (
+                <span className="mr-1 text-amber-400 font-medium">· {counts.pending} معلق</span>
+              )}
+              {/* تعديل: شارة Admin */}
+              {isAdmin && (
+                <span className="mr-2 text-xs bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded-full">
+                  Admin — عرض جميع الطلبات
+                </span>
+              )}
+            </p>
           </div>
         </div>
-
-        {/* The Invoice Sheet */}
-        <div className="max-w-5xl mx-auto mt-6 bg-white shadow-2xl rounded-lg overflow-hidden border border-slate-200">
-          {/* Invoice Header */}
-          <div className="p-8 border-b-4 border-blue-600 flex flex-col md:flex-row justify-between gap-6">
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="bg-blue-600 p-2 rounded-lg text-white">
-                  <FileText size={32} />
-                </div>
-                <h1 className="text-3xl font-black text-slate-900 tracking-tight">طلب شراء</h1>
-              </div>
-              <div className="space-y-1">
-                <p className="text-slate-500 text-sm font-bold">رقم الطلب: <span className="text-slate-900">#000{selectedOrder.id}</span></p>
-                <p className="text-slate-500 text-sm font-bold">تاريخ الطلب: <span className="text-slate-900">{new Date(selectedOrder.created_at).toLocaleDateString('ar-SA')}</span></p>
-                <p className="text-slate-500 text-sm font-bold">الحالة: {getStatusBadge(selectedOrder.status)}</p>
-              </div>
-            </div>
-            
-            <div className="flex flex-col items-center md:items-end gap-3">
-              <div className="bg-white p-2 border border-slate-200 rounded-lg shadow-sm">
-                <QRCode value={`ORD-${selectedOrder.id}`} size={90} />
-              </div>
-              <p className="text-[10px] font-mono text-slate-400">Scan to verify order</p>
-            </div>
-          </div>
-
-          {/* Parties Section */}
-          <div className="grid grid-cols-1 md:grid-cols-2">
-            <div className="p-8 border-l border-slate-100 bg-slate-50/50">
-              <h3 className="flex items-center gap-2 text-blue-600 font-black mb-4 pb-2 border-b border-blue-100">
-                <Store size={18} /> المورد (البائع)
-              </h3>
-              <div className="space-y-2 text-sm">
-                <p className="flex justify-between font-bold text-slate-700"><span>اسم المحل:</span> <span>{selectedOrder.to_shop?.shop_name}</span></p>
-                <p className="flex justify-between text-slate-500"><span>رقم الجوال:</span> <span className="font-mono">{selectedOrder.to_shop?.phone}</span></p>
-                <p className="flex justify-between text-slate-500"><span>المدينة:</span> <span>{selectedOrder.to_shop?.city}</span></p>
-              </div>
-            </div>
-            <div className="p-8 bg-slate-50/50">
-              <h3 className="flex items-center gap-2 text-slate-600 font-black mb-4 pb-2 border-b border-slate-200">
-                <User size={18} /> الطالب (المشتري)
-              </h3>
-              <div className="space-y-2 text-sm">
-                <p className="flex justify-between font-bold text-slate-700"><span>اسم المحل:</span> <span>{selectedOrder.from_shop?.shop_name}</span></p>
-                <p className="flex justify-between text-slate-500"><span>رقم الجوال:</span> <span className="font-mono">{selectedOrder.from_shop?.phone}</span></p>
-                <p className="flex justify-between text-slate-500"><span>المدينة:</span> <span>{selectedOrder.from_shop?.city}</span></p>
-              </div>
-            </div>
-          </div>
-
-          {/* Items Table */}
-          <div className="p-8">
-            <h3 className="font-black text-slate-800 mb-4 flex items-center gap-2">الأصناف المطلوبة</h3>
-            <div className="overflow-x-auto border border-slate-200 rounded-lg">
-              <table className="w-full text-right">
-                <thead>
-                  <tr className="bg-slate-900 text-white text-xs uppercase">
-                    <th className="p-4 w-12">م</th>
-                    <th className="p-4">رقم القطعة</th>
-                    <th className="p-4">اسم القطعة</th>
-                    <th className="p-4 text-center">الكمية</th>
-                    <th className="p-4">سعر الوحدة</th>
-                    <th className="p-4">الإجمالي</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {selectedOrder.items?.map((item: any, idx: number) => (
-                    <tr key={idx} className="text-sm text-slate-700 hover:bg-slate-50 transition-colors">
-                      <td className="p-4 text-slate-400 font-bold">{idx + 1}</td>
-                      <td className="p-4 font-mono text-blue-600 font-bold">{item.product?.part_number}</td>
-                      <td className="p-4 font-bold">{item.product?.part_name}</td>
-                      <td className="p-4 text-center font-black">{item.quantity}</td>
-                      <td className="p-4">{item.price} ر.س</td>
-                      <td className="p-4 font-black">{item.price * item.quantity} ر.س</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Footer Grid: Timeline and Summary */}
-          <div className="grid grid-cols-1 md:grid-cols-2 p-8 pt-0 gap-8">
-            {/* Timeline */}
-            <div className="border border-slate-200 rounded-xl p-6 bg-slate-50/30">
-               <h4 className="font-black text-xs uppercase tracking-widest text-slate-400 mb-6 flex items-center gap-2">
-                 <Clock size={14} /> سجل الطلب
-               </h4>
-               <div className="space-y-6 relative">
-                 <div className="absolute top-2 bottom-2 right-3 w-0.5 bg-slate-200" />
-                 <TimelineStep label="تم إنشاء الطلب" time="09:30 ص" active />
-                 <TimelineStep label="تم إرسال الطلب للمورد" time="09:31 ص" active />
-                 <TimelineStep label="تم اعتماد الطلب" time="--" active={selectedOrder.status !== 'pending'} />
-                 <TimelineStep label="تم إغلاق الطلب (مكتمل)" time="--" active={selectedOrder.status === 'completed'} last />
-               </div>
-            </div>
-
-            {/* Total Summary */}
-            <div className="bg-blue-50 border-2 border-blue-100 rounded-2xl p-6 space-y-4">
-              <div className="flex justify-between text-slate-600 font-bold">
-                <span>الإجمالي الفرعي</span>
-                <span>{subtotal.toLocaleString()} ر.س</span>
-              </div>
-              <div className="flex justify-between text-slate-500 text-sm font-bold border-b border-blue-100 pb-4">
-                <span>ضريبة القيمة المضافة (15%)</span>
-                <span>{vat.toLocaleString()} ر.س</span>
-              </div>
-              <div className="flex justify-between items-center pt-2">
-                <span className="text-blue-900 font-black text-xl uppercase tracking-tighter italic">الإجمالي النهائي</span>
-                <span className="text-3xl font-black text-blue-600 tracking-tighter italic">
-                  {(subtotal + vat).toLocaleString()} <span className="text-xs not-italic">ر.س</span>
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Notes */}
-          {selectedOrder.notes && (
-            <div className="p-8 pt-0">
-               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex gap-3">
-                  <AlertCircle className="text-amber-600 shrink-0" size={20} />
-                  <div>
-                    <h5 className="font-black text-amber-900 text-xs mb-1">ملاحظات الطلب:</h5>
-                    <p className="text-amber-800 text-sm leading-relaxed">{selectedOrder.notes}</p>
-                  </div>
-               </div>
-            </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={fetchOrders}
+            className="w-9 h-9 flex items-center justify-center rounded-lg bg-slate-800 border border-slate-700 text-slate-400 hover:text-white transition-colors"
+          >
+            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+          </button>
+          {/* تعديل: زر طلب جديد يظهر فقط لأصحاب المتاجر وليس للأدمن */}
+          {!isAdmin && (
+            <button
+              onClick={() => setShowModal(true)}
+              disabled={!ownedShopId}
+              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm px-4 py-2 rounded-lg font-medium transition-colors"
+            >
+              <Plus size={14} /> طلب جديد
+            </button>
           )}
         </div>
+      </div>
 
-        {/* Action Buttons for Details View */}
-        <div className="max-w-5xl mx-auto mt-6 flex flex-wrap gap-3 px-4">
-          <button className="flex-1 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black flex items-center justify-center gap-3 shadow-lg shadow-blue-200">
-            <Download size={20} /> تحميل الطلب PDF
-          </button>
-          <button className="flex-1 h-14 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black flex items-center justify-center gap-3 shadow-lg shadow-emerald-200">
-            <MessageCircle size={20} /> واتساب المورد
-          </button>
-          <button className="w-14 h-14 bg-white border border-slate-200 text-slate-400 rounded-xl flex items-center justify-center hover:text-blue-600">
-            <Phone size={20} />
-          </button>
+      {/* ══════ STATS ══════ */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+        {[
+          { label: "إجمالي الطلبات", value: counts.all,      color: "text-slate-300"   },
+          { label: "واردة",          value: counts.incoming,  color: "text-blue-400"    },
+          { label: "صادرة",          value: counts.outgoing,  color: "text-emerald-400" },
+          { label: "معلقة",          value: counts.pending,   color: "text-amber-400"   },
+        ].map(s => (
+          <div key={s.label} className="bg-slate-900 border border-slate-700/50 rounded-xl p-3">
+            <p className="text-slate-500 text-xs mb-1">{s.label}</p>
+            <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* ══════ ERROR ══════ */}
+      {error && (
+        <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-xl p-4 text-red-400 mb-5 text-sm">
+          <AlertCircle size={15} /> {error}
+          <button onClick={() => setError(null)} className="mr-auto"><X size={14} /></button>
+        </div>
+      )}
+
+      {/* تعديل: رسالة عدم وجود متجر تظهر فقط لغير الأدمن */}
+      {!isAdmin && !ownedShopId && !loading && (
+        <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 text-amber-400 mb-5 text-sm">
+          <AlertCircle size={15} /> لم يتم ربط حسابك بمتجر. تأكد من إعداد المتجر أو تواصل مع الدعم.
+        </div>
+      )}
+
+      {/* ══════ TABS + FILTERS ══════ */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div className="flex items-center bg-slate-900 border border-slate-700/50 rounded-xl p-1 gap-1">
+          {([
+            { key: "all",      label: "الكل",  count: counts.all      },
+            { key: "incoming", label: "واردة", count: counts.incoming },
+            { key: "outgoing", label: "صادرة", count: counts.outgoing },
+          ] as { key: typeof tab; label: string; count: number }[]).map(t => (
+            <button
+              key={t.key}
+              onClick={() => { setTab(t.key); setPage(1); }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                tab === t.key ? "bg-slate-700 text-white" : "text-slate-400 hover:text-white"
+              }`}
+            >
+              {t.label}
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${tab === t.key ? "bg-white/20" : "bg-slate-700"}`}>
+                {t.count}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+            <input
+              type="text"
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(1); }}
+              placeholder="رقم طلب أو محل..."
+              className="bg-slate-800 border border-slate-700 text-white placeholder-slate-500 text-xs rounded-lg py-2 pr-8 pl-3 w-44 focus:outline-none focus:border-blue-500"
+            />
+          </div>
+          <div className="relative">
+            <select
+              value={statusFilter}
+              onChange={e => { setStatusFilter(e.target.value as any); setPage(1); }}
+              className="appearance-none bg-slate-800 border border-slate-700 text-slate-300 text-xs rounded-lg py-2 pr-3 pl-7 focus:outline-none focus:border-blue-500 cursor-pointer"
+            >
+              <option value="all">كل الحالات</option>
+              <option value="pending">معلق</option>
+              <option value="approved">مقبول</option>
+              <option value="rejected">مرفوض</option>
+              <option value="completed">مكتمل</option>
+            </select>
+            <ChevronDown size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+          </div>
         </div>
       </div>
-    );
-  }
 
-  // --- شاشة قائمة الطلبات الرئيسية ---
-  return (
-    <div className="min-h-screen bg-slate-50 p-4 md:p-8 dir-rtl" dir="rtl">
-      <div className="max-w-5xl mx-auto">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
-          <div>
-            <h1 className="text-3xl font-black text-slate-900 tracking-tighter italic">طلبات الشراء <span className="text-blue-600">ORDERS</span></h1>
-            <p className="text-slate-500 font-bold mt-1 text-sm">إدارة كافة عمليات التوريد والشراء الخاصة بمحلك</p>
-          </div>
-          <button onClick={fetchOrders} className="p-3 bg-white border border-slate-200 rounded-xl text-blue-600 hover:shadow-md transition-all">
-            <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
-          </button>
+      {/* ══════ TABLE ══════ */}
+      <div className="bg-slate-900 border border-slate-700/50 rounded-2xl overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[700px]">
+            <thead>
+              <tr className="border-b border-slate-700/50 bg-slate-800/50">
+                {["رقم الطلب","من محل","إلى محل","الأصناف","الإجمالي","الحالة","التاريخ","إجراء"].map(h => (
+                  <th key={h} className="p-3 text-right text-slate-400 font-medium text-xs">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={8} className="p-14 text-center text-slate-500">
+                    <RefreshCw size={20} className="animate-spin mx-auto mb-2 text-blue-500" />
+                    جاري تحميل الطلبات...
+                  </td>
+                </tr>
+              ) : pageItems.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="p-14 text-center text-slate-500">
+                    <Package size={36} className="mx-auto mb-3 opacity-20" />
+                    لا توجد طلبات مطابقة
+                  </td>
+                </tr>
+              ) : pageItems.map(order => {
+                const meta     = STATUS_META[order.status] ?? STATUS_META["pending"];
+                const isActing = actionId === order.id;
+                // تعديل: Admin يستطيع التصرف على أي طلب معلق
+                const canAct   = canActOnOrder(order);
+
+                return (
+                  <tr key={order.id} className="border-b border-slate-700/30 hover:bg-slate-800/40 transition-colors">
+                    <td className="p-3">
+                      <span className="font-mono text-xs text-slate-400">#{String(order.id).padStart(5,"0")}</span>
+                    </td>
+                    <td className="p-3">
+                      <span className={`text-xs font-medium ${order.from_shop_id === ownedShopId ? "text-blue-400" : "text-slate-300"}`}>
+                        {order.from_shop?.shop_name ?? "—"}
+                        {order.from_shop_id === ownedShopId && <span className="mr-1 text-[10px] opacity-60">(أنت)</span>}
+                      </span>
+                    </td>
+                    <td className="p-3">
+                      <span className={`text-xs font-medium ${order.to_shop_id === ownedShopId ? "text-emerald-400" : "text-slate-300"}`}>
+                        {order.to_shop?.shop_name ?? "—"}
+                        {order.to_shop_id === ownedShopId && <span className="mr-1 text-[10px] opacity-60">(أنت)</span>}
+                      </span>
+                    </td>
+                    <td className="p-3">
+                      <span className="text-slate-400 text-xs">{order.order_items?.length ?? 0} صنف</span>
+                    </td>
+                    <td className="p-3">
+                      <span className="text-white font-medium text-xs">{Number(order.total_amount).toLocaleString()} ر.س</span>
+                    </td>
+                    <td className="p-3">
+                      <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full ${meta.color}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
+                        {meta.label}
+                      </span>
+                    </td>
+                    <td className="p-3">
+                      <span className="text-slate-500 text-xs">
+                        {new Date(order.created_at).toLocaleDateString("ar-SA", { day:"numeric", month:"short", year:"numeric" })}
+                      </span>
+                    </td>
+                    <td className="p-3">
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => openDetail(order)}
+                          className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-700 text-slate-400 hover:border-blue-500 hover:text-blue-400 transition-colors"
+                          title="عرض التفاصيل"
+                        >
+                          <Eye size={12} />
+                        </button>
+                        {/* تعديل: أزرار الاعتماد والرفض تظهر للأدمن وللمورد */}
+                        {canAct && (
+                          <>
+                            <button
+                              onClick={() => handleApprove(order.id)}
+                              disabled={isActing}
+                              className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-700 text-slate-400 hover:border-emerald-500 hover:text-emerald-400 disabled:opacity-40 transition-colors"
+                              title="اعتماد"
+                            >
+                              {isActing ? <RefreshCw size={11} className="animate-spin" /> : <Check size={12} />}
+                            </button>
+                            <button
+                              onClick={() => handleReject(order.id)}
+                              disabled={isActing}
+                              className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-700 text-slate-400 hover:border-red-500 hover:text-red-400 disabled:opacity-40 transition-colors"
+                              title="رفض"
+                            >
+                              <XCircle size={12} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
 
-        {loading ? (
-          <div className="py-20 text-center animate-pulse text-slate-400 font-black italic uppercase tracking-widest text-sm">
-             جاري جلب قائمة الطلبات...
-          </div>
-        ) : orders.length === 0 ? (
-          <div className="bg-white border-2 border-dashed border-slate-200 rounded-[2.5rem] py-24 text-center">
-            <FileText size={48} className="text-slate-200 mx-auto mb-4" />
-            <p className="text-slate-400 font-bold italic">لا توجد طلبات مسجلة حالياً</p>
-          </div>
-        ) : (
-          <div className="grid gap-3">
-            {orders.map((order) => (
-              <button
-                key={order.id}
-                onClick={() => openOrderDetails(order)}
-                className="bg-white border border-slate-200 hover:border-blue-300 p-5 rounded-2xl flex items-center justify-between transition-all group text-right shadow-sm hover:shadow-md"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
-                    <FileText size={24} />
-                  </div>
-                  <div>
-                    <h3 className="font-black italic text-slate-900 text-lg mb-1 tracking-tighter">طلب #{order.id}</h3>
-                    <p className="text-slate-400 text-xs font-bold flex items-center gap-1">
-                       <Store size={10} /> {order.to_shop?.shop_name}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-6">
-                  <div className="text-left hidden sm:block">
-                     <div className="text-blue-600 font-black italic text-xl tracking-tighter">{order.total_amount.toLocaleString()} ر.س</div>
-                     <div className="text-[10px] text-slate-400 font-bold uppercase italic">{new Date(order.created_at).toLocaleDateString('ar-SA')}</div>
-                  </div>
-                  <ChevronRight size={20} className="text-slate-300 group-hover:text-blue-600 transition-all" />
-                </div>
+        {/* PAGINATION */}
+        {!loading && filtered.length > PAGE_SIZE && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-slate-700/50 text-xs text-slate-500">
+            <span>عرض {(page-1)*PAGE_SIZE+1}–{Math.min(page*PAGE_SIZE, filtered.length)} من {filtered.length}</span>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setPage(p => Math.max(1,p-1))} disabled={page===1}
+                className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-700 text-slate-400 hover:border-slate-500 disabled:opacity-30 transition-colors">
+                <ChevronRight size={13} />
               </button>
-            ))}
+              {Array.from({ length: Math.min(totalPages,5) }, (_,i) => i+1).map(n => (
+                <button key={n} onClick={() => setPage(n)}
+                  className={`w-7 h-7 flex items-center justify-center rounded-lg border text-xs transition-colors ${
+                    page===n ? "bg-blue-600 text-white border-blue-600" : "border-slate-700 text-slate-400 hover:border-slate-500"
+                  }`}>{n}</button>
+              ))}
+              <button onClick={() => setPage(p => Math.min(totalPages,p+1))} disabled={page===totalPages}
+                className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-700 text-slate-400 hover:border-slate-500 disabled:opacity-30 transition-colors">
+                <ChevronLeft size={13} />
+              </button>
+            </div>
           </div>
         )}
       </div>
+
+      {/* ══════════════════════════════════════════════════════
+          DETAIL DRAWER
+      ══════════════════════════════════════════════════════ */}
+      {detailOrder && (
+        <div className="fixed inset-0 z-50 flex" dir="rtl">
+          <div className="flex-1 bg-black/50 backdrop-blur-sm" onClick={() => setDetailOrder(null)} />
+          <div className="w-full max-w-md bg-slate-900 border-r border-slate-700 flex flex-col shadow-2xl">
+
+            {/* header */}
+            <div className="flex items-center justify-between p-5 border-b border-slate-700">
+              <div>
+                <h2 className="text-white font-semibold">طلب #{String(detailOrder.id).padStart(5,"0")}</h2>
+                <p className="text-slate-500 text-xs mt-0.5">{new Date(detailOrder.created_at).toLocaleString("ar-SA")}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                {/* PRINT BUTTON */}
+                <button
+                  onClick={() => handlePrint(false)}
+                  disabled={detailLoading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-700 text-slate-400 hover:border-slate-500 hover:text-white text-xs transition-colors disabled:opacity-40"
+                  title="طباعة"
+                >
+                  <Printer size={13} />
+                  طباعة
+                </button>
+                {/* PDF BUTTON */}
+                <button
+                  onClick={() => handlePrint(true)}
+                  disabled={detailLoading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-500/40 text-blue-400 hover:bg-blue-500/10 text-xs transition-colors disabled:opacity-40"
+                  title="تصدير PDF"
+                >
+                  <FileText size={13} />
+                  PDF
+                </button>
+                <button onClick={() => setDetailOrder(null)} className="text-slate-400 hover:text-white">
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* body */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-5">
+
+              {/* status */}
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400 text-sm">الحالة</span>
+                <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full ${STATUS_META[detailOrder.status]?.color}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${STATUS_META[detailOrder.status]?.dot}`} />
+                  {STATUS_META[detailOrder.status]?.label}
+                </span>
+              </div>
+
+              {/* shops */}
+              <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-400">الطالب</span>
+                  <span className="text-white font-medium">{detailOrder.from_shop?.shop_name}</span>
+                </div>
+                <div className="flex justify-center"><ArrowLeftRight size={14} className="text-slate-600" /></div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-400">المورد</span>
+                  <span className="text-white font-medium">{detailOrder.to_shop?.shop_name}</span>
+                </div>
+              </div>
+
+              {/* items */}
+              <div>
+                <h3 className="text-slate-400 text-xs font-medium mb-3 uppercase tracking-wide">الأصناف</h3>
+                {detailLoading ? (
+                  <div className="text-center py-6 text-slate-500">
+                    <RefreshCw size={15} className="animate-spin mx-auto mb-2" />جاري التحميل...
+                  </div>
+                ) : detailItems.length === 0 ? (
+                  <p className="text-slate-500 text-sm text-center py-4">لا توجد أصناف</p>
+                ) : detailItems.map(item => (
+                  <div key={item.id} className="flex items-center justify-between bg-slate-800/60 border border-slate-700/30 rounded-lg p-3 mb-2">
+                    <div>
+                      <p className="text-white text-sm font-medium">{item.product?.part_name}</p>
+                      <p className="text-slate-500 text-xs font-mono">{item.product?.part_number}</p>
+                    </div>
+                    <div className="text-left">
+                      <p className="text-white text-sm font-medium">{(item.price * item.quantity).toLocaleString()} ر.س</p>
+                      <p className="text-slate-500 text-xs">{item.quantity} × {item.price.toLocaleString()}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* total */}
+              <div className="flex items-center justify-between bg-slate-800 border border-slate-700 rounded-xl p-4">
+                <span className="text-slate-400 font-medium">الإجمالي</span>
+                <span className="text-white text-lg font-bold">{Number(detailOrder.total_amount).toLocaleString()} ر.س</span>
+              </div>
+
+              {/* notes */}
+              {detailOrder.notes && (
+                <div className="bg-slate-800/60 border border-slate-700/30 rounded-xl p-4">
+                  <p className="text-slate-400 text-xs mb-1">ملاحظات</p>
+                  <p className="text-slate-300 text-sm">{detailOrder.notes}</p>
+                </div>
+              )}
+            </div>
+
+            {/* تعديل: أزرار الاعتماد/الرفض في الـ Drawer تظهر للأدمن وللمورد */}
+            {canActOnOrder(detailOrder) && (
+              <div className="flex gap-2 p-5 border-t border-slate-700">
+                <button
+                  onClick={() => handleReject(detailOrder.id)}
+                  disabled={actionId === detailOrder.id}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-red-500/30 text-red-400 hover:bg-red-500/10 text-sm font-medium transition-colors disabled:opacity-40"
+                >
+                  <XCircle size={14} /> رفض
+                </button>
+                <button
+                  onClick={() => handleApprove(detailOrder.id)}
+                  disabled={actionId === detailOrder.id}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors disabled:opacity-40"
+                >
+                  {actionId === detailOrder.id
+                    ? <RefreshCw size={13} className="animate-spin" />
+                    : <PackageCheck size={14} />
+                  }
+                  اعتماد الطلب
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════
+          NEW ORDER MODAL — يظهر فقط لأصحاب المتاجر
+      ══════════════════════════════════════════════════════ */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" dir="rtl">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl">
+
+            {/* header */}
+            <div className="flex items-center justify-between p-5 border-b border-slate-700">
+              <div className="flex items-center gap-2">
+                <ShoppingCart size={16} className="text-blue-400" />
+                <h2 className="text-white font-semibold">طلب جديد</h2>
+              </div>
+              <button onClick={closeModal} className="text-slate-400 hover:text-white"><X size={18} /></button>
+            </div>
+
+            {/* body */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-5">
+
+              {modalError && (
+                <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-red-400 text-sm">
+                  <AlertCircle size={14} /> {modalError}
+                </div>
+              )}
+
+              {/* supplier select */}
+              <div>
+                <label className="block text-slate-400 text-xs mb-2 font-medium uppercase tracking-wide">المحل المورد *</label>
+                <select
+                  value={supplierShopId}
+                  onChange={e => { setSupplierShopId(Number(e.target.value) || ""); setCart([]); setProductSearch(""); }}
+                  className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl p-3 text-sm focus:outline-none focus:border-blue-500"
+                >
+                  <option value="">-- اختر محل المورد --</option>
+                  {otherShops.map(s => (
+                    <option key={s.id} value={s.id}>{s.shop_name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* products list */}
+              {supplierShopId && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-slate-400 text-xs font-medium uppercase tracking-wide">منتجات المورد</label>
+                    <div className="relative">
+                      <Search size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={productSearch}
+                        onChange={e => setProductSearch(e.target.value)}
+                        placeholder="ابحث..."
+                        className="bg-slate-800 border border-slate-700 text-white placeholder-slate-500 text-xs rounded-lg py-1.5 pr-8 pl-3 w-36 focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  {loadingProducts ? (
+                    <div className="text-center py-8 text-slate-500">
+                      <RefreshCw size={15} className="animate-spin mx-auto mb-2 text-blue-400" />
+                      جاري التحميل...
+                    </div>
+                  ) : filteredProducts.length === 0 ? (
+                    <div className="text-center py-8 text-slate-500 text-sm bg-slate-800/40 rounded-xl border border-slate-700/50">
+                      لا توجد منتجات متوفرة
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-48 overflow-y-auto pl-1">
+                      {filteredProducts.map(p => {
+                        const inCart = !!cart.find(c => c.product.id === p.id);
+                        return (
+                          <div
+                            key={p.id}
+                            className={`flex items-center justify-between rounded-xl p-3 border transition-colors ${
+                              inCart ? "border-blue-500/40 bg-blue-500/5" : "border-slate-700/30 bg-slate-800/60 hover:border-slate-600"
+                            }`}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="text-white text-sm font-medium truncate">{p.part_name}</p>
+                              <p className="text-slate-500 text-xs font-mono">{p.part_number}</p>
+                            </div>
+                            <div className="flex items-center gap-3 mr-3">
+                              <div className="text-left">
+                                <p className="text-slate-300 text-xs font-medium">{p.price.toLocaleString()} ر.س</p>
+                                <p className="text-slate-500 text-[10px]">متوفر: {p.quantity}</p>
+                              </div>
+                              <button
+                                onClick={() => addToCart(p)}
+                                disabled={inCart}
+                                className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${
+                                  inCart
+                                    ? "bg-blue-600/30 text-blue-400 cursor-default"
+                                    : "bg-slate-700 hover:bg-blue-600 text-slate-300 hover:text-white"
+                                }`}
+                              >
+                                {inCart ? <Check size={12} /> : <Plus size={12} />}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* cart */}
+              {cart.length > 0 && (
+                <div>
+                  <h3 className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-2">
+                    قائمة الطلب ({cart.length} صنف)
+                  </h3>
+                  <div className="space-y-2">
+                    {cart.map(item => (
+                      <div key={item.product.id} className="flex items-center gap-3 bg-slate-800/60 border border-slate-700/30 rounded-xl p-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white text-sm font-medium truncate">{item.product.part_name}</p>
+                          <p className="text-slate-500 text-xs">{item.product.price.toLocaleString()} ر.س / وحدة</p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => item.quantity > 1 ? updateQty(item.product.id, item.quantity-1) : removeFromCart(item.product.id)}
+                            className="w-6 h-6 flex items-center justify-center rounded-md bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs transition-colors"
+                          >−</button>
+                          <input
+                            type="number" min={1} max={item.product.quantity}
+                            value={item.quantity}
+                            onChange={e => updateQty(item.product.id, Number(e.target.value))}
+                            className="w-12 text-center bg-slate-800 border border-slate-700 text-white rounded-md p-1 text-xs focus:outline-none focus:border-blue-500"
+                          />
+                          <button
+                            onClick={() => updateQty(item.product.id, item.quantity+1)}
+                            disabled={item.quantity >= item.product.quantity}
+                            className="w-6 h-6 flex items-center justify-center rounded-md bg-slate-700 hover:bg-slate-600 disabled:opacity-30 text-slate-300 text-xs transition-colors"
+                          >+</button>
+                        </div>
+                        <span className="text-white text-sm font-medium w-20 text-left">
+                          {(item.product.price * item.quantity).toLocaleString()} ر.س
+                        </span>
+                        <button onClick={() => removeFromCart(item.product.id)} className="text-slate-600 hover:text-red-400 transition-colors">
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between mt-3 bg-slate-800 border border-slate-700 rounded-xl p-3">
+                    <span className="text-slate-400 text-sm">الإجمالي</span>
+                    <span className="text-white font-bold text-base">{cartTotal.toLocaleString()} ر.س</span>
+                  </div>
+                </div>
+              )}
+
+              {/* notes */}
+              <div>
+                <label className="block text-slate-400 text-xs mb-2 font-medium">ملاحظات (اختياري)</label>
+                <textarea
+                  value={orderNotes}
+                  onChange={e => setOrderNotes(e.target.value)}
+                  placeholder="أي ملاحظات للمورد..."
+                  rows={2}
+                  className="w-full bg-slate-800 border border-slate-700 text-white placeholder-slate-500 rounded-xl p-3 text-sm focus:outline-none focus:border-blue-500 resize-none"
+                />
+              </div>
+            </div>
+
+            {/* footer */}
+            <div className="flex items-center justify-end gap-2 p-5 border-t border-slate-700">
+              <button
+                onClick={closeModal}
+                className="px-4 py-2 text-sm text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 rounded-xl transition-colors"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={saving || cart.length === 0}
+                className="flex items-center gap-1.5 px-5 py-2 text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl font-medium transition-colors"
+              >
+                {saving
+                  ? <><RefreshCw size={13} className="animate-spin" /> جاري الإرسال...</>
+                  : <><Save size={13} /> إرسال الطلب</>
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
-
-// مكون فرعي للسجل الزمني
-const TimelineStep = ({ label, time, active, last }: any) => (
-  <div className="flex items-start gap-4 relative">
-    <div className={`w-7 h-7 rounded-lg flex items-center justify-center border-4 border-white z-10 transition-all shadow-sm ${active ? 'bg-blue-600 scale-110' : 'bg-slate-200'}`}>
-       {active && <CheckCircle2 size={12} strokeWidth={3} className="text-white" />}
-    </div>
-    <div className="pt-0.5 text-right flex-1">
-      <p className={`text-xs font-black italic ${active ? 'text-slate-900' : 'text-slate-400'}`}>{label}</p>
-      <p className="text-[10px] text-slate-400 font-bold mt-0.5">{time}</p>
-    </div>
-  </div>
-);
-
-const RefreshCw = ({ size, className }: { size: number; className?: string }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-    <path d="M21 3v5h-5" />
-    <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
-    <path d="M3 21v-5h5" />
-  </svg>
-);

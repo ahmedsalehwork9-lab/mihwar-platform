@@ -23,6 +23,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useLang } from '../context/LanguageContext';
 
+// توحيد الـ Type ليتطابق مع App.tsx
 export type Page =
   | 'dashboard'
   | 'search'
@@ -76,14 +77,14 @@ const navSections: NavSection[] = [
     titleAr: 'إدارة المنصة',
     adminOnly: true,
     items: [
-      { id: 'admin',            icon: <Shield size={17} />,        label: 'Admin Dashboard', labelAr: 'لوحة الأدمن',      adminOnly: true },
-      { id: 'shops',            icon: <Store size={17} />,         label: 'Shops',           labelAr: 'المحلات',          adminOnly: true },
-      { id: 'create-shop',      icon: <Store size={17} />,         label: 'Create Shop',     labelAr: 'إضافة محل',        adminOnly: true },
-      { id: 'users',            icon: <Users size={17} />,         label: 'Users',           labelAr: 'المستخدمون',       adminOnly: true },
-      { id: 'permissions',      icon: <KeyRound size={17} />,      label: 'Permissions',     labelAr: 'إدارة الصلاحيات',  adminOnly: true },
-      { id: 'global-inventory', icon: <Package size={17} />,       label: 'Global Inventory',labelAr: 'المخزون العام',    adminOnly: true },
-      { id: 'global-orders',    icon: <ShoppingCart size={17} />,  label: 'Global Orders',   labelAr: 'الطلبات العامة',   adminOnly: true },
-      { id: 'system-settings',  icon: <Settings size={17} />,      label: 'System Settings', labelAr: 'إعدادات النظام',   adminOnly: true },
+      { id: 'admin',          icon: <Shield size={17} />,       label: 'Admin Dashboard', labelAr: 'لوحة الأدمن',       adminOnly: true },
+      { id: 'shops',          icon: <Store size={17} />,        label: 'Shops',           labelAr: 'المحلات',           adminOnly: true },
+      { id: 'create-shop',    icon: <Store size={17} />,        label: 'Create Shop',     labelAr: 'إضافة محل',         adminOnly: true },
+      { id: 'users',          icon: <Users size={17} />,        label: 'Users',           labelAr: 'المستخدمون',        adminOnly: true },
+      { id: 'permissions',    icon: <KeyRound size={17} />,     label: 'Permissions',     labelAr: 'إدارة الصلاحيات',   adminOnly: true },
+      { id: 'global-inventory', icon: <Package size={17} />,   label: 'Global Inventory',labelAr: 'المخزون العام',     adminOnly: true },
+      { id: 'global-orders',  icon: <ShoppingCart size={17} />,label: 'Global Orders',   labelAr: 'الطلبات العامة',    adminOnly: true },
+      { id: 'system-settings',icon: <Settings size={17} />,    label: 'System Settings', labelAr: 'إعدادات النظام',    adminOnly: true },
     ],
   },
   {
@@ -94,14 +95,14 @@ const navSections: NavSection[] = [
       { id: 'dashboard', icon: <LayoutDashboard size={17} />, label: 'Dashboard', labelAr: 'الرئيسية',  adminOnly: false },
       { id: 'search',    icon: <Search size={17} />,          label: 'Products',  labelAr: 'المنتجات',  adminOnly: false },
       { id: 'inventory', icon: <Package size={17} />,         label: 'Inventory', labelAr: 'المخزون',   adminOnly: false },
-      { id: 'orders',    icon: <ShoppingCart size={17} />,    label: 'Orders',    labelAr: 'الطلبات',   adminOnly: false },
+      { id: 'orders',    icon: <ShoppingCart size={17} />,    label: 'الطلبات',   labelAr: 'الطلبات',   adminOnly: false },
       { id: 'reports',   icon: <TrendingUp size={17} />,      label: 'Reports',   labelAr: 'التقارير',  adminOnly: false },
       { id: 'alerts',    icon: <Bell size={17} />,            label: 'Alerts',    labelAr: 'التنبيهات', adminOnly: false },
     ],
   },
 ];
 
-// ─── Bottom nav item definitions ─────────────────────────────
+// ─── Bottom nav item definitions ────────────────────────────
 type BottomNavItem =
   | { type: 'page'; id: Page; icon: React.ReactNode; labelEn: string; labelAr: string }
   | { type: 'more'; icon: React.ReactNode; labelEn: string; labelAr: string };
@@ -115,17 +116,15 @@ const shopBottomItems: BottomNavItem[] = [
 ];
 
 const adminBottomItems: BottomNavItem[] = [
-  { type: 'page', id: 'admin',         icon: <Shield size={22} />,        labelEn: 'Admin',  labelAr: 'الأدمن'    },
-  { type: 'page', id: 'shops',         icon: <Store size={22} />,         labelEn: 'Shops',  labelAr: 'المحلات'   },
-  { type: 'page', id: 'global-orders', icon: <ShoppingCart size={22} />,  labelEn: 'Orders', labelAr: 'الطلبات'   },
-  { type: 'page', id: 'users',         icon: <Users size={22} />,         labelEn: 'Users',  labelAr: 'المستخدمون'},
-  { type: 'more',                       icon: <MoreHorizontal size={22} />,labelEn: 'More',   labelAr: 'المزيد'    },
+  { type: 'page', id: 'admin',          icon: <Shield size={22} />,       labelEn: 'Admin',     labelAr: 'الأدمن'   },
+  { type: 'page', id: 'shops',          icon: <Store size={22} />,        labelEn: 'Shops',     labelAr: 'المحلات'  },
+  { type: 'page', id: 'global-orders',  icon: <ShoppingCart size={22} />, labelEn: 'Orders',    labelAr: 'الطلبات'  },
+  { type: 'page', id: 'users',          icon: <Users size={22} />,        labelEn: 'Users',     labelAr: 'المستخدمون'},
+  { type: 'more',                        icon: <MoreHorizontal size={22} />,labelEn: 'More',     labelAr: 'المزيد'   },
 ];
-// ─────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────
 
-const SidebarDivider = () => (
-  <div className="mx-3 my-2 border-t border-slate-700/40" />
-);
+const SidebarDivider = () => <div className="mx-3 my-2 border-t border-slate-700/40" />;
 
 const SectionLabel = ({ label }: { label: string }) => (
   <p className="px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-slate-500 select-none">
@@ -149,12 +148,19 @@ const NavButton = ({
     {isActive && (
       <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-blue-300 rounded-r-full" />
     )}
-    <span className={`flex-shrink-0 transition-all duration-200 ${isActive ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'}`}>
+    <span
+      className={`flex-shrink-0 transition-all duration-200 ${
+        isActive ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'
+      }`}
+    >
       {item.icon}
     </span>
     <span className="flex-1 text-left">{label}</span>
     {!isActive && (
-      <ChevronRight size={13} className="opacity-0 group-hover:opacity-40 transition-opacity duration-200 flex-shrink-0" />
+      <ChevronRight
+        size={13}
+        className="opacity-0 group-hover:opacity-40 transition-opacity duration-200 flex-shrink-0"
+      />
     )}
   </button>
 );
@@ -182,20 +188,18 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 
+  // ─── Bottom navigation items based on role ───────────────
   const bottomItems = isAdmin ? adminBottomItems : shopBottomItems;
 
-  // ─── Sidebar ──────────────────────────────────────────────
+  // ─── Sidebar ─────────────────────────────────────────────
   const Sidebar = () => {
     const visibleSections = isAdmin
-      ? navSections.filter((s) => s.adminOnly)
-      : navSections.filter((s) => !s.adminOnly);
+      ? navSections.filter((section) => section.adminOnly)
+      : navSections.filter((section) => !section.adminOnly);
 
     return (
-      // Full height flex column — nav scrolls, footer is always visible
-      <div className="flex flex-col h-full overflow-hidden">
-
-        {/* Logo */}
-        <div className="px-5 py-5 border-b border-slate-700/50 flex-shrink-0">
+      <div className="flex flex-col h-full">
+        <div className="px-5 py-5 border-b border-slate-700/50">
           <div className="flex items-center gap-3">
             <div className="bg-blue-600 p-2 rounded-xl shadow-lg shadow-blue-500/20">
               <Truck size={20} className="text-white" />
@@ -207,8 +211,7 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
           </div>
         </div>
 
-        {/* Scrollable nav — takes all available space */}
-        <nav className="flex-1 min-h-0 px-2 py-3 overflow-y-auto space-y-0.5">
+        <nav className="flex-1 px-2 py-3 overflow-y-auto space-y-0.5">
           {visibleSections.map((section, idx) => {
             const visibleItems = isAdmin
               ? section.items.filter((item) => item.adminOnly)
@@ -237,11 +240,7 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
           })}
         </nav>
 
-        {/* Footer — always visible, never scrolls away */}
-        <div
-          className="flex-shrink-0 px-3 py-4 border-t border-slate-700/50 space-y-2"
-          style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
-        >
+        <div className="px-3 py-4 border-t border-slate-700/50 space-y-2">
           <button
             onClick={() => setLang(lang === 'en' ? 'ar' : 'en')}
             className="w-full flex items-center justify-center gap-2 bg-slate-800 text-slate-300 py-2 rounded-xl text-sm"
@@ -257,74 +256,77 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
             <span>{t('Logout', 'تسجيل الخروج')}</span>
           </button>
         </div>
-
       </div>
     );
   };
 
   // ─── Mobile Bottom Navigation Bar ────────────────────────
-  // Hidden entirely when sidebar is open so it never overlaps
-  const BottomNav = () => {
-    if (sidebarOpen) return null;
+  const BottomNav = () => (
+    <nav
+      className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-slate-900 border-t border-slate-700/60"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+    >
+      <div className="flex items-stretch h-16">
+        {bottomItems.map((item, idx) => {
+          const isActive = item.type === 'page' && page === item.id;
+          const label = lang === 'ar' ? item.labelAr : item.labelEn;
 
-    return (
-      <nav
-        className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-slate-900 border-t border-slate-700/60"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
-      >
-        <div className="flex items-stretch h-16">
-          {bottomItems.map((item) => {
-            const isActive = item.type === 'page' && page === item.id;
-            const label = lang === 'ar' ? item.labelAr : item.labelEn;
-
-            if (item.type === 'more') {
-              return (
-                <button
-                  key="more"
-                  onClick={() => setSidebarOpen(true)}
-                  className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 transition-colors duration-150 text-slate-500 hover:text-slate-300 active:bg-slate-800/60"
-                >
-                  <span className="transition-transform duration-150 active:scale-90">
-                    {item.icon}
-                  </span>
-                  <span className="text-[10px] font-medium leading-none tracking-wide">
-                    {label}
-                  </span>
-                </button>
-              );
-            }
-
+          if (item.type === 'more') {
             return (
               <button
-                key={item.id}
-                onClick={() => setPage(item.id)}
-                className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2 relative transition-colors duration-150 active:bg-slate-800/60 ${
-                  isActive ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'
-                }`}
+                key="more"
+                onClick={() => setSidebarOpen(true)}
+                className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 transition-colors duration-150 text-slate-500 hover:text-slate-300 active:bg-slate-800/60"
               >
-                {/* Active top pill */}
-                {isActive && (
-                  <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-[3px] bg-blue-500 rounded-b-full" />
-                )}
-                <span className={`transition-all duration-150 ${isActive ? 'scale-110' : 'scale-100'}`}>
+                <span className="transition-transform duration-150 active:scale-90">
                   {item.icon}
                 </span>
-                <span className={`text-[10px] font-medium leading-none tracking-wide transition-colors duration-150 ${isActive ? 'text-blue-400' : 'text-slate-500'}`}>
+                <span className="text-[10px] font-medium leading-none tracking-wide">
                   {label}
                 </span>
               </button>
             );
-          })}
-        </div>
-      </nav>
-    );
-  };
+          }
+
+          return (
+            <button
+              key={item.id}
+              onClick={() => setPage(item.id)}
+              className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2 relative transition-colors duration-150 active:bg-slate-800/60 ${
+                isActive ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'
+              }`}
+            >
+              {/* Active indicator pill */}
+              {isActive && (
+                <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-[3px] bg-blue-500 rounded-b-full" />
+              )}
+
+              <span
+                className={`transition-all duration-150 ${
+                  isActive ? 'scale-110' : 'scale-100'
+                }`}
+              >
+                {item.icon}
+              </span>
+
+              <span
+                className={`text-[10px] font-medium leading-none tracking-wide transition-colors duration-150 ${
+                  isActive ? 'text-blue-400' : 'text-slate-500'
+                }`}
+              >
+                {label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </nav>
+  );
   // ─────────────────────────────────────────────────────────
 
   return (
     <div className="flex h-screen bg-slate-950 overflow-hidden">
-
-      {/* Mobile overlay */}
+      {/* Sidebar overlay — mobile */}
       {sidebarOpen && (
         <div
           onClick={() => setSidebarOpen(false)}
@@ -332,9 +334,9 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
         />
       )}
 
-      {/* Sidebar */}
+      {/* Desktop + mobile slide-in sidebar */}
       <aside
-        className={`fixed top-0 ${isRTL ? 'right-0' : 'left-0'} z-50 h-full w-72 bg-slate-900 border-r border-slate-700/60 transition-transform duration-300 lg:static lg:translate-x-0 ${
+        className={`fixed top-0 ${isRTL ? 'right-0' : 'left-0'} z-50 h-full w-72 bg-slate-900 border-r border-slate-700/60 transition-transform lg:static lg:translate-x-0 ${
           sidebarOpen
             ? 'translate-x-0'
             : isRTL
@@ -346,7 +348,6 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
       </aside>
 
       <div className="flex-1 flex flex-col overflow-hidden">
-
         {/* Top header */}
         <header className="h-16 border-b border-slate-800 bg-slate-950/90 backdrop-blur-xl flex items-center justify-between px-4 lg:px-6">
           <button
@@ -366,16 +367,14 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
           </div>
         </header>
 
-        {/* Main content — pb-20 on mobile clears the bottom nav bar */}
+        {/* Main content — bottom padding on mobile to clear the nav bar */}
         <main className="flex-1 overflow-y-auto p-4 lg:p-6 pb-20 lg:pb-6">
           {children}
         </main>
-
       </div>
 
-      {/* Mobile bottom nav — hidden when sidebar is open */}
+      {/* Mobile bottom navigation */}
       <BottomNav />
-
     </div>
   );
 }

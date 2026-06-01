@@ -1,1329 +1,491 @@
-import { useEffect, useState, useMemo } from "react";
-import { supabase } from "../lib/supabase";
-import { useAuth } from "../context/AuthContext";
-import {
-  ShoppingCart, RefreshCw, Package, Plus, X,
-  Check, XCircle, Clock, PackageCheck,
-  Eye, Trash2, AlertCircle, ChevronLeft, ChevronRight,
-  ArrowLeftRight, Search, Save, ChevronDown,
-  Printer, FileText,
-} from "lucide-react";
-
-// ─────────────────────────────────────────────────────────────
-// TYPES
-// ─────────────────────────────────────────────────────────────
-
-type OrderStatus = "pending" | "approved" | "rejected" | "completed";
-
-type Order = {
-  id: number;
-  from_shop_id: number;
-  to_shop_id: number;
-  status: OrderStatus;
-  total_amount: number;
-  notes: string | null;
-  created_at: string;
-  from_shop?: { shop_name: string };
-  to_shop?:   { shop_name: string };
-  order_items?: { id: number }[];
-};
-
-type OrderItem = {
-  id: number;
-  order_id: number;
-  product_id: number;
-  quantity: number;
-  price: number;
-  product?: Product;
-};
-
-type Shop = {
-  id: number;
-  shop_name: string;
-};
-
-type Product = {
-  id: number;
-  part_name: string;
-  part_number: string;
-  brand: string;
-  model: string;
-  quantity: number;
-  price: number;
-  shop_id: number;
-};
-
-type CartItem = {
-  product: Product;
-  quantity: number;
-};
-
-// ─────────────────────────────────────────────────────────────
-// CONSTANTS
-// ─────────────────────────────────────────────────────────────
-
-const PAGE_SIZE = 10;
-
-const STATUS_META: Record<OrderStatus, { label: string; color: string; dot: string }> = {
-  pending:   { label: "معلق",   color: "bg-amber-500/10 text-amber-400 border border-amber-500/20",      dot: "bg-amber-400"   },
-  approved:  { label: "مقبول",  color: "bg-blue-500/10 text-blue-400 border border-blue-500/20",         dot: "bg-blue-400"    },
-  rejected:  { label: "مرفوض", color: "bg-red-500/10 text-red-400 border border-red-500/20",             dot: "bg-red-400"     },
-  completed: { label: "مكتمل", color: "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20", dot: "bg-emerald-400" },
-};
-
-const STATUS_LABEL_AR: Record<OrderStatus, string> = {
-  pending:   "معلق",
-  approved:  "مقبول",
-  rejected:  "مرفوض",
-  completed: "مكتمل",
-};
-
-// ─────────────────────────────────────────────────────────────
-// PRINT / PDF HELPER
-// ─────────────────────────────────────────────────────────────
-
 function buildPrintHTML(order: Order, items: OrderItem[]): string {
-  const date = new Date(order.created_at).toLocaleString("ar-SA", {
-    day: "numeric", month: "long", year: "numeric",
+  const orderNumber = String(order.id).padStart(6, "0");
+
+  const createdDate = new Date(order.created_at);
+  const createdDateStr = createdDate.toLocaleDateString("ar-SA", {
+    year: "numeric", month: "2-digit", day: "2-digit",
+  });
+  const createdTimeStr = createdDate.toLocaleTimeString("ar-SA", {
+    hour: "2-digit", minute: "2-digit",
+  });
+  const printDateStr = new Date().toLocaleDateString("ar-SA", {
+    year: "numeric", month: "2-digit", day: "2-digit",
+  });
+  const printTimeStr = new Date().toLocaleTimeString("ar-SA", {
     hour: "2-digit", minute: "2-digit",
   });
 
+  const statusLabel = STATUS_LABEL_AR[order.status] ?? order.status;
+
+  const statusColor =
+    order.status === "completed" ? "#059669" :
+    order.status === "approved"  ? "#2563eb" :
+    order.status === "rejected"  ? "#dc2626" :
+    "#d97706";
+
+  const statusBg =
+    order.status === "completed" ? "#d1fae5" :
+    order.status === "approved"  ? "#dbeafe" :
+    order.status === "rejected"  ? "#fee2e2" :
+    "#fef3c7";
+
+  const statusBorder =
+    order.status === "completed" ? "#6ee7b7" :
+    order.status === "approved"  ? "#93c5fd" :
+    order.status === "rejected"  ? "#fca5a5" :
+    "#fcd34d";
+
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=96x96&data=${encodeURIComponent(
+    "https://mehwar.sa/orders/" + order.id
+  )}&bgcolor=ffffff&color=1e3a5f&margin=4`;
+
+  const itemCount = items.length;
+
   const rows = items.map((item, i) => `
     <tr>
-      <td>${i + 1}</td>
-      <td>${item.product?.part_name ?? "—"}</td>
-      <td>${item.product?.part_number ?? "—"}</td>
-      <td>${item.quantity}</td>
-      <td>${item.price.toLocaleString()} ر.س</td>
-      <td>${(item.price * item.quantity).toLocaleString()} ر.س</td>
+      <td style="text-align:center;color:#64748b;">${i + 1}</td>
+      <td style="text-align:right;font-weight:600;color:#1e293b;">${item.product?.part_name ?? "—"}</td>
+      <td style="text-align:center;font-family:'Courier New',monospace;font-size:11px;color:#64748b;">${item.product?.part_number ?? "—"}</td>
+      <td style="text-align:center;font-weight:600;color:#1e293b;">${item.quantity}</td>
+      <td style="text-align:center;color:#1e293b;">${item.price.toLocaleString()} ر.س</td>
+      <td style="text-align:center;font-weight:700;color:#059669;">${(item.price * item.quantity).toLocaleString()} ر.س</td>
     </tr>
   `).join("");
+
+  const isDone = (threshold: boolean) => threshold;
+
+  const tlDot = (active: boolean) => `
+    width:18px;height:18px;border-radius:50%;border:2px solid ${active ? "#059669" : "#cbd5e1"};
+    background:${active ? "#059669" : "#f1f5f9"};display:flex;align-items:center;
+    justify-content:center;font-size:10px;color:white;font-weight:700;flex-shrink:0;
+    ${active ? "content:'✓'" : ""}
+  `;
+
+  const isCreated   = true;
+  const isSent      = order.status === "sent" || order.status === "approved" || order.status === "completed";
+  const isApproved  = order.status === "approved" || order.status === "completed";
+  const isCompleted = order.status === "completed";
+
+  const tlItem = (label: string, time: string, active: boolean, showConnector: boolean) => `
+    <div style="display:flex;align-items:flex-start;gap:10px;">
+      <div style="display:flex;flex-direction:column;align-items:center;min-width:20px;">
+        <div style="
+          width:18px;height:18px;border-radius:50%;
+          border:2px solid ${active ? "#059669" : "#cbd5e1"};
+          background:${active ? "#059669" : "#f8fafc"};
+          display:flex;align-items:center;justify-content:center;
+          font-size:9px;color:white;font-weight:800;flex-shrink:0;
+        ">${active ? "✓" : ""}</div>
+        ${showConnector ? `<div style="width:2px;height:20px;background:${active ? "#a7f3d0" : "#e2e8f0"};margin:2px 0;"></div>` : ""}
+      </div>
+      <div style="padding-bottom:${showConnector ? "0" : "0"}px;flex:1;">
+        <div style="font-size:12px;font-weight:700;color:${active ? "#1e293b" : "#94a3b8"};">${label}</div>
+        ${time ? `<div style="font-size:10px;color:#94a3b8;margin-top:2px;">${time}</div>` : ""}
+      </div>
+    </div>
+  `;
 
   return `
     <!DOCTYPE html>
     <html lang="ar" dir="rtl">
     <head>
       <meta charset="UTF-8" />
-      <title>طلب #${String(order.id).padStart(5, "0")}</title>
+      <title>طلب شراء #${orderNumber} — محور</title>
       <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap');
+        @page { size: A4 portrait; margin: 10mm 12mm; }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-          font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
-          background: #fff;
-          color: #1a1a2e;
-          padding: 32px;
+          font-family: 'Cairo', 'Segoe UI', Tahoma, Arial, sans-serif;
+          background: #ffffff;
+          color: #1e293b;
+          font-size: 13px;
+          line-height: 1.5;
           direction: rtl;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
         }
+        .page { width: 100%; max-width: 794px; margin: 0 auto; }
+
+        /* HEADER */
         .header {
           display: flex;
           justify-content: space-between;
           align-items: flex-start;
-          border-bottom: 2px solid #1a56db;
-          padding-bottom: 18px;
-          margin-bottom: 24px;
+          padding-bottom: 14px;
+          border-bottom: 3px solid #1e3a5f;
+          margin-bottom: 14px;
         }
-        .header-title h1 {
-          font-size: 22px;
-          font-weight: 700;
-          color: #1a56db;
+        .logo-row { display: flex; align-items: center; gap: 10px; }
+        .logo-box {
+          width: 44px; height: 44px; background: #1e3a5f;
+          border-radius: 10px; display: flex; align-items: center;
+          justify-content: center; color: white; font-size: 20px;
+          font-weight: 800; letter-spacing: -1px;
         }
-        .header-title p {
-          font-size: 13px;
-          color: #6b7280;
-          margin-top: 4px;
+        .logo-name { font-size: 28px; font-weight: 800; color: #1e3a5f; letter-spacing: -1px; line-height: 1; }
+        .logo-sub { font-size: 11px; color: #64748b; margin-top: 3px; margin-right: 54px; }
+        .doc-title-block { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+        .doc-title { font-size: 24px; font-weight: 800; color: #1e3a5f; display: flex; align-items: center; gap: 8px; }
+        .doc-title-icon {
+          width: 34px; height: 34px; background: #1e3a5f; border-radius: 8px;
+          display: flex; align-items: center; justify-content: center;
+          color: white; font-size: 16px;
         }
-        .badge {
-          display: inline-block;
-          padding: 4px 14px;
-          border-radius: 999px;
-          font-size: 13px;
-          font-weight: 600;
-          border: 1px solid;
+
+        /* META SECTION */
+        .meta-section { display: flex; gap: 12px; margin-bottom: 12px; align-items: flex-start; }
+
+        /* QR CARD */
+        .qr-card {
+          border: 1.5px solid #e2e8f0; border-radius: 10px;
+          padding: 10px 12px; display: flex; flex-direction: column;
+          align-items: center; gap: 5px; min-width: 126px;
+          background: #f8fafc;
         }
-        .badge-pending   { background:#fffbeb; color:#92400e; border-color:#fcd34d; }
-        .badge-approved  { background:#eff6ff; color:#1e40af; border-color:#93c5fd; }
-        .badge-rejected  { background:#fef2f2; color:#991b1b; border-color:#fca5a5; }
-        .badge-completed { background:#ecfdf5; color:#065f46; border-color:#6ee7b7; }
-        .info-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 16px;
-          margin-bottom: 24px;
+        .qr-card img { width: 88px; height: 88px; }
+        .qr-label { font-size: 10px; color: #64748b; text-align: center; line-height: 1.4; }
+        .qr-ref { font-size: 11px; font-weight: 700; color: #1e3a5f; }
+
+        /* ORDER INFO GRID */
+        .order-info-grid {
+          flex: 1; border: 1.5px solid #e2e8f0; border-radius: 10px;
+          overflow: hidden; background: #ffffff;
         }
-        .info-card {
-          background: #f9fafb;
-          border: 1px solid #e5e7eb;
-          border-radius: 10px;
-          padding: 14px 18px;
+        .info-row { display: flex; border-bottom: 1px solid #f1f5f9; }
+        .info-row:last-child { border-bottom: none; }
+        .info-label {
+          width: 128px; background: #f8fafc; padding: 7px 12px;
+          font-weight: 700; color: #475569; font-size: 11.5px;
+          border-left: 1px solid #e2e8f0; display: flex; align-items: center; gap: 5px;
         }
-        .info-card .label {
-          font-size: 11px;
-          color: #9ca3af;
-          text-transform: uppercase;
-          letter-spacing: .05em;
-          margin-bottom: 5px;
+        .info-value {
+          flex: 1; padding: 7px 12px; font-size: 12px;
+          color: #1e293b; display: flex; align-items: center;
         }
-        .info-card .value {
-          font-size: 15px;
-          font-weight: 600;
-          color: #111827;
+        .status-badge {
+          display: inline-flex; align-items: center; gap: 5px;
+          padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 700;
+          background: ${statusBg}; color: ${statusColor};
+          border: 1.5px solid ${statusBorder};
         }
+        .status-dot { width: 7px; height: 7px; border-radius: 50%; background: ${statusColor}; }
+
+        /* PARTY CARDS */
+        .party-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+        .party-card { border: 1.5px solid #e2e8f0; border-radius: 10px; overflow: hidden; }
+        .party-header {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 7px 12px; background: #f8fafc; border-bottom: 1px solid #e2e8f0;
+        }
+        .party-title { font-size: 13px; font-weight: 800; }
+        .party-title-buyer { color: #2563eb; }
+        .party-title-seller { color: #059669; }
+        .party-icon {
+          width: 26px; height: 26px; border-radius: 6px;
+          display: flex; align-items: center; justify-content: center; font-size: 13px;
+        }
+        .party-icon-buyer { background: #dbeafe; }
+        .party-icon-seller { background: #d1fae5; }
+        .party-body { padding: 8px 12px; }
+        .party-field {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 4px 0; border-bottom: 1px dashed #f1f5f9; font-size: 12px;
+        }
+        .party-field:last-child { border-bottom: none; }
+        .party-field-label { color: #94a3b8; font-weight: 600; display: flex; align-items: center; gap: 4px; }
+        .party-field-value { font-weight: 700; color: #1e293b; text-align: left; }
+
+        /* PRODUCTS TABLE */
         .section-title {
-          font-size: 13px;
-          font-weight: 700;
-          color: #6b7280;
-          text-transform: uppercase;
-          letter-spacing: .06em;
-          margin-bottom: 10px;
+          display: flex; align-items: center; gap: 7px;
+          font-size: 13px; font-weight: 800; color: #1e293b; margin-bottom: 7px;
         }
-        table {
-          width: 100%;
-          border-collapse: collapse;
-          margin-bottom: 24px;
-          font-size: 13px;
+        .products-table {
+          width: 100%; border-collapse: collapse;
+          border: 1.5px solid #e2e8f0; border-radius: 10px;
+          overflow: hidden; margin-bottom: 12px; font-size: 12px;
         }
-        thead tr { background: #1a56db; color: #fff; }
-        thead th { padding: 10px 12px; text-align: right; font-weight: 600; }
-        tbody tr:nth-child(even) { background: #f9fafb; }
-        tbody tr:hover { background: #eff6ff; }
-        tbody td {
-          padding: 10px 12px;
-          border-bottom: 1px solid #e5e7eb;
-          color: #374151;
+        .products-table thead tr { background: #1e3a5f; }
+        .products-table thead th {
+          padding: 9px 11px; color: #ffffff; font-weight: 700;
+          text-align: center; font-size: 11.5px; border: none;
         }
-        .total-box {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          background: #eff6ff;
-          border: 1px solid #bfdbfe;
-          border-radius: 10px;
-          padding: 14px 20px;
-          margin-bottom: 20px;
+        .products-table thead th:nth-child(2) { text-align: right; }
+        .products-table tbody tr { border-bottom: 1px solid #f1f5f9; }
+        .products-table tbody tr:last-child { border-bottom: none; }
+        .products-table tbody tr:nth-child(even) { background: #f8fafc; }
+        .products-table tbody td { padding: 8px 11px; border: none; }
+        .products-table tfoot tr { background: #f1f5f9; border-top: 2px solid #e2e8f0; }
+        .products-table tfoot td {
+          padding: 7px 11px; font-weight: 700; font-size: 12px;
+          text-align: center; color: #1e293b;
         }
-        .total-box .total-label { font-size: 15px; color: #374151; font-weight: 500; }
-        .total-box .total-value { font-size: 22px; font-weight: 700; color: #1a56db; }
-        .notes-box {
-          background: #fffbeb;
-          border: 1px solid #fcd34d;
-          border-radius: 10px;
-          padding: 12px 16px;
-          margin-bottom: 20px;
+
+        /* BOTTOM 2-COL */
+        .bottom-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+
+        /* SUMMARY CARD */
+        .card { border: 1.5px solid #e2e8f0; border-radius: 10px; overflow: hidden; }
+        .card-header {
+          background: #f8fafc; padding: 7px 12px; border-bottom: 1px solid #e2e8f0;
+          font-size: 12.5px; font-weight: 800; color: #1e293b;
+          display: flex; align-items: center; gap: 6px;
         }
-        .notes-box .label { font-size: 11px; color: #92400e; font-weight: 600; margin-bottom: 4px; }
-        .notes-box p { font-size: 13px; color: #78350f; }
+        .card-body { padding: 10px 13px; }
+        .summary-line {
+          display: flex; justify-content: space-between; align-items: center;
+          padding: 6px 0; border-bottom: 1px dashed #f1f5f9; font-size: 12px;
+        }
+        .summary-line:last-child { border-bottom: none; }
+        .summary-line-label { color: #64748b; }
+        .summary-line-value { font-weight: 600; color: #1e293b; }
+        .summary-total {
+          display: flex; justify-content: space-between; align-items: center;
+          padding: 9px 13px; background: #f0fdf4; border-top: 2px solid #d1fae5;
+        }
+        .summary-total-label { font-size: 13px; font-weight: 800; color: #1e293b; }
+        .summary-total-value { font-size: 17px; font-weight: 800; color: #059669; }
+        .summary-note { font-size: 10px; color: #94a3b8; margin-top: 7px; border-top: 1px dashed #e2e8f0; padding-top: 6px; }
+
+        /* TIMELINE */
+        .tl-body { padding: 10px 13px; display: flex; flex-direction: column; gap: 0; }
+
+        /* NOTES */
+        .notes-card {
+          border: 1.5px solid #bfdbfe; border-radius: 10px; padding: 9px 13px;
+          background: #eff6ff; margin-bottom: 12px;
+          display: flex; align-items: flex-start; gap: 8px;
+        }
+        .notes-icon { color: #2563eb; font-size: 15px; flex-shrink: 0; margin-top: 1px; }
+        .notes-title { font-size: 12.5px; font-weight: 800; color: #1e3a5f; margin-bottom: 3px; }
+        .notes-text { font-size: 12px; color: #475569; line-height: 1.6; }
+
+        /* FOOTER */
         .footer {
-          border-top: 1px solid #e5e7eb;
-          padding-top: 14px;
-          font-size: 11px;
-          color: #9ca3af;
-          display: flex;
-          justify-content: space-between;
+          border-top: 2px solid #e2e8f0; padding-top: 11px;
+          display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px;
         }
+        .footer-left { font-size: 10px; color: #64748b; line-height: 1.7; }
+        .footer-center { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+        .footer-logo { font-size: 17px; font-weight: 800; color: #1e3a5f; letter-spacing: -0.5px; }
+        .footer-sub { font-size: 10px; color: #94a3b8; }
+        .footer-site { font-size: 11px; color: #2563eb; font-weight: 600; }
+        .footer-generated { font-size: 9.5px; color: #94a3b8; margin-top: 2px; text-align: center; line-height: 1.5; }
+        .footer-right { font-size: 10px; color: #64748b; text-align: left; line-height: 1.7; }
+
         @media print {
-          body { padding: 16px; }
-          @page { margin: 12mm; size: A4; }
+          body { background: white; }
+          .page { max-width: 100%; }
         }
       </style>
     </head>
     <body>
+    <div class="page">
+
+      <!-- ══ HEADER ══ -->
       <div class="header">
-        <div class="header-title">
-          <h1>طلب شراء #${String(order.id).padStart(5, "0")}</h1>
-          <p>${date}</p>
+        <div>
+          <div class="logo-row">
+            <div class="logo-box">M</div>
+            <div class="logo-name">محـــور</div>
+          </div>
+          <div class="logo-sub">منصة قطع غيار إيسوزو B2B</div>
         </div>
-        <span class="badge badge-${order.status}">${STATUS_LABEL_AR[order.status]}</span>
-      </div>
-      <div class="info-grid">
-        <div class="info-card">
-          <div class="label">الطالب</div>
-          <div class="value">${order.from_shop?.shop_name ?? "—"}</div>
-        </div>
-        <div class="info-card">
-          <div class="label">المورد</div>
-          <div class="value">${order.to_shop?.shop_name ?? "—"}</div>
+        <div class="doc-title-block">
+          <div class="doc-title">
+            طلب شراء
+            <div class="doc-title-icon">🛒</div>
+          </div>
         </div>
       </div>
-      <div class="section-title">الأصناف</div>
-      <table>
+
+      <!-- ══ META + QR ══ -->
+      <div class="meta-section">
+
+        <!-- QR Card -->
+        <div class="qr-card">
+          <img src="${qrUrl}" alt="QR" />
+          <div class="qr-label">امسح الرمز<br/>لعرض الطلب<br/>في النظام</div>
+          <div class="qr-ref">#${orderNumber}</div>
+        </div>
+
+        <!-- Order Info Grid -->
+        <div class="order-info-grid">
+          <div class="info-row">
+            <div class="info-label">🏷 رقم الطلب</div>
+            <div class="info-value" style="font-weight:700;color:#2563eb;font-size:14px;">#${orderNumber}</div>
+          </div>
+          <div class="info-row">
+            <div class="info-label">✅ الحالة</div>
+            <div class="info-value">
+              <span class="status-badge">
+                <span class="status-dot"></span>
+                ${statusLabel}
+              </span>
+            </div>
+          </div>
+          <div class="info-row">
+            <div class="info-label">📅 تاريخ الطلب</div>
+            <div class="info-value">${createdDateStr}</div>
+          </div>
+          <div class="info-row">
+            <div class="info-label">🕐 وقت الإنشاء</div>
+            <div class="info-value">${createdTimeStr} ص</div>
+          </div>
+          <div class="info-row">
+            <div class="info-label">🖨 تاريخ الطباعة</div>
+            <div class="info-value">${printTimeStr} ص - ${printDateStr}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ PARTY CARDS ══ -->
+      <div class="party-row">
+
+        <!-- Buyer (from_shop) -->
+        <div class="party-card">
+          <div class="party-header">
+            <div class="party-title party-title-buyer">الطالب</div>
+            <div class="party-icon party-icon-buyer">🛍</div>
+          </div>
+          <div class="party-body">
+            <div class="party-field">
+              <span class="party-field-label">🏪 اسم المحل</span>
+              <span class="party-field-value">${order.from_shop?.shop_name ?? "—"}</span>
+            </div>
+            <div class="party-field">
+              <span class="party-field-label">📍 المدينة</span>
+              <span class="party-field-value">—</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Supplier (to_shop) -->
+        <div class="party-card">
+          <div class="party-header">
+            <div class="party-title party-title-seller">المورد</div>
+            <div class="party-icon party-icon-seller">🏪</div>
+          </div>
+          <div class="party-body">
+            <div class="party-field">
+              <span class="party-field-label">🏪 اسم المحل</span>
+              <span class="party-field-value">${order.to_shop?.shop_name ?? "—"}</span>
+            </div>
+            <div class="party-field">
+              <span class="party-field-label">📍 المدينة</span>
+              <span class="party-field-value">—</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ PRODUCTS TABLE ══ -->
+      <div class="section-title">
+        <span style="color:#2563eb;font-size:15px;">📦</span>
+        الأصناف المطلوبة
+      </div>
+
+      <table class="products-table">
         <thead>
           <tr>
-            <th>#</th>
-            <th>اسم القطعة</th>
+            <th style="width:34px;">م</th>
+            <th style="text-align:right;">اسم القطعة</th>
             <th>رقم القطعة</th>
-            <th>الكمية</th>
-            <th>سعر الوحدة</th>
-            <th>الإجمالي</th>
+            <th style="width:56px;">الكمية</th>
+            <th style="width:88px;">سعر الوحدة</th>
+            <th style="width:88px;">الإجمالي</th>
           </tr>
         </thead>
         <tbody>
-          ${rows || '<tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:20px">لا توجد أصناف</td></tr>'}
+          ${rows || `<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:18px">لا توجد أصناف</td></tr>`}
         </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="3" style="text-align:right;">
+              <span style="color:#64748b;font-size:11px;">📋 إجمالي عدد الأصناف: ${itemCount}</span>
+            </td>
+            <td></td>
+            <td style="color:#64748b;">المجموع</td>
+            <td style="color:#059669;font-size:13px;">${Number(order.total_amount).toLocaleString()} ر.س</td>
+          </tr>
+        </tfoot>
       </table>
-      <div class="total-box">
-        <span class="total-label">الإجمالي الكلي</span>
-        <span class="total-value">${Number(order.total_amount).toLocaleString()} ر.س</span>
-      </div>
-      ${order.notes ? `
-        <div class="notes-box">
-          <div class="label">ملاحظات</div>
-          <p>${order.notes}</p>
+
+      <!-- ══ TIMELINE + SUMMARY ══ -->
+      <div class="bottom-row">
+
+        <!-- Timeline -->
+        <div class="card">
+          <div class="card-header">🕐 سجل الطلب</div>
+          <div class="tl-body">
+
+            ${tlItem("تم إنشاء الطلب", `${createdDateStr} - ${createdTimeStr} ص`, true, true)}
+            ${tlItem("تم إرسال الطلب للمورد", "", isSent, true)}
+            ${tlItem("تم اعتماد الطلب", "", isApproved, true)}
+            ${tlItem("تم إغلاق الطلب (مكتمل)", "", isCompleted, false)}
+
+          </div>
         </div>
-      ` : ""}
-      <div class="footer">
-        <span>IsuzuParts — B2B Spare Parts Platform</span>
-        <span>تم الإنشاء: ${new Date().toLocaleString("ar-SA")}</span>
+
+        <!-- Summary -->
+        <div class="card">
+          <div class="card-header">📊 ملخص الطلب</div>
+          <div class="card-body">
+            <div class="summary-line">
+              <span class="summary-line-label">الإجمالي الفرعي</span>
+              <span class="summary-line-value">${Number(order.total_amount).toLocaleString()} ر.س</span>
+            </div>
+            <div class="summary-line">
+              <span class="summary-line-label">ضريبة القيمة المضافة (15%)</span>
+              <span class="summary-line-value">0.00 ر.س</span>
+            </div>
+            <div class="summary-note">
+              الأسعار لا تشمل ضريبة القيمة المضافة ما لم يُذكر خلاف ذلك.
+            </div>
+          </div>
+          <div class="summary-total">
+            <span class="summary-total-label">الإجمالي النهائي</span>
+            <span class="summary-total-value">${Number(order.total_amount).toLocaleString()} ر.س</span>
+          </div>
+        </div>
+
       </div>
+
+      <!-- ══ NOTES ══ -->
+      <div class="notes-card">
+        <span class="notes-icon">ℹ️</span>
+        <div>
+          <div class="notes-title">ملاحظات</div>
+          <div class="notes-text">${order.notes ? order.notes : "- يرجى تأكيد الطلب في أقرب وقت."}</div>
+        </div>
+      </div>
+
+      <!-- ══ FOOTER ══ -->
+      <div class="footer">
+        <div class="footer-left">
+          <div style="font-weight:700;color:#1e293b;margin-bottom:2px;">🎧 للدعم والاستفسارات</div>
+          050 000 0000<br/>
+          support@mehwar.sa
+        </div>
+        <div class="footer-center">
+          <div class="footer-logo">محـــور</div>
+          <div class="footer-sub">منصة قطع غيار إيسوزو B2B</div>
+          <div class="footer-site">www.mehwar.sa</div>
+          <div class="footer-generated">
+            تم إنشاء هذا المستند بواسطة<br/>
+            <strong style="color:#1e3a5f;">منصة محور لقطع غيار إيسوزو</strong>
+          </div>
+        </div>
+        <div class="footer-right">
+          <div style="font-weight:700;color:#1e293b;">رقم الطلب: #${orderNumber}</div>
+          <div>صفحة 1 من 1</div>
+          <div style="margin-top:3px;">تاريخ الطباعة: ${printDateStr}</div>
+        </div>
+      </div>
+
+    </div>
     </body>
     </html>
   `;
-}
-
-// ─────────────────────────────────────────────────────────────
-// COMPONENT
-// ─────────────────────────────────────────────────────────────
-
-export default function OrdersPage() {
-
-  // ── تعديل: دعم Admin الذي لا يملك متجر ──────────────────────
-  const {
-    ownedShopId,
-    role,
-    isAdmin,
-  } = useAuth() as any;
-
-  /* ── data ─────────────────────────────────── */
-  const [orders,   setOrders]   = useState<Order[]>([]);
-  const [shops,    setShops]    = useState<Shop[]>([]);
-  const [loading,  setLoading]  = useState(false);
-  const [error,    setError]    = useState<string | null>(null);
-  const [toast,    setToast]    = useState<string | null>(null);
-
-  /* ── table ────────────────────────────────── */
-  const [tab,          setTab]          = useState<"all"|"incoming"|"outgoing">("all");
-  const [statusFilter, setStatusFilter] = useState<"all"|OrderStatus>("all");
-  const [search,       setSearch]       = useState("");
-  const [page,         setPage]         = useState(1);
-
-  /* ── detail drawer ────────────────────────── */
-  const [detailOrder,   setDetailOrder]   = useState<Order | null>(null);
-  const [detailItems,   setDetailItems]   = useState<OrderItem[]>([]);
-  const [detailLoading, setDetailLoading] = useState(false);
-
-  /* ── new order modal ──────────────────────── */
-  const [showModal,        setShowModal]        = useState(false);
-  const [supplierShopId,   setSupplierShopId]   = useState<number | "">("");
-  const [supplierProducts, setSupplierProducts] = useState<Product[]>([]);
-  const [loadingProducts,  setLoadingProducts]  = useState(false);
-  const [productSearch,    setProductSearch]    = useState("");
-  const [cart,             setCart]             = useState<CartItem[]>([]);
-  const [orderNotes,       setOrderNotes]       = useState("");
-  const [modalError,       setModalError]       = useState<string | null>(null);
-  const [saving,           setSaving]           = useState(false);
-
-  /* ── action loading ───────────────────────── */
-  const [actionId, setActionId] = useState<number | null>(null);
-
-  // ── fetch orders ────────────────────────────────────────────
-  // تعديل: Admin يرى جميع الطلبات — Shop Owner يرى طلباته فقط
-  const fetchOrders = async () => {
-    // Admin لا يحتاج ownedShopId — Shop Owner يحتاجه
-    if (!isAdmin && !ownedShopId) return;
-
-    setLoading(true);
-    setError(null);
-
-    let query = supabase
-      .from("orders")
-      .select(`
-        *,
-        from_shop:shops!orders_from_shop_id_fkey(shop_name),
-        to_shop:shops!orders_to_shop_id_fkey(shop_name),
-        order_items(id)
-      `);
-
-    // تعديل: تصفية الطلبات حسب الدور
-    if (!isAdmin) {
-      query = query.or(
-        `from_shop_id.eq.${ownedShopId},to_shop_id.eq.${ownedShopId}`
-      );
-    }
-
-    const { data, error } = await query.order("created_at", { ascending: false });
-
-    if (error) {
-      setError(error.message);
-    } else {
-      setOrders((data as Order[]) || []);
-    }
-    setLoading(false);
-  };
-
-  // ── fetch all shops ──────────────────────────────────────────
-  const fetchShops = async () => {
-    const { data } = await supabase
-      .from("shops")
-      .select("id, shop_name")
-      .order("shop_name");
-    setShops((data as Shop[]) || []);
-  };
-
-  useEffect(() => {
-    fetchOrders();
-    fetchShops();
-  }, [ownedShopId, isAdmin]);
-
-  // ── fetch supplier products when supplier changes ────────────
-  useEffect(() => {
-    if (!supplierShopId) { setSupplierProducts([]); return; }
-    setLoadingProducts(true);
-    supabase
-      .from("products")
-      .select("*")
-      .eq("shop_id", supplierShopId)
-      .gt("quantity", 0)
-      .order("part_name")
-      .then(({ data }) => {
-        setSupplierProducts((data as Product[]) || []);
-        setLoadingProducts(false);
-      });
-  }, [supplierShopId]);
-
-  // ── filtered & paged orders ──────────────────────────────────
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return orders
-      .filter(o => {
-        // تعديل: Admin يرى الكل في جميع التبويبات
-        if (isAdmin) return true;
-        if (tab === "incoming") return o.to_shop_id   === ownedShopId;
-        if (tab === "outgoing") return o.from_shop_id === ownedShopId;
-        return true;
-      })
-      .filter(o => statusFilter === "all" || o.status === statusFilter)
-      .filter(o =>
-        !q ||
-        String(o.id).includes(q) ||
-        o.from_shop?.shop_name?.toLowerCase().includes(q) ||
-        o.to_shop?.shop_name?.toLowerCase().includes(q)
-      );
-  }, [orders, tab, statusFilter, search, ownedShopId, isAdmin]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const pageItems  = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-  const counts = useMemo(() => ({
-    all:      orders.length,
-    // تعديل: Admin يرى عدد الكل في كل تبويب
-    incoming: isAdmin ? orders.length : orders.filter(o => o.to_shop_id   === ownedShopId).length,
-    outgoing: isAdmin ? orders.length : orders.filter(o => o.from_shop_id === ownedShopId).length,
-    pending:  orders.filter(o => o.status === "pending").length,
-  }), [orders, ownedShopId, isAdmin]);
-
-  // ── open detail ──────────────────────────────────────────────
-  const openDetail = async (order: Order) => {
-    setDetailOrder(order);
-    setDetailItems([]);
-    setDetailLoading(true);
-    const { data } = await supabase
-      .from("order_items")
-      .select("*, product:products(*)")
-      .eq("order_id", order.id);
-    setDetailItems((data as OrderItem[]) || []);
-    setDetailLoading(false);
-  };
-
-  // ── PRINT / PDF ──────────────────────────────────────────────
-  const handlePrint = (asPDF = false) => {
-    if (!detailOrder) return;
-    const html = buildPrintHTML(detailOrder, detailItems);
-    const win = window.open("", "_blank", "width=900,height=700");
-    if (!win) return;
-    win.document.write(html);
-    win.document.close();
-    win.onload = () => {
-      win.focus();
-      win.print();
-    };
-  };
-
-  // ── approve ──────────────────────────────────────────────────
-  const handleApprove = async (orderId: number) => {
-    setActionId(orderId);
-    const { error } = await supabase.rpc("approve_order", { p_order_id: orderId });
-    if (error) {
-      showError(error.message);
-    } else {
-      showToast("تم اعتماد الطلب وتحديث المخزون ✓");
-      await fetchOrders();
-      setDetailOrder(prev => prev?.id === orderId ? { ...prev, status: "completed" } : prev);
-    }
-    setActionId(null);
-  };
-
-  // ── reject ───────────────────────────────────────────────────
-  const handleReject = async (orderId: number) => {
-    if (!confirm("هل أنت متأكد من رفض هذا الطلب؟")) return;
-    setActionId(orderId);
-    const { error } = await supabase
-      .from("orders")
-      .update({ status: "rejected" })
-      .eq("id", orderId);
-    if (error) {
-      showError(error.message);
-    } else {
-      showToast("تم رفض الطلب");
-      await fetchOrders();
-      setDetailOrder(prev => prev?.id === orderId ? { ...prev, status: "rejected" } : prev);
-    }
-    setActionId(null);
-  };
-
-  // ── cart helpers ─────────────────────────────────────────────
-  const addToCart = (product: Product) => {
-    setCart(prev => {
-      if (prev.find(c => c.product.id === product.id)) return prev;
-      return [...prev, { product, quantity: 1 }];
-    });
-  };
-
-  const updateQty = (productId: number, qty: number) => {
-    const max = supplierProducts.find(p => p.id === productId)?.quantity ?? 1;
-    setCart(prev =>
-      prev.map(c =>
-        c.product.id === productId
-          ? { ...c, quantity: Math.max(1, Math.min(qty, max)) }
-          : c
-      )
-    );
-  };
-
-  const removeFromCart = (productId: number) =>
-    setCart(prev => prev.filter(c => c.product.id !== productId));
-
-  const cartTotal = cart.reduce((s, c) => s + c.product.price * c.quantity, 0);
-
-  // ── submit new order ─────────────────────────────────────────
-  const handleSubmit = async () => {
-    setModalError(null);
-    if (!supplierShopId)                { setModalError("اختر المحل المورد أولاً"); return; }
-    if (supplierShopId === ownedShopId) { setModalError("لا يمكنك الطلب من محلك"); return; }
-    if (cart.length === 0)              { setModalError("أضف منتجاً واحداً على الأقل"); return; }
-
-    for (const item of cart) {
-      const fresh = supplierProducts.find(p => p.id === item.product.id);
-      if (fresh && item.quantity > fresh.quantity) {
-        setModalError(`الكمية لـ "${item.product.part_name}" تتجاوز المتوفر (${fresh.quantity})`);
-        return;
-      }
-    }
-
-    setSaving(true);
-    try {
-      const { data: orderData, error: oErr } = await supabase
-        .from("orders")
-        .insert({
-          from_shop_id: ownedShopId,
-          to_shop_id:   supplierShopId,
-          status:       "pending",
-          total_amount: cartTotal,
-          notes:        orderNotes || null,
-        })
-        .select()
-        .single();
-      if (oErr) throw oErr;
-
-      const { error: iErr } = await supabase.from("order_items").insert(
-        cart.map(c => ({
-          order_id:   orderData.id,
-          product_id: c.product.id,
-          quantity:   c.quantity,
-          price:      c.product.price,
-        }))
-      );
-      if (iErr) throw iErr;
-
-      closeModal();
-      showToast("تم إرسال الطلب بنجاح ✓");
-      await fetchOrders();
-    } catch (e: any) {
-      setModalError(e?.message ?? "حدث خطأ");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // ── close modal ──────────────────────────────────────────────
-  const closeModal = () => {
-    setShowModal(false);
-    setSupplierShopId("");
-    setSupplierProducts([]);
-    setProductSearch("");
-    setCart([]);
-    setOrderNotes("");
-    setModalError(null);
-  };
-
-  const showToast = (msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3500);
-  };
-  const showError = (msg: string) => setError(msg);
-
-  const filteredProducts = useMemo(() => {
-    const q = productSearch.trim().toLowerCase();
-    if (!q) return supplierProducts;
-    return supplierProducts.filter(
-      p => p.part_name?.toLowerCase().includes(q) || p.part_number?.toLowerCase().includes(q)
-    );
-  }, [supplierProducts, productSearch]);
-
-  const otherShops = shops.filter(s => s.id !== ownedShopId);
-
-  // تعديل: Admin يستطيع الاعتماد/الرفض على أي طلب معلق
-  const canActOnOrder = (order: Order): boolean => {
-    if (isAdmin) return order.status === "pending";
-    return order.to_shop_id === ownedShopId && order.status === "pending";
-  };
-
-  // ─────────────────────────────────────────────────────────────
-  // RENDER
-  // ─────────────────────────────────────────────────────────────
-  return (
-    <div className="p-3 lg:p-6 min-h-screen" dir="rtl">
-
-      {/* ── TOAST ── */}
-      {toast && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[60] bg-emerald-600 text-white text-sm px-5 py-2.5 rounded-xl shadow-xl flex items-center gap-2">
-          <Check size={14} /> {toast}
-        </div>
-      )}
-
-      {/* ══════ HEADER ══════ */}
-      <div className="flex items-center justify-between gap-2 mb-4 lg:mb-6">
-        <div className="flex items-center gap-2.5">
-          <div className="bg-blue-500/10 p-2 rounded-xl border border-blue-500/20 shrink-0">
-            <ShoppingCart size={16} className="text-blue-400" />
-          </div>
-          <div>
-            <h1 className="text-white font-semibold text-base lg:text-lg leading-tight">الطلبات</h1>
-            <p className="text-slate-500 text-[11px] leading-tight flex flex-wrap items-center gap-x-1">
-              <span>{orders.length} طلب إجمالي</span>
-              {counts.pending > 0 && (
-                <span className="text-amber-400 font-medium">· {counts.pending} معلق</span>
-              )}
-              {/* تعديل: شارة Admin */}
-              {isAdmin && (
-                <span className="text-[10px] bg-purple-500/10 text-purple-400 border border-purple-500/20 px-1.5 py-0.5 rounded-full">
-                  Admin
-                </span>
-              )}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          <button
-            onClick={fetchOrders}
-            className="w-9 h-9 flex items-center justify-center rounded-lg bg-slate-800 border border-slate-700 text-slate-400 hover:text-white transition-colors shrink-0"
-          >
-            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-          </button>
-          {/* تعديل: زر طلب جديد يظهر فقط لأصحاب المتاجر وليس للأدمن */}
-          {!isAdmin && (
-            <button
-              onClick={() => setShowModal(true)}
-              disabled={!ownedShopId}
-              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs lg:text-sm px-3 lg:px-4 py-2 rounded-lg font-medium transition-colors"
-            >
-              <Plus size={13} />
-              <span>طلب جديد</span>
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* ══════ STATS ══════ */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 lg:gap-3 mb-4 lg:mb-5">
-        {[
-          { label: "إجمالي الطلبات", value: counts.all,      color: "text-slate-300"   },
-          { label: "واردة",          value: counts.incoming,  color: "text-blue-400"    },
-          { label: "صادرة",          value: counts.outgoing,  color: "text-emerald-400" },
-          { label: "معلقة",          value: counts.pending,   color: "text-amber-400"   },
-        ].map(s => (
-          <div key={s.label} className="bg-slate-900 border border-slate-700/50 rounded-xl p-2.5 lg:p-3">
-            <p className="text-slate-500 text-[11px] mb-0.5">{s.label}</p>
-            <p className={`text-xl lg:text-2xl font-bold ${s.color}`}>{s.value}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* ══════ ERROR ══════ */}
-      {error && (
-        <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-red-400 mb-4 text-xs lg:text-sm">
-          <AlertCircle size={14} /> {error}
-          <button onClick={() => setError(null)} className="mr-auto"><X size={13} /></button>
-        </div>
-      )}
-
-      {/* تعديل: رسالة عدم وجود متجر تظهر فقط لغير الأدمن */}
-      {!isAdmin && !ownedShopId && !loading && (
-        <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-amber-400 mb-4 text-xs lg:text-sm">
-          <AlertCircle size={14} /> لم يتم ربط حسابك بمتجر. تأكد من إعداد المتجر أو تواصل مع الدعم.
-        </div>
-      )}
-
-      {/* ══════ TABS + FILTERS ══════ */}
-      {/* Mobile: stacked. Desktop: single row */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2 mb-3 lg:mb-4">
-
-        {/* Tabs */}
-        <div className="flex items-center bg-slate-900 border border-slate-700/50 rounded-xl p-1 gap-1 self-start">
-          {([
-            { key: "all",      label: "الكل",  count: counts.all      },
-            { key: "incoming", label: "واردة", count: counts.incoming },
-            { key: "outgoing", label: "صادرة", count: counts.outgoing },
-          ] as { key: typeof tab; label: string; count: number }[]).map(t => (
-            <button
-              key={t.key}
-              onClick={() => { setTab(t.key); setPage(1); }}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                tab === t.key ? "bg-slate-700 text-white" : "text-slate-400 hover:text-white"
-              }`}
-            >
-              {t.label}
-              <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${tab === t.key ? "bg-white/20" : "bg-slate-700"}`}>
-                {t.count}
-              </span>
-            </button>
-          ))}
-        </div>
-
-        {/* Search + Status filter */}
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1 lg:flex-none">
-            <Search size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
-            <input
-              type="text"
-              value={search}
-              onChange={e => { setSearch(e.target.value); setPage(1); }}
-              placeholder="رقم طلب أو محل..."
-              className="bg-slate-800 border border-slate-700 text-white placeholder-slate-500 text-xs rounded-lg py-2 pr-8 pl-3 w-full lg:w-44 focus:outline-none focus:border-blue-500"
-            />
-          </div>
-          <div className="relative shrink-0">
-            <select
-              value={statusFilter}
-              onChange={e => { setStatusFilter(e.target.value as any); setPage(1); }}
-              className="appearance-none bg-slate-800 border border-slate-700 text-slate-300 text-xs rounded-lg py-2 pr-3 pl-7 focus:outline-none focus:border-blue-500 cursor-pointer"
-            >
-              <option value="all">كل الحالات</option>
-              <option value="pending">معلق</option>
-              <option value="approved">مقبول</option>
-              <option value="rejected">مرفوض</option>
-              <option value="completed">مكتمل</option>
-            </select>
-            <ChevronDown size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
-          </div>
-        </div>
-      </div>
-
-      {/* ══════ MOBILE CARDS (hidden on lg+) ══════ */}
-      <div className="lg:hidden space-y-2 mb-4">
-        {loading ? (
-          <div className="bg-slate-900 border border-slate-700/50 rounded-2xl p-10 text-center text-slate-500">
-            <RefreshCw size={18} className="animate-spin mx-auto mb-2 text-blue-500" />
-            <p className="text-xs">جاري تحميل الطلبات...</p>
-          </div>
-        ) : pageItems.length === 0 ? (
-          <div className="bg-slate-900 border border-slate-700/50 rounded-2xl p-10 text-center text-slate-500">
-            <Package size={32} className="mx-auto mb-2 opacity-20" />
-            <p className="text-xs">لا توجد طلبات مطابقة</p>
-          </div>
-        ) : pageItems.map(order => {
-          const meta     = STATUS_META[order.status] ?? STATUS_META["pending"];
-          const isActing = actionId === order.id;
-          const canAct   = canActOnOrder(order);
-
-          return (
-            <div
-              key={order.id}
-              className="bg-slate-900 border border-slate-700/50 rounded-2xl p-3.5 transition-colors"
-            >
-              {/* Row 1: order number + status badge */}
-              <div className="flex items-center justify-between mb-2.5">
-                <span className="font-mono text-sm font-bold text-white tracking-wide">
-                  #{String(order.id).padStart(5, "0")}
-                </span>
-                <span className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full ${meta.color}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
-                  {meta.label}
-                </span>
-              </div>
-
-              {/* Row 2: from → to */}
-              <div className="flex items-center gap-1.5 mb-2.5">
-                <div className="flex-1 min-w-0 bg-slate-800/60 border border-slate-700/40 rounded-lg px-2.5 py-1.5">
-                  <p className="text-[10px] text-slate-500 mb-0.5">من</p>
-                  <p className={`text-xs font-medium truncate ${order.from_shop_id === ownedShopId ? "text-blue-400" : "text-slate-200"}`}>
-                    {order.from_shop?.shop_name ?? "—"}
-                    {order.from_shop_id === ownedShopId && <span className="opacity-60"> (أنت)</span>}
-                  </p>
-                </div>
-                <ArrowLeftRight size={12} className="text-slate-600 shrink-0" />
-                <div className="flex-1 min-w-0 bg-slate-800/60 border border-slate-700/40 rounded-lg px-2.5 py-1.5">
-                  <p className="text-[10px] text-slate-500 mb-0.5">إلى</p>
-                  <p className={`text-xs font-medium truncate ${order.to_shop_id === ownedShopId ? "text-emerald-400" : "text-slate-200"}`}>
-                    {order.to_shop?.shop_name ?? "—"}
-                    {order.to_shop_id === ownedShopId && <span className="opacity-60"> (أنت)</span>}
-                  </p>
-                </div>
-              </div>
-
-              {/* Row 3: items count + total + date */}
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2 text-slate-500 text-xs">
-                  <Package size={11} />
-                  <span>{order.order_items?.length ?? 0} صنف</span>
-                  <span className="text-slate-700">·</span>
-                  <span>{new Date(order.created_at).toLocaleDateString("ar-SA", { day: "numeric", month: "short" })}</span>
-                </div>
-                <span className="text-white font-bold text-sm">
-                  {Number(order.total_amount).toLocaleString()} ر.س
-                </span>
-              </div>
-
-              {/* Row 4: action buttons */}
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => openDetail(order)}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border border-slate-700 text-slate-400 hover:border-blue-500 hover:text-blue-400 transition-colors text-xs"
-                >
-                  <Eye size={12} /> عرض
-                </button>
-                {canAct && (
-                  <>
-                    <button
-                      onClick={() => handleApprove(order.id)}
-                      disabled={isActing}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 disabled:opacity-40 transition-colors text-xs"
-                    >
-                      {isActing
-                        ? <RefreshCw size={11} className="animate-spin" />
-                        : <><Check size={12} /> اعتماد</>
-                      }
-                    </button>
-                    <button
-                      onClick={() => handleReject(order.id)}
-                      disabled={isActing}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 disabled:opacity-40 transition-colors text-xs"
-                    >
-                      <XCircle size={12} /> رفض
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* ══════ DESKTOP TABLE (hidden on mobile) ══════ */}
-      <div className="hidden lg:block bg-slate-900 border border-slate-700/50 rounded-2xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[700px]">
-            <thead>
-              <tr className="border-b border-slate-700/50 bg-slate-800/50">
-                {["رقم الطلب","من محل","إلى محل","الأصناف","الإجمالي","الحالة","التاريخ","إجراء"].map(h => (
-                  <th key={h} className="p-3 text-right text-slate-400 font-medium text-xs">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={8} className="p-14 text-center text-slate-500">
-                    <RefreshCw size={20} className="animate-spin mx-auto mb-2 text-blue-500" />
-                    جاري تحميل الطلبات...
-                  </td>
-                </tr>
-              ) : pageItems.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="p-14 text-center text-slate-500">
-                    <Package size={36} className="mx-auto mb-3 opacity-20" />
-                    لا توجد طلبات مطابقة
-                  </td>
-                </tr>
-              ) : pageItems.map(order => {
-                const meta     = STATUS_META[order.status] ?? STATUS_META["pending"];
-                const isActing = actionId === order.id;
-                // تعديل: Admin يستطيع التصرف على أي طلب معلق
-                const canAct   = canActOnOrder(order);
-
-                return (
-                  <tr key={order.id} className="border-b border-slate-700/30 hover:bg-slate-800/40 transition-colors">
-                    <td className="p-3">
-                      <span className="font-mono text-xs text-slate-400">#{String(order.id).padStart(5,"0")}</span>
-                    </td>
-                    <td className="p-3">
-                      <span className={`text-xs font-medium ${order.from_shop_id === ownedShopId ? "text-blue-400" : "text-slate-300"}`}>
-                        {order.from_shop?.shop_name ?? "—"}
-                        {order.from_shop_id === ownedShopId && <span className="mr-1 text-[10px] opacity-60">(أنت)</span>}
-                      </span>
-                    </td>
-                    <td className="p-3">
-                      <span className={`text-xs font-medium ${order.to_shop_id === ownedShopId ? "text-emerald-400" : "text-slate-300"}`}>
-                        {order.to_shop?.shop_name ?? "—"}
-                        {order.to_shop_id === ownedShopId && <span className="mr-1 text-[10px] opacity-60">(أنت)</span>}
-                      </span>
-                    </td>
-                    <td className="p-3">
-                      <span className="text-slate-400 text-xs">{order.order_items?.length ?? 0} صنف</span>
-                    </td>
-                    <td className="p-3">
-                      <span className="text-white font-medium text-xs">{Number(order.total_amount).toLocaleString()} ر.س</span>
-                    </td>
-                    <td className="p-3">
-                      <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full ${meta.color}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
-                        {meta.label}
-                      </span>
-                    </td>
-                    <td className="p-3">
-                      <span className="text-slate-500 text-xs">
-                        {new Date(order.created_at).toLocaleDateString("ar-SA", { day:"numeric", month:"short", year:"numeric" })}
-                      </span>
-                    </td>
-                    <td className="p-3">
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => openDetail(order)}
-                          className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-700 text-slate-400 hover:border-blue-500 hover:text-blue-400 transition-colors"
-                          title="عرض التفاصيل"
-                        >
-                          <Eye size={12} />
-                        </button>
-                        {/* تعديل: أزرار الاعتماد والرفض تظهر للأدمن وللمورد */}
-                        {canAct && (
-                          <>
-                            <button
-                              onClick={() => handleApprove(order.id)}
-                              disabled={isActing}
-                              className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-700 text-slate-400 hover:border-emerald-500 hover:text-emerald-400 disabled:opacity-40 transition-colors"
-                              title="اعتماد"
-                            >
-                              {isActing ? <RefreshCw size={11} className="animate-spin" /> : <Check size={12} />}
-                            </button>
-                            <button
-                              onClick={() => handleReject(order.id)}
-                              disabled={isActing}
-                              className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-700 text-slate-400 hover:border-red-500 hover:text-red-400 disabled:opacity-40 transition-colors"
-                              title="رفض"
-                            >
-                              <XCircle size={12} />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        {/* DESKTOP PAGINATION */}
-        {!loading && filtered.length > PAGE_SIZE && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-slate-700/50 text-xs text-slate-500">
-            <span>عرض {(page-1)*PAGE_SIZE+1}–{Math.min(page*PAGE_SIZE, filtered.length)} من {filtered.length}</span>
-            <div className="flex items-center gap-1">
-              <button onClick={() => setPage(p => Math.max(1,p-1))} disabled={page===1}
-                className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-700 text-slate-400 hover:border-slate-500 disabled:opacity-30 transition-colors">
-                <ChevronRight size={13} />
-              </button>
-              {Array.from({ length: Math.min(totalPages,5) }, (_,i) => i+1).map(n => (
-                <button key={n} onClick={() => setPage(n)}
-                  className={`w-7 h-7 flex items-center justify-center rounded-lg border text-xs transition-colors ${
-                    page===n ? "bg-blue-600 text-white border-blue-600" : "border-slate-700 text-slate-400 hover:border-slate-500"
-                  }`}>{n}</button>
-              ))}
-              <button onClick={() => setPage(p => Math.min(totalPages,p+1))} disabled={page===totalPages}
-                className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-700 text-slate-400 hover:border-slate-500 disabled:opacity-30 transition-colors">
-                <ChevronLeft size={13} />
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* MOBILE PAGINATION */}
-      {!loading && filtered.length > PAGE_SIZE && (
-        <div className="lg:hidden flex items-center justify-between mt-3 text-xs text-slate-500">
-          <span>{(page-1)*PAGE_SIZE+1}–{Math.min(page*PAGE_SIZE, filtered.length)} من {filtered.length}</span>
-          <div className="flex items-center gap-1">
-            <button onClick={() => setPage(p => Math.max(1,p-1))} disabled={page===1}
-              className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-700 text-slate-400 disabled:opacity-30 transition-colors">
-              <ChevronRight size={13} />
-            </button>
-            <span className="px-2 text-slate-400">{page} / {totalPages}</span>
-            <button onClick={() => setPage(p => Math.min(totalPages,p+1))} disabled={page===totalPages}
-              className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-700 text-slate-400 disabled:opacity-30 transition-colors">
-              <ChevronLeft size={13} />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ══════════════════════════════════════════════════════
-          DETAIL DRAWER
-          Mobile: full-screen bottom sheet
-          Desktop: side panel (max-w-md from right)
-      ══════════════════════════════════════════════════════ */}
-      {detailOrder && (
-        <div className="fixed inset-0 z-50 flex" dir="rtl">
-          <div className="flex-1 bg-black/50 backdrop-blur-sm" onClick={() => setDetailOrder(null)} />
-
-          {/* Panel — bottom sheet on mobile, side drawer on desktop */}
-          <div className="
-            fixed bottom-0 left-0 right-0 max-h-[92vh]
-            lg:static lg:max-h-none lg:w-full lg:max-w-md
-            bg-slate-900 border-t border-slate-700 lg:border-t-0 lg:border-r
-            flex flex-col shadow-2xl
-            rounded-t-2xl lg:rounded-none
-          ">
-
-            {/* drag handle — mobile only */}
-            <div className="lg:hidden flex justify-center pt-2.5 pb-1">
-              <div className="w-10 h-1 rounded-full bg-slate-700" />
-            </div>
-
-            {/* header */}
-            <div className="flex items-center justify-between px-4 py-3 lg:p-5 border-b border-slate-700">
-              <div>
-                <h2 className="text-white font-semibold text-sm lg:text-base">
-                  طلب #{String(detailOrder.id).padStart(5,"0")}
-                </h2>
-                <p className="text-slate-500 text-[11px] mt-0.5">
-                  {new Date(detailOrder.created_at).toLocaleString("ar-SA")}
-                </p>
-              </div>
-              <div className="flex items-center gap-1.5">
-                {/* PRINT BUTTON */}
-                <button
-                  onClick={() => handlePrint(false)}
-                  disabled={detailLoading}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-700 text-slate-400 hover:border-slate-500 hover:text-white text-xs transition-colors disabled:opacity-40"
-                  title="طباعة"
-                >
-                  <Printer size={12} />
-                  <span className="hidden sm:inline">طباعة</span>
-                </button>
-                {/* PDF BUTTON */}
-                <button
-                  onClick={() => handlePrint(true)}
-                  disabled={detailLoading}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-blue-500/40 text-blue-400 hover:bg-blue-500/10 text-xs transition-colors disabled:opacity-40"
-                  title="تصدير PDF"
-                >
-                  <FileText size={12} />
-                  PDF
-                </button>
-                <button onClick={() => setDetailOrder(null)} className="text-slate-400 hover:text-white p-1">
-                  <X size={17} />
-                </button>
-              </div>
-            </div>
-
-            {/* body */}
-            <div className="flex-1 overflow-y-auto px-4 py-4 lg:p-5 space-y-4">
-
-              {/* status + order number hero — mobile prominent */}
-              <div className="flex items-center justify-between bg-slate-800/60 border border-slate-700/50 rounded-xl px-3 py-2.5">
-                <div>
-                  <p className="text-[10px] text-slate-500 mb-0.5">رقم الطلب</p>
-                  <p className="text-white font-bold font-mono text-base">#{String(detailOrder.id).padStart(5,"0")}</p>
-                </div>
-                <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full ${STATUS_META[detailOrder.status]?.color}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${STATUS_META[detailOrder.status]?.dot}`} />
-                  {STATUS_META[detailOrder.status]?.label}
-                </span>
-              </div>
-
-              {/* shops */}
-              <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-3 space-y-2.5">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-400 text-xs">الطالب</span>
-                  <span className="text-white font-medium text-xs">{detailOrder.from_shop?.shop_name}</span>
-                </div>
-                <div className="flex justify-center">
-                  <ArrowLeftRight size={13} className="text-slate-600" />
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-400 text-xs">المورد</span>
-                  <span className="text-white font-medium text-xs">{detailOrder.to_shop?.shop_name}</span>
-                </div>
-              </div>
-
-              {/* items */}
-              <div>
-                <h3 className="text-slate-400 text-[11px] font-medium mb-2 uppercase tracking-wide">الأصناف</h3>
-                {detailLoading ? (
-                  <div className="text-center py-5 text-slate-500">
-                    <RefreshCw size={14} className="animate-spin mx-auto mb-1.5" />
-                    <p className="text-xs">جاري التحميل...</p>
-                  </div>
-                ) : detailItems.length === 0 ? (
-                  <p className="text-slate-500 text-xs text-center py-4">لا توجد أصناف</p>
-                ) : detailItems.map(item => (
-                  <div key={item.id} className="flex items-center justify-between bg-slate-800/60 border border-slate-700/30 rounded-lg px-3 py-2.5 mb-1.5">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-white text-xs font-medium truncate">{item.product?.part_name}</p>
-                      <p className="text-slate-500 text-[11px] font-mono">{item.product?.part_number}</p>
-                    </div>
-                    <div className="text-left shrink-0 mr-3">
-                      <p className="text-white text-xs font-medium">{(item.price * item.quantity).toLocaleString()} ر.س</p>
-                      <p className="text-slate-500 text-[11px]">{item.quantity} × {item.price.toLocaleString()}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* total */}
-              <div className="flex items-center justify-between bg-slate-800 border border-slate-700 rounded-xl px-3 py-3">
-                <span className="text-slate-400 text-sm font-medium">الإجمالي</span>
-                <span className="text-white text-base lg:text-lg font-bold">{Number(detailOrder.total_amount).toLocaleString()} ر.س</span>
-              </div>
-
-              {/* notes */}
-              {detailOrder.notes && (
-                <div className="bg-slate-800/60 border border-slate-700/30 rounded-xl px-3 py-3">
-                  <p className="text-slate-400 text-[11px] mb-1">ملاحظات</p>
-                  <p className="text-slate-300 text-xs leading-relaxed">{detailOrder.notes}</p>
-                </div>
-              )}
-            </div>
-
-            {/* تعديل: أزرار الاعتماد/الرفض في الـ Drawer تظهر للأدمن وللمورد */}
-            {canActOnOrder(detailOrder) && (
-              <div className="flex gap-2 px-4 py-3 lg:p-5 border-t border-slate-700">
-                <button
-                  onClick={() => handleReject(detailOrder.id)}
-                  disabled={actionId === detailOrder.id}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-red-500/30 text-red-400 hover:bg-red-500/10 text-sm font-medium transition-colors disabled:opacity-40"
-                >
-                  <XCircle size={14} /> رفض
-                </button>
-                <button
-                  onClick={() => handleApprove(detailOrder.id)}
-                  disabled={actionId === detailOrder.id}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors disabled:opacity-40"
-                >
-                  {actionId === detailOrder.id
-                    ? <RefreshCw size={13} className="animate-spin" />
-                    : <PackageCheck size={14} />
-                  }
-                  اعتماد الطلب
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ══════════════════════════════════════════════════════
-          NEW ORDER MODAL — يظهر فقط لأصحاب المتاجر
-      ══════════════════════════════════════════════════════ */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end lg:items-center justify-center lg:p-4" dir="rtl">
-          <div className="bg-slate-900 border border-slate-700 rounded-t-2xl lg:rounded-2xl w-full lg:max-w-2xl max-h-[92vh] lg:max-h-[90vh] flex flex-col shadow-2xl">
-
-            {/* drag handle — mobile only */}
-            <div className="lg:hidden flex justify-center pt-2.5 pb-1">
-              <div className="w-10 h-1 rounded-full bg-slate-700" />
-            </div>
-
-            {/* header */}
-            <div className="flex items-center justify-between px-4 py-3 lg:p-5 border-b border-slate-700">
-              <div className="flex items-center gap-2">
-                <ShoppingCart size={15} className="text-blue-400" />
-                <h2 className="text-white font-semibold text-sm lg:text-base">طلب جديد</h2>
-              </div>
-              <button onClick={closeModal} className="text-slate-400 hover:text-white p-1"><X size={17} /></button>
-            </div>
-
-            {/* body */}
-            <div className="flex-1 overflow-y-auto px-4 py-4 lg:p-5 space-y-4">
-
-              {modalError && (
-                <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-red-400 text-xs">
-                  <AlertCircle size={13} /> {modalError}
-                </div>
-              )}
-
-              {/* supplier select */}
-              <div>
-                <label className="block text-slate-400 text-[11px] mb-1.5 font-medium uppercase tracking-wide">المحل المورد *</label>
-                <select
-                  value={supplierShopId}
-                  onChange={e => { setSupplierShopId(Number(e.target.value) || ""); setCart([]); setProductSearch(""); }}
-                  className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl p-3 text-sm focus:outline-none focus:border-blue-500"
-                >
-                  <option value="">-- اختر محل المورد --</option>
-                  {otherShops.map(s => (
-                    <option key={s.id} value={s.id}>{s.shop_name}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* products list */}
-              {supplierShopId && (
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-slate-400 text-[11px] font-medium uppercase tracking-wide">منتجات المورد</label>
-                    <div className="relative">
-                      <Search size={11} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
-                      <input
-                        type="text"
-                        value={productSearch}
-                        onChange={e => setProductSearch(e.target.value)}
-                        placeholder="ابحث..."
-                        className="bg-slate-800 border border-slate-700 text-white placeholder-slate-500 text-xs rounded-lg py-1.5 pr-7 pl-3 w-32 focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
-                  </div>
-
-                  {loadingProducts ? (
-                    <div className="text-center py-6 text-slate-500">
-                      <RefreshCw size={14} className="animate-spin mx-auto mb-1.5 text-blue-400" />
-                      <p className="text-xs">جاري التحميل...</p>
-                    </div>
-                  ) : filteredProducts.length === 0 ? (
-                    <div className="text-center py-6 text-slate-500 text-xs bg-slate-800/40 rounded-xl border border-slate-700/50">
-                      لا توجد منتجات متوفرة
-                    </div>
-                  ) : (
-                    <div className="space-y-1.5 max-h-44 overflow-y-auto pl-1">
-                      {filteredProducts.map(p => {
-                        const inCart = !!cart.find(c => c.product.id === p.id);
-                        return (
-                          <div
-                            key={p.id}
-                            className={`flex items-center justify-between rounded-xl px-3 py-2.5 border transition-colors ${
-                              inCart ? "border-blue-500/40 bg-blue-500/5" : "border-slate-700/30 bg-slate-800/60 hover:border-slate-600"
-                            }`}
-                          >
-                            <div className="min-w-0 flex-1">
-                              <p className="text-white text-xs font-medium truncate">{p.part_name}</p>
-                              <p className="text-slate-500 text-[11px] font-mono">{p.part_number}</p>
-                            </div>
-                            <div className="flex items-center gap-2.5 mr-2">
-                              <div className="text-left">
-                                <p className="text-slate-300 text-xs font-medium">{p.price.toLocaleString()} ر.س</p>
-                                <p className="text-slate-500 text-[10px]">متوفر: {p.quantity}</p>
-                              </div>
-                              <button
-                                onClick={() => addToCart(p)}
-                                disabled={inCart}
-                                className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors shrink-0 ${
-                                  inCart
-                                    ? "bg-blue-600/30 text-blue-400 cursor-default"
-                                    : "bg-slate-700 hover:bg-blue-600 text-slate-300 hover:text-white"
-                                }`}
-                              >
-                                {inCart ? <Check size={12} /> : <Plus size={12} />}
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* cart */}
-              {cart.length > 0 && (
-                <div>
-                  <h3 className="text-slate-400 text-[11px] font-medium uppercase tracking-wide mb-2">
-                    قائمة الطلب ({cart.length} صنف)
-                  </h3>
-                  <div className="space-y-1.5">
-                    {cart.map(item => (
-                      <div key={item.product.id} className="flex items-center gap-2 bg-slate-800/60 border border-slate-700/30 rounded-xl px-3 py-2.5">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-white text-xs font-medium truncate">{item.product.part_name}</p>
-                          <p className="text-slate-500 text-[11px]">{item.product.price.toLocaleString()} ر.س / وحدة</p>
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            onClick={() => item.quantity > 1 ? updateQty(item.product.id, item.quantity-1) : removeFromCart(item.product.id)}
-                            className="w-6 h-6 flex items-center justify-center rounded-md bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs transition-colors"
-                          >−</button>
-                          <input
-                            type="number" min={1} max={item.product.quantity}
-                            value={item.quantity}
-                            onChange={e => updateQty(item.product.id, Number(e.target.value))}
-                            className="w-10 text-center bg-slate-800 border border-slate-700 text-white rounded-md p-1 text-xs focus:outline-none focus:border-blue-500"
-                          />
-                          <button
-                            onClick={() => updateQty(item.product.id, item.quantity+1)}
-                            disabled={item.quantity >= item.product.quantity}
-                            className="w-6 h-6 flex items-center justify-center rounded-md bg-slate-700 hover:bg-slate-600 disabled:opacity-30 text-slate-300 text-xs transition-colors"
-                          >+</button>
-                        </div>
-                        <span className="text-white text-xs font-medium w-16 text-left shrink-0">
-                          {(item.product.price * item.quantity).toLocaleString()} ر.س
-                        </span>
-                        <button onClick={() => removeFromCart(item.product.id)} className="text-slate-600 hover:text-red-400 transition-colors shrink-0">
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex items-center justify-between mt-2 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5">
-                    <span className="text-slate-400 text-sm">الإجمالي</span>
-                    <span className="text-white font-bold text-sm">{cartTotal.toLocaleString()} ر.س</span>
-                  </div>
-                </div>
-              )}
-
-              {/* notes */}
-              <div>
-                <label className="block text-slate-400 text-[11px] mb-1.5 font-medium">ملاحظات (اختياري)</label>
-                <textarea
-                  value={orderNotes}
-                  onChange={e => setOrderNotes(e.target.value)}
-                  placeholder="أي ملاحظات للمورد..."
-                  rows={2}
-                  className="w-full bg-slate-800 border border-slate-700 text-white placeholder-slate-500 rounded-xl p-3 text-sm focus:outline-none focus:border-blue-500 resize-none"
-                />
-              </div>
-            </div>
-
-            {/* footer */}
-            <div className="flex items-center justify-end gap-2 px-4 py-3 lg:p-5 border-t border-slate-700">
-              <button
-                onClick={closeModal}
-                className="px-4 py-2.5 text-xs lg:text-sm text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 rounded-xl transition-colors"
-              >
-                إلغاء
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={saving || cart.length === 0}
-                className="flex items-center gap-1.5 px-5 py-2.5 text-xs lg:text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl font-medium transition-colors"
-              >
-                {saving
-                  ? <><RefreshCw size={12} className="animate-spin" /> جاري الإرسال...</>
-                  : <><Save size={12} /> إرسال الطلب</>
-                }
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-    </div>
-  );
 }

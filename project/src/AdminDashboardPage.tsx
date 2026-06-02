@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { useLang } from '../hooks/useLang';
 
 import {
   Store,
@@ -10,6 +11,8 @@ import {
 } from 'lucide-react';
 
 export default function AdminDashboardPage() {
+
+  const { t } = useLang();
 
   const [stats, setStats] = useState({
     shops: 0,
@@ -60,7 +63,7 @@ export default function AdminDashboardPage() {
   const createShop = async () => {
 
     if (!newShop.shop_name || !newShop.phone) {
-      alert('أدخل البيانات');
+      alert(t('Please enter the required data', 'أدخل البيانات'));
       return;
     }
 
@@ -79,11 +82,11 @@ export default function AdminDashboardPage() {
 
       if (error) {
         console.error(error);
-        alert('حدث خطأ');
+        alert(t('An error occurred', 'حدث خطأ'));
         return;
       }
 
-      alert('تم إنشاء المحل');
+      alert(t('Shop created successfully', 'تم إنشاء المحل'));
 
       setNewShop({
         shop_name: '',
@@ -96,7 +99,7 @@ export default function AdminDashboardPage() {
     } catch (error) {
 
       console.error(error);
-      alert('حدث خطأ');
+      alert(t('An error occurred', 'حدث خطأ'));
 
     } finally {
 
@@ -111,11 +114,11 @@ export default function AdminDashboardPage() {
 
       <div className="mb-8">
         <h1 className="text-3xl font-bold">
-          لوحة تحكم الأدمن
+          {t('Admin Dashboard', 'لوحة تحكم الأدمن')}
         </h1>
 
         <p className="text-slate-400 mt-2">
-          إدارة المنصة والمحلات
+          {t('Manage the platform and shops', 'إدارة المنصة والمحلات')}
         </p>
       </div>
 
@@ -127,7 +130,7 @@ export default function AdminDashboardPage() {
           <div className="flex items-center justify-between mb-4">
             <Store className="text-blue-400" />
             <span className="text-slate-400 text-sm">
-              المحلات
+              {t('Shops', 'المحلات')}
             </span>
           </div>
 
@@ -140,7 +143,7 @@ export default function AdminDashboardPage() {
           <div className="flex items-center justify-between mb-4">
             <CheckCircle className="text-emerald-400" />
             <span className="text-slate-400 text-sm">
-              المحلات الفعالة
+              {t('Active Shops', 'المحلات الفعالة')}
             </span>
           </div>
 
@@ -153,7 +156,7 @@ export default function AdminDashboardPage() {
           <div className="flex items-center justify-between mb-4">
             <Package className="text-amber-400" />
             <span className="text-slate-400 text-sm">
-              المنتجات
+              {t('Products', 'المنتجات')}
             </span>
           </div>
 
@@ -166,7 +169,7 @@ export default function AdminDashboardPage() {
           <div className="flex items-center justify-between mb-4">
             <ShoppingCart className="text-pink-400" />
             <span className="text-slate-400 text-sm">
-              الطلبات
+              {t('Orders', 'الطلبات')}
             </span>
           </div>
 
@@ -185,7 +188,7 @@ export default function AdminDashboardPage() {
           <Plus className="text-blue-400" />
 
           <h2 className="text-xl font-bold">
-            إضافة محل جديد
+            {t('Add New Shop', 'إضافة محل جديد')}
           </h2>
         </div>
 
@@ -193,7 +196,7 @@ export default function AdminDashboardPage() {
 
           <input
             type="text"
-            placeholder="اسم المحل"
+            placeholder={t('Shop Name', 'اسم المحل')}
             value={newShop.shop_name}
             onChange={(e) =>
               setNewShop({
@@ -206,7 +209,7 @@ export default function AdminDashboardPage() {
 
           <input
             type="text"
-            placeholder="رقم الجوال"
+            placeholder={t('Phone Number', 'رقم الجوال')}
             value={newShop.phone}
             onChange={(e) =>
               setNewShop({
@@ -219,7 +222,7 @@ export default function AdminDashboardPage() {
 
           <input
             type="text"
-            placeholder="المدينة"
+            placeholder={t('City', 'المدينة')}
             value={newShop.city}
             onChange={(e) =>
               setNewShop({
@@ -237,7 +240,7 @@ export default function AdminDashboardPage() {
           disabled={loading}
           className="mt-5 h-12 px-8 rounded-2xl bg-blue-600 hover:bg-blue-500 transition-all font-bold"
         >
-          {loading ? 'جاري الإنشاء...' : 'إنشاء محل'}
+          {loading ? t('Creating...', 'جاري الإنشاء...') : t('Create Shop', 'إنشاء محل')}
         </button>
 
       </div>

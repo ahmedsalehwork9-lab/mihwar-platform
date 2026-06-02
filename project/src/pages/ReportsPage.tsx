@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
-import { useLang } from "../context/LangContext";
+import { useLang } from "../context/LanguageContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

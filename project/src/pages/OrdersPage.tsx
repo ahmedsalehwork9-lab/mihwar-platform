@@ -142,6 +142,10 @@ function buildPrintHTML(order: Order, items: OrderItem[]): string {
         thead { background: #f9fafb; border-bottom: 2px solid #e5e7eb; }
         th { padding: 12px 8px; text-align: right; font-size: 13px; color: #6b7280; font-weight: 600; }
         
+        td {
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
         .summary-card { background: #111827; color: #fff; padding: 24px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; }
         .total-label { font-size: 16px; }
         .total-value { font-size: 32px; font-weight: 800; }

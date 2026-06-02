@@ -90,7 +90,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error("PROFILE ERROR", error);
         return;
       }
-
+      console.log("PROFILE DATA:", data);
+      console.log("IS ADMIN VALUE:", data?.is_admin);
       // 🔍 Debug
       console.log("PROFILE:", data);
 

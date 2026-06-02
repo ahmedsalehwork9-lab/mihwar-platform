@@ -81,204 +81,131 @@ const STATUS_LABEL_AR: Record<OrderStatus, string> = {
 // ─────────────────────────────────────────────────────────────
 // PRINT / PDF HELPER
 // ─────────────────────────────────────────────────────────────
-
 function buildPrintHTML(order: Order, items: OrderItem[]): string {
-  const date = new Date(order.created_at).toLocaleString("ar-SA", {
-    day: "numeric", month: "long", year: "numeric",
-    hour: "2-digit", minute: "2-digit",
+  const date = new Date(order.created_at).toLocaleDateString("ar-SA", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
   });
 
-  const rows = items.map((item, i) => `
-    <tr>
-      <td>${i + 1}</td>
-      <td>${item.product?.part_name ?? "—"}</td>
-      <td>${item.product?.part_number ?? "—"}</td>
-      <td>${item.quantity}</td>
-      <td>${item.price.toLocaleString()} ر.س</td>
-      <td>${(item.price * item.quantity).toLocaleString()} ر.س</td>
+  const rows = items
+    .map(
+      (item, i) => `
+    <tr style="border-bottom: 1px solid #f3f4f6;">
+      <td style="padding: 16px 8px; color: #6b7280; font-size: 14px;">${i + 1}</td>
+      <td style="padding: 16px 8px; font-weight: 500;">${item.product?.part_name ?? "—"}</td>
+      <td style="padding: 16px 8px; color: #6b7280;">${item.product?.part_number ?? "—"}</td>
+      <td style="padding: 16px 8px; text-align: center;">${item.quantity}</td>
+      <td style="padding: 16px 8px; text-align: left;">${item.price.toLocaleString()} ر.س</td>
+      <td style="padding: 16px 8px; text-align: left; font-weight: 600;">${(item.price * item.quantity).toLocaleString()} ر.س</td>
     </tr>
-  `).join("");
+  `
+    )
+    .join("");
+
+  const statusLabel = {
+    pending: "معلق",
+    approved: "مقبول",
+    rejected: "مرفوض",
+    completed: "مكتمل",
+  }[order.status] || "—";
 
   return `
     <!DOCTYPE html>
     <html lang="ar" dir="rtl">
     <head>
-      <meta charset="UTF-8" />
-      <title>طلب #${String(order.id).padStart(5, "0")}</title>
+      <meta charset="UTF-8">
+      <link rel="preconnect" href="https://fonts.googleapis.com">
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+      <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
       <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-          font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
-          background: #fff;
-          color: #1a1a2e;
-          padding: 32px;
-          direction: rtl;
-        }
-        .header {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          border-bottom: 2px solid #1a56db;
-          padding-bottom: 18px;
-          margin-bottom: 24px;
-        }
-        .header-title h1 {
-          font-size: 22px;
-          font-weight: 700;
-          color: #1a56db;
-        }
-        .header-title p {
-          font-size: 13px;
-          color: #6b7280;
-          margin-top: 4px;
-        }
-        .badge {
-          display: inline-block;
-          padding: 4px 14px;
-          border-radius: 999px;
-          font-size: 13px;
-          font-weight: 600;
-          border: 1px solid;
-        }
-        .badge-pending   { background:#fffbeb; color:#92400e; border-color:#fcd34d; }
-        .badge-approved  { background:#eff6ff; color:#1e40af; border-color:#93c5fd; }
-        .badge-rejected  { background:#fef2f2; color:#991b1b; border-color:#fca5a5; }
-        .badge-completed { background:#ecfdf5; color:#065f46; border-color:#6ee7b7; }
-        .info-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 16px;
-          margin-bottom: 24px;
-        }
-        .info-card {
-          background: #f9fafb;
-          border: 1px solid #e5e7eb;
-          border-radius: 10px;
-          padding: 14px 18px;
-        }
-        .info-card .label {
-          font-size: 11px;
-          color: #9ca3af;
-          text-transform: uppercase;
-          letter-spacing: .05em;
-          margin-bottom: 5px;
-        }
-        .info-card .value {
-          font-size: 15px;
-          font-weight: 600;
-          color: #111827;
-        }
-        .section-title {
-          font-size: 13px;
-          font-weight: 700;
-          color: #6b7280;
-          text-transform: uppercase;
-          letter-spacing: .06em;
-          margin-bottom: 10px;
-        }
-        table {
-          width: 100%;
-          border-collapse: collapse;
-          margin-bottom: 24px;
-          font-size: 13px;
-        }
-        thead tr { background: #1a56db; color: #fff; }
-        thead th { padding: 10px 12px; text-align: right; font-weight: 600; }
-        tbody tr:nth-child(even) { background: #f9fafb; }
-        tbody tr:hover { background: #eff6ff; }
-        tbody td {
-          padding: 10px 12px;
-          border-bottom: 1px solid #e5e7eb;
-          color: #374151;
-        }
-        .total-box {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          background: #eff6ff;
-          border: 1px solid #bfdbfe;
-          border-radius: 10px;
-          padding: 14px 20px;
-          margin-bottom: 20px;
-        }
-        .total-box .total-label { font-size: 15px; color: #374151; font-weight: 500; }
-        .total-box .total-value { font-size: 22px; font-weight: 700; color: #1a56db; }
-        .notes-box {
-          background: #fffbeb;
-          border: 1px solid #fcd34d;
-          border-radius: 10px;
-          padding: 12px 16px;
-          margin-bottom: 20px;
-        }
-        .notes-box .label { font-size: 11px; color: #92400e; font-weight: 600; margin-bottom: 4px; }
-        .notes-box p { font-size: 13px; color: #78350f; }
-        .footer {
-          border-top: 1px solid #e5e7eb;
-          padding-top: 14px;
-          font-size: 11px;
-          color: #9ca3af;
-          display: flex;
-          justify-content: space-between;
-        }
-        @media print {
-          body { padding: 16px; }
-          @page { margin: 12mm; size: A4; }
-        }
+        body { font-family: 'Cairo', sans-serif; background: #fff; color: #111827; margin: 0; padding: 40px; line-height: 1.5; }
+        .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; }
+        .brand h2 { margin: 0; font-size: 28px; font-weight: 800; color: #1e293b; }
+        .brand p { margin: 4px 0 0; color: #64748b; font-size: 14px; }
+        .po-info { text-align: left; }
+        .po-info h1 { margin: 0; font-size: 14px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+        .po-info div { font-size: 24px; font-weight: 700; color: #111827; }
+        
+        .status-badge { display: inline-flex; align-items: center; padding: 6px 16px; border-radius: 999px; font-size: 14px; font-weight: 600; border: 1px solid; }
+        .s-pending { background: #fffbeb; color: #d97706; border-color: #fde68a; }
+        .s-approved { background: #eff6ff; color: #2563eb; border-color: #bfdbfe; }
+        .s-rejected { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
+        .s-completed { background: #ecfdf5; color: #059669; border-color: #a7f3d0; }
+
+        .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 40px; }
+        .card { background: #f9fafb; border: 1px solid #f3f4f6; padding: 16px; border-radius: 12px; }
+        .card .label { font-size: 12px; color: #6b7280; margin-bottom: 4px; }
+        .card .value { font-size: 16px; font-weight: 700; }
+
+        table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+        thead { background: #f9fafb; border-bottom: 2px solid #e5e7eb; }
+        th { padding: 12px 8px; text-align: right; font-size: 13px; color: #6b7280; font-weight: 600; }
+        
+        .summary-card { background: #111827; color: #fff; padding: 24px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; }
+        .total-label { font-size: 16px; }
+        .total-value { font-size: 32px; font-weight: 800; }
+
+        .notes { background: #fffbeb; padding: 16px; border-radius: 12px; margin-top: 20px; font-size: 14px; color: #92400e; border: 1px solid #fde68a; }
+        
+        footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #9ca3af; text-align: center; }
+
+        @media print { @page { margin: 20mm; } }
       </style>
     </head>
     <body>
       <div class="header">
-        <div class="header-title">
-          <h1>طلب شراء #${String(order.id).padStart(5, "0")}</h1>
-          <p>${date}</p>
+        <div class="brand">
+          <h2>وصلة</h2>
+          <p>منصة قطع الغيار B2B</p>
         </div>
-        <span class="badge badge-${order.status}">${STATUS_LABEL_AR[order.status]}</span>
-      </div>
-      <div class="info-grid">
-        <div class="info-card">
-          <div class="label">الطالب</div>
-          <div class="value">${order.from_shop?.shop_name ?? "—"}</div>
-        </div>
-        <div class="info-card">
-          <div class="label">المورد</div>
-          <div class="value">${order.to_shop?.shop_name ?? "—"}</div>
+        <div class="po-info">
+          <h1>Purchase Order</h1>
+          <div>PO-${String(order.id).padStart(6, "0")}</div>
         </div>
       </div>
-      <div class="section-title">الأصناف</div>
+
+      <div style="margin-bottom: 20px;">
+        <span class="status-badge s-${order.status}">${statusLabel}</span>
+      </div>
+
+      <div class="grid">
+        <div class="card"><div class="label">المحل الطالب</div><div class="value">${order.from_shop?.shop_name ?? "—"}</div></div>
+        <div class="card"><div class="label">المحل المورد</div><div class="value">${order.to_shop?.shop_name ?? "—"}</div></div>
+        <div class="card"><div class="label">التاريخ</div><div class="value">${date}</div></div>
+        <div class="card"><div class="label">عدد الأصناف</div><div class="value">${items.length}</div></div>
+      </div>
+
       <table>
         <thead>
           <tr>
             <th>#</th>
             <th>اسم القطعة</th>
             <th>رقم القطعة</th>
-            <th>الكمية</th>
-            <th>سعر الوحدة</th>
-            <th>الإجمالي</th>
+            <th style="text-align: center;">الكمية</th>
+            <th style="text-align: left;">سعر الوحدة</th>
+            <th style="text-align: left;">الإجمالي</th>
           </tr>
         </thead>
-        <tbody>
-          ${rows || '<tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:20px">لا توجد أصناف</td></tr>'}
-        </tbody>
+        <tbody>${rows}</tbody>
       </table>
-      <div class="total-box">
-        <span class="total-label">الإجمالي الكلي</span>
-        <span class="total-value">${Number(order.total_amount).toLocaleString()} ر.س</span>
+
+      <div class="summary-card">
+        <div class="total-label">الإجمالي الكلي</div>
+        <div class="total-value">${order.total_amount.toLocaleString()} ر.س</div>
       </div>
-      ${order.notes ? `
-        <div class="notes-box">
-          <div class="label">ملاحظات</div>
-          <p>${order.notes}</p>
-        </div>
-      ` : ""}
-      <div class="footer">
-        <span>IsuzuParts — B2B Spare Parts Platform</span>
-        <span>تم الإنشاء: ${new Date().toLocaleString("ar-SA")}</span>
-      </div>
+
+      ${order.notes ? `<div class="notes"><strong>ملاحظات:</strong> ${order.notes}</div>` : ""}
+
+      <footer>
+        تم إنشاء هذه الفاتورة بواسطة منصة وصلة - WASLA B2B Platform<br>
+        تم الإنشاء في: ${new Date().toLocaleDateString("ar-SA")}
+      </footer>
     </body>
     </html>
   `;
 }
-
+       
 // ─────────────────────────────────────────────────────────────
 // COMPONENT
 // ─────────────────────────────────────────────────────────────

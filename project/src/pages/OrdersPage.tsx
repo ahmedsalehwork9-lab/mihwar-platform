@@ -160,7 +160,7 @@ function buildPrintHTML(order: Order, items: OrderItem[]): string {
     <body>
       <div class="header">
         <div class="brand">
-          <h2>وصلة</h2>
+          <h2>محور</h2>
           <p>منصة قطع الغيار B2B</p>
         </div>
         <div class="po-info">

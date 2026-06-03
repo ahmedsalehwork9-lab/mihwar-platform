@@ -2,357 +2,42 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { useLang } from "../context/LanguageContext";
+import { 
+  Bell, 
+  PackageX, 
+  AlertTriangle, 
+  ShoppingCart, 
+  Info, 
+  ChevronRight,
+  RefreshCw,
+  Search,
+  Filter,
+  ArrowRightLeft
+} from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type ProductAlert = {
   id: number;
   part_name: string;
+  part_number?: string;
   quantity: number;
 };
 
 type PendingOrder = {
   id: number;
   status: string;
+  total_amount?: number;
+  created_at: string;
 };
 
-type FilterTab = "all" | "outOfStock" | "lowStock" | "pending";
-
-// ─── Translations ─────────────────────────────────────────────────────────────
-
-const translations = {
-  ar: {
-    pageTitle: "مركز التنبيهات",
-    pageSubtitle: "متابعة المخزون والطلبات المهمة",
-    loading: "جاري تحميل التنبيهات...",
-    noShop: "لم يتم العثور على محل مرتبط بهذا الحساب",
-    outOfStockItems: "منتجات نافدة",
-    lowStockItems: "منخفضة المخزون",
-    pendingOrdersLabel: "طلبات معلقة",
-    totalAlerts: "إجمالي التنبيهات",
-    allAlerts: "كل التنبيهات",
-    outOfStock: "نفد المخزون",
-    lowStock: "منخفض المخزون",
-    pendingOrders: "طلبات معلقة",
-    outOfStockTitle: "منتجات نفد مخزونها",
-    lowStockTitle: "منتجات منخفضة المخزون",
-    pendingOrdersTitle: "طلبات تحتاج متابعة",
-    actionCenterTitle: "يحتاج انتباهاً فورياً",
-    actionCenterSubtitle: "أعلى العناصر التي تستوجب التدخل العاجل",
-    currentQty: "الكمية الحالية",
-    orderNumber: "طلب",
-    statusOutOfStock: "نفد المخزون",
-    statusLowStock: "منخفض",
-    orderStatus: {
-      pending: "معلق",
-      approved: "معتمد",
-      rejected: "مرفوض",
-      completed: "مكتمل",
-    } as Record<string, string>,
-    emptyOutOfStock: "لا توجد منتجات نافدة حالياً",
-    emptyOutOfStockSub: "جميع المنتجات متوفرة في المخزون",
-    emptyLowStock: "لا توجد منتجات منخفضة المخزون",
-    emptyLowStockSub: "مستويات المخزون ضمن النطاق الطبيعي",
-    emptyPending: "لا توجد طلبات معلقة",
-    emptyPendingSub: "جميع الطلبات تمت معالجتها",
-    emptyAll: "لا توجد تنبيهات نشطة",
-    emptyAllSub: "كل شيء يسير بشكل طبيعي",
-    summaryTitle: "ملخص التنبيهات",
-    inventoryAlerts: "تنبيهات المخزون",
-    orderAlerts: "تنبيهات الطلبات",
-    totalAlertsLabel: "إجمالي التنبيهات",
-    items: "عنصر",
-    orders: "طلب",
-    alerts: "تنبيه",
-  },
-  en: {
-    pageTitle: "Alert Center",
-    pageSubtitle: "Monitor inventory and critical orders",
-    loading: "Loading alerts...",
-    noShop: "No shop linked to this account",
-    outOfStockItems: "Out of Stock",
-    lowStockItems: "Low Stock",
-    pendingOrdersLabel: "Pending Orders",
-    totalAlerts: "Total Alerts",
-    allAlerts: "All Alerts",
-    outOfStock: "Out of Stock",
-    lowStock: "Low Stock",
-    pendingOrders: "Pending Orders",
-    outOfStockTitle: "Out of Stock Products",
-    lowStockTitle: "Low Stock Products",
-    pendingOrdersTitle: "Orders Needing Attention",
-    actionCenterTitle: "Needs Immediate Attention",
-    actionCenterSubtitle: "Top items requiring urgent action",
-    currentQty: "Current Qty",
-    orderNumber: "Order",
-    statusOutOfStock: "Out of Stock",
-    statusLowStock: "Low Stock",
-    orderStatus: {
-      pending: "Pending",
-      approved: "Approved",
-      rejected: "Rejected",
-      completed: "Completed",
-    } as Record<string, string>,
-    emptyOutOfStock: "No out of stock products",
-    emptyOutOfStockSub: "All products are available in inventory",
-    emptyLowStock: "No low stock products",
-    emptyLowStockSub: "Stock levels are within normal range",
-    emptyPending: "No pending orders",
-    emptyPendingSub: "All orders have been processed",
-    emptyAll: "No active alerts",
-    emptyAllSub: "Everything is running smoothly",
-    summaryTitle: "Alert Summary",
-    inventoryAlerts: "Inventory Alerts",
-    orderAlerts: "Order Alerts",
-    totalAlertsLabel: "Total Alerts",
-    items: "items",
-    orders: "orders",
-    alerts: "alerts",
-  },
-};
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function localizeOrderStatus(
-  status: string,
-  map: Record<string, string>
-): string {
-  return map[status.toLowerCase()] ?? status;
-}
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function KpiCard({
-  icon,
-  label,
-  value,
-  color,
-}: {
-  icon: string;
-  label: string;
-  value: number;
-  color: "red" | "amber" | "blue" | "slate";
-}) {
-  const colorMap = {
-    red:   { bg: "bg-red-500/10",   border: "border-red-500/20",   text: "text-red-400",   iconBg: "bg-red-500/15"   },
-    amber: { bg: "bg-amber-500/10", border: "border-amber-500/20", text: "text-amber-400", iconBg: "bg-amber-500/15" },
-    blue:  { bg: "bg-blue-500/10",  border: "border-blue-500/20",  text: "text-blue-400",  iconBg: "bg-blue-500/15"  },
-    slate: { bg: "bg-slate-700/40", border: "border-slate-600/30", text: "text-slate-300", iconBg: "bg-slate-600/40" },
-  };
-  const c = colorMap[color];
-
-  return (
-    <div
-      className={`${c.bg} ${c.border} border rounded-2xl p-4 flex flex-col gap-3 min-w-0`}
-      role="region"
-      aria-label={`${label}: ${value}`}
-    >
-      <div className={`${c.iconBg} w-10 h-10 rounded-xl flex items-center justify-center text-lg`} aria-hidden="true">
-        {icon}
-      </div>
-      <div>
-        <div className={`text-2xl font-bold ${c.text} leading-none`} aria-hidden="true">{value}</div>
-        <div className="text-slate-400 text-xs mt-1 leading-snug">{label}</div>
-      </div>
-    </div>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  label,
-  count,
-  color,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  count: number;
-  color: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      aria-pressed={active}
-      aria-label={`${label} (${count})`}
-      className={`
-        flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap
-        transition-all duration-200 border
-        focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950
-        ${
-          active
-            ? `${color} border-current/30 shadow-sm`
-            : "text-slate-400 border-slate-700/50 hover:text-slate-200 hover:border-slate-600"
-        }
-      `}
-    >
-      {label}
-      <span
-        className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${active ? "bg-white/15" : "bg-slate-700"}`}
-        aria-hidden="true"
-      >
-        {count}
-      </span>
-    </button>
-  );
-}
-
-function EmptyState({
-  icon,
-  title,
-  subtitle,
-  color,
-}: {
-  icon: string;
-  title: string;
-  subtitle: string;
-  color: "red" | "amber" | "blue" | "slate";
-}) {
-  const colorMap = {
-    red:   "text-red-400/40",
-    amber: "text-amber-400/40",
-    blue:  "text-blue-400/40",
-    slate: "text-slate-500",
-  };
-
-  return (
-    <div className="flex flex-col items-center justify-center py-10 gap-3" role="status" aria-label={title}>
-      <div className={`text-4xl ${colorMap[color]}`} aria-hidden="true">{icon}</div>
-      <div className="text-slate-300 font-medium text-sm text-center">{title}</div>
-      <div className="text-slate-500 text-xs text-center max-w-xs">{subtitle}</div>
-    </div>
-  );
-}
-
-function ProductCard({
-  item,
-  type,
-  t,
-}: {
-  item: ProductAlert;
-  type: "outOfStock" | "lowStock";
-  t: typeof translations.ar;
-}) {
-  const isOut = type === "outOfStock";
-  const statusLabel = isOut ? t.statusOutOfStock : t.statusLowStock;
-
-  return (
-    <div
-      className={`
-        rounded-xl p-4 border flex items-center justify-between gap-3
-        ${isOut
-          ? "bg-red-500/5 border-red-500/20 ring-1 ring-red-500/10"
-          : "bg-amber-500/5 border-amber-500/15"
-        }
-      `}
-      role="listitem"
-      aria-label={`${item.part_name} — ${statusLabel} — ${t.currentQty}: ${item.quantity}`}
-    >
-      <div className="flex items-center gap-3 min-w-0">
-        <div
-          className={`w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 ${isOut ? "bg-red-500/15" : "bg-amber-500/15"}`}
-          aria-hidden="true"
-        >
-          {isOut ? "📦" : "⚠️"}
-        </div>
-        <div className="min-w-0">
-          <div className="text-white font-medium text-sm truncate">{item.part_name}</div>
-          <div className={`text-xs mt-0.5 ${isOut ? "text-red-400" : "text-amber-400"}`}>
-            {t.currentQty}: {item.quantity}
-          </div>
-        </div>
-      </div>
-      <span
-        className={`
-          shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border
-          ${isOut
-            ? "text-red-400 bg-red-500/10 border-red-500/20"
-            : "text-amber-400 bg-amber-500/10 border-amber-500/20"
-          }
-        `}
-        aria-hidden="true"
-      >
-        {statusLabel}
-      </span>
-    </div>
-  );
-}
-
-function OrderCard({
-  order,
-  t,
-}: {
-  order: PendingOrder;
-  t: typeof translations.ar;
-}) {
-  const localizedStatus = localizeOrderStatus(order.status, t.orderStatus);
-
-  return (
-    <div
-      className="bg-blue-500/5 border border-blue-500/15 rounded-xl p-4 flex items-center justify-between gap-3"
-      role="listitem"
-      aria-label={`${t.orderNumber} #${order.id} — ${localizedStatus}`}
-    >
-      <div className="flex items-center gap-3">
-        <div className="w-9 h-9 rounded-lg bg-blue-500/15 flex items-center justify-center text-base shrink-0" aria-hidden="true">
-          🛒
-        </div>
-        <div>
-          <div className="text-white font-medium text-sm">{t.orderNumber} #{order.id}</div>
-          <div className="text-slate-400 text-xs mt-0.5">{localizedStatus}</div>
-        </div>
-      </div>
-      <span className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full text-amber-400 bg-amber-500/10 border border-amber-500/20">
-        {localizedStatus}
-      </span>
-    </div>
-  );
-}
-
-function SectionCard({
-  title,
-  icon,
-  count,
-  color,
-  children,
-}: {
-  title: string;
-  icon: string;
-  count: number;
-  color: "red" | "amber" | "blue";
-  children: React.ReactNode;
-}) {
-  const borderMap = { red: "border-red-500/20",   amber: "border-amber-500/20", blue: "border-blue-500/20"  };
-  const textMap   = { red: "text-red-400",         amber: "text-amber-400",      blue: "text-blue-400"       };
-  const badgeMap  = { red: "bg-red-500/15 text-red-400", amber: "bg-amber-500/15 text-amber-400", blue: "bg-blue-500/15 text-blue-400" };
-
-  return (
-    <section
-      className={`bg-slate-900 border ${borderMap[color]} rounded-2xl overflow-hidden`}
-      aria-label={`${title} (${count})`}
-    >
-      <div className="px-5 py-4 flex items-center justify-between border-b border-slate-800">
-        <div className="flex items-center gap-2.5">
-          <span className="text-xl" aria-hidden="true">{icon}</span>
-          <span className={`font-bold text-base ${textMap[color]}`}>{title}</span>
-        </div>
-        <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${badgeMap[color]}`} aria-hidden="true">
-          {count}
-        </span>
-      </div>
-      <div className="p-4 space-y-3" role="list">{children}</div>
-    </section>
-  );
-}
+type FilterTab = "all" | "inventory" | "orders";
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function AlertsPage() {
   const { ownedShopId, loading: authLoading } = useAuth();
-  const { isRTL } = useLang();
-
-  const t = (isRTL ? translations.ar : translations.en) as typeof translations.ar;
+  const { t, isRTL } = useLang();
 
   const [outOfStock, setOutOfStock]       = useState<ProductAlert[]>([]);
   const [lowStock, setLowStock]           = useState<ProductAlert[]>([]);
@@ -361,261 +46,254 @@ export default function AlertsPage() {
   const [activeTab, setActiveTab]         = useState<FilterTab>("all");
 
   useEffect(() => {
-    if (authLoading) return;
-    if (!ownedShopId) {
+    if (!authLoading && ownedShopId) {
+      loadAlerts(ownedShopId);
+    } else if (!authLoading && !ownedShopId) {
       setLoading(false);
-      return;
     }
-    loadAlerts(ownedShopId);
   }, [ownedShopId, authLoading]);
-
-  // ── EXACT original queries, untouched ────────────────────────────────────
 
   async function loadAlerts(currentShopId: number) {
     setLoading(true);
+    try {
+      const { data: outData } = await supabase
+        .from("products")
+        .select("id, part_name, part_number, quantity")
+        .eq("shop_id", currentShopId)
+        .eq("quantity", 0);
 
-    const { data: outData } = await supabase
-      .from("products")
-      .select("id, part_name, quantity")
-      .eq("shop_id", currentShopId)
-      .eq("quantity", 0);
+      const { data: lowData } = await supabase
+        .from("products")
+        .select("id, part_name, part_number, quantity")
+        .eq("shop_id", currentShopId)
+        .lte("quantity", 3)
+        .gt("quantity", 0);
 
-    const { data: lowData } = await supabase
-      .from("products")
-      .select("id, part_name, quantity")
-      .eq("shop_id", currentShopId)
-      .lte("quantity", 3)
-      .gt("quantity", 0);
+      const { data: ordersData } = await supabase
+        .from("orders")
+        .select("id, status, total_amount, created_at")
+        .eq("from_shop_id", currentShopId)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false });
 
-    const { data: ordersData } = await supabase
-      .from("orders")
-      .select("id, status")
-      .eq("from_shop_id", currentShopId)
-      .eq("status", "pending")
-      .order("created_at", { ascending: false });
-
-    setOutOfStock(outData || []);
-    setLowStock(lowData || []);
-    setPendingOrders(ordersData || []);
-    setLoading(false);
+      setOutOfStock(outData || []);
+      setLowStock(lowData || []);
+      setPendingOrders(ordersData || []);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  // ── Phase 2: Smart sorting (memoized) ─────────────────────────────────────
+  const counts = useMemo(() => ({
+    out: outOfStock.length,
+    low: lowStock.length,
+    orders: pendingOrders.length,
+    total: outOfStock.length + lowStock.length + pendingOrders.length
+  }), [outOfStock, lowStock, pendingOrders]);
 
-  const sortedOutOfStock = useMemo(
-    () => [...outOfStock].sort((a, b) => a.part_name.localeCompare(b.part_name)),
-    [outOfStock]
-  );
-
-  const sortedLowStock = useMemo(
-    () => [...lowStock].sort((a, b) => a.quantity - b.quantity),
-    [lowStock]
-  );
-
-  // pendingOrders already arrive newest-first (order by created_at desc in query)
-
-  // ── Phase 3: Action Center — out-of-stock first, then low-stock by qty ───
-
-  const actionItems = useMemo(
-    () => [
-      ...sortedOutOfStock.slice(0, 5).map((item) => ({ item, type: "outOfStock" as const })),
-      ...sortedLowStock.slice(0, 5).map((item) => ({ item, type: "lowStock" as const })),
-    ],
-    [sortedOutOfStock, sortedLowStock]
-  );
-
-  // ── Derived counts (memoized) ─────────────────────────────────────────────
-
-  const totalAlerts = useMemo(
-    () => outOfStock.length + lowStock.length + pendingOrders.length,
-    [outOfStock.length, lowStock.length, pendingOrders.length]
-  );
-
-  const inventoryAlerts = useMemo(
-    () => outOfStock.length + lowStock.length,
-    [outOfStock.length, lowStock.length]
-  );
-
-  // ── Loading ───────────────────────────────────────────────────────────────
-
-  if (authLoading || loading) {
+  if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 gap-4" role="status" aria-live="polite">
-        <div className="w-10 h-10 border-2 border-slate-600 border-t-blue-500 rounded-full animate-spin" aria-hidden="true" />
-        <div className="text-slate-400 text-sm">{t.loading}</div>
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
+        <RefreshCw className="w-8 h-8 text-emerald-500 animate-spin" />
+        <p className="text-slate-400 text-sm animate-pulse">{t('Syncing alerts...', 'جاري مزامنة التنبيهات...')}</p>
       </div>
     );
   }
 
   if (!ownedShopId) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 gap-3" role="alert">
-        <div className="text-4xl" aria-hidden="true">🔒</div>
-        <div className="text-red-400 text-sm font-medium">{t.noShop}</div>
+      <div className="flex flex-col items-center justify-center min-h-[400px] text-center px-6">
+        <div className="w-16 h-16 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-center mb-4">
+          <Info className="text-slate-500" size={32} />
+        </div>
+        <h2 className="text-white font-bold text-lg mb-2">{t('No Shop Connected', 'لا يوجد محل مرتبط')}</h2>
+        <p className="text-slate-500 text-sm max-w-xs">{t('Please ensure your account is linked to a shop to view alerts.', 'يرجى التأكد من ربط حسابك بمحل لتتمكن من رؤية التنبيهات.')}</p>
       </div>
     );
   }
 
-  // ── Tab visibility flags ──────────────────────────────────────────────────
-
-  const showOutOfStock = activeTab === "all" || activeTab === "outOfStock";
-  const showLowStock   = activeTab === "all" || activeTab === "lowStock";
-  const showPending    = activeTab === "all" || activeTab === "pending";
-
-  // ── Render ────────────────────────────────────────────────────────────────
-
   return (
-    <div className="space-y-6 pb-8" dir={isRTL ? "rtl" : "ltr"}>
-
-      {/* ── Page Header ── */}
-      <div className="flex items-start justify-between gap-4">
+    <div className="pb-10 max-w-5xl mx-auto" dir={isRTL ? 'rtl' : 'ltr'}>
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-white leading-tight">{t.pageTitle}</h1>
-          <p className="text-slate-400 text-sm mt-1">{t.pageSubtitle}</p>
+          <h1 className="text-2xl font-black text-white flex items-center gap-3">
+            <div className="p-2 bg-emerald-500/10 rounded-lg">
+              <Bell className="text-emerald-500" size={24} />
+            </div>
+            {t('Notification Center', 'مركز التنبيهات')}
+          </h1>
+          <p className="text-slate-500 text-sm mt-1">{t('Review critical inventory levels and pending tasks.', 'راجع مستويات المخزون الحرجة والمهام المعلقة.')}</p>
         </div>
-        {totalAlerts > 0 && (
-          <div
-            className="shrink-0 flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2"
-            aria-label={`${totalAlerts} ${t.alerts}`}
-            role="status"
-          >
-            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" aria-hidden="true" />
-            <span className="text-red-400 text-xs font-semibold">{totalAlerts}</span>
+        <button 
+          onClick={() => loadAlerts(ownedShopId!)}
+          className="p-2.5 rounded-xl border border-slate-800 bg-slate-900 text-slate-400 hover:text-white transition-all"
+        >
+          <RefreshCw size={18} />
+        </button>
+      </div>
+
+      {/* KPI Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-sm relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-red-500/5 rounded-full -mr-12 -mt-12 transition-transform group-hover:scale-110" />
+          <div className="flex items-center gap-4 relative">
+            <div className="w-12 h-12 bg-red-500/10 rounded-xl flex items-center justify-center text-red-500">
+              <PackageX size={24} />
+            </div>
+            <div>
+              <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">{t('Out of Stock', 'نفد المخزون')}</p>
+              <p className="text-2xl font-black text-white">{counts.out}</p>
+            </div>
           </div>
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-sm relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full -mr-12 -mt-12 transition-transform group-hover:scale-110" />
+          <div className="flex items-center gap-4 relative">
+            <div className="w-12 h-12 bg-amber-500/10 rounded-xl flex items-center justify-center text-amber-500">
+              <AlertTriangle size={24} />
+            </div>
+            <div>
+              <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">{t('Low Stock', 'مخزون منخفض')}</p>
+              <p className="text-2xl font-black text-white">{counts.low}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-sm relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-full -mr-12 -mt-12 transition-transform group-hover:scale-110" />
+          <div className="flex items-center gap-4 relative">
+            <div className="w-12 h-12 bg-blue-500/10 rounded-xl flex items-center justify-center text-blue-400">
+              <ShoppingCart size={24} />
+            </div>
+            <div>
+              <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">{t('Pending Orders', 'طلبات معلقة')}</p>
+              <p className="text-2xl font-black text-white">{counts.orders}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs / Filters */}
+      <div className="flex items-center gap-2 mb-6 bg-slate-900/50 p-1 rounded-xl border border-slate-800 w-fit">
+        <button 
+          onClick={() => setActiveTab('all')}
+          className={`px-6 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'all' ? 'bg-slate-800 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+        >
+          {t('All Alerts', 'جميع التنبيهات')}
+        </button>
+        <button 
+          onClick={() => setActiveTab('inventory')}
+          className={`px-6 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'inventory' ? 'bg-slate-800 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+        >
+          {t('Inventory', 'المخزون')}
+        </button>
+        <button 
+          onClick={() => setActiveTab('orders')}
+          className={`px-6 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'orders' ? 'bg-slate-800 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+        >
+          {t('Orders', 'الطلبات')}
+        </button>
+      </div>
+
+      {/* Content */}
+      <div className="space-y-4">
+        {counts.total === 0 ? (
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-16 text-center shadow-xl">
+            <div className="w-20 h-20 bg-emerald-500/5 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Bell className="text-emerald-500/30" size={40} />
+            </div>
+            <h3 className="text-white font-black text-xl mb-2">{t('All Clear!', 'كل شيء ممتاز!')}</h3>
+            <p className="text-slate-500 max-w-sm mx-auto">{t('No critical alerts found. Your inventory and orders are performing well.', 'لا توجد تنبيهات عاجلة. مخزونك وطلباتك تعمل بشكل جيد.')}</p>
+          </div>
+        ) : (
+          <>
+            {/* Out of Stock Section */}
+            {(activeTab === 'all' || activeTab === 'inventory') && outOfStock.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="text-xs font-black text-red-500 uppercase tracking-widest flex items-center gap-2 px-2">
+                  <PackageX size={14} /> {t('Critical: Out of Stock', 'حرج: نفد المخزون')}
+                </h3>
+                {outOfStock.map(item => (
+                  <div key={item.id} className="bg-slate-900 border-l-4 border-l-red-500 border border-slate-800 p-4 rounded-xl flex items-center justify-between group hover:border-slate-700 transition-all">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 bg-red-500/5 rounded-lg flex items-center justify-center text-red-500 shrink-0">0</div>
+                      <div>
+                        <p className="text-white font-bold text-sm">{item.part_name}</p>
+                        <p className="text-slate-500 text-[10px] font-mono mt-0.5">{item.part_number || '—'}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="hidden sm:block text-right">
+                        <p className="text-red-500 text-xs font-bold">{t('Action Required', 'مطلوب إجراء')}</p>
+                        <p className="text-slate-500 text-[10px]">{t('Zero items remaining', 'لا توجد قطع متبقية')}</p>
+                      </div>
+                      <ChevronRight className="text-slate-700 group-hover:text-slate-400 group-hover:translate-x-1 transition-all" size={18} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Low Stock Section */}
+            {(activeTab === 'all' || activeTab === 'inventory') && lowStock.length > 0 && (
+              <div className="space-y-3 mt-8">
+                <h3 className="text-xs font-black text-amber-500 uppercase tracking-widest flex items-center gap-2 px-2">
+                  <AlertTriangle size={14} /> {t('Warning: Low Stock', 'تحذير: مخزون منخفض')}
+                </h3>
+                {lowStock.map(item => (
+                  <div key={item.id} className="bg-slate-900 border-l-4 border-l-amber-500 border border-slate-800 p-4 rounded-xl flex items-center justify-between group hover:border-slate-700 transition-all">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 bg-amber-500/5 rounded-lg flex items-center justify-center text-amber-500 font-black text-sm shrink-0">{item.quantity}</div>
+                      <div>
+                        <p className="text-white font-bold text-sm">{item.part_name}</p>
+                        <p className="text-slate-500 text-[10px] font-mono mt-0.5">{item.part_number || '—'}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="hidden sm:block text-right">
+                        <p className="text-amber-500 text-xs font-bold">{t('Restock Soon', 'أعد الطلب قريباً')}</p>
+                        <p className="text-slate-500 text-[10px]">{t('Below threshold', 'أقل من الحد الأدنى')}</p>
+                      </div>
+                      <ChevronRight className="text-slate-700 group-hover:text-slate-400 group-hover:translate-x-1 transition-all" size={18} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Pending Orders Section */}
+            {(activeTab === 'all' || activeTab === 'orders') && pendingOrders.length > 0 && (
+              <div className="space-y-3 mt-8">
+                <h3 className="text-xs font-black text-blue-400 uppercase tracking-widest flex items-center gap-2 px-2">
+                  <ShoppingCart size={14} /> {t('Orders: Attention Needed', 'الطلبات: تحتاج متابعة')}
+                </h3>
+                {pendingOrders.map(order => (
+                  <div key={order.id} className="bg-slate-900 border-l-4 border-l-blue-500 border border-slate-800 p-4 rounded-xl flex items-center justify-between group hover:border-slate-700 transition-all">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 bg-blue-500/5 rounded-lg flex items-center justify-center text-blue-400 shrink-0">
+                        <ArrowRightLeft size={18} />
+                      </div>
+                      <div>
+                        <p className="text-white font-bold text-sm">{t('Purchase Order', 'طلب شراء')} #{order.id}</p>
+                        <p className="text-slate-500 text-[10px] mt-0.5">{new Date(order.created_at).toLocaleDateString()}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="hidden sm:block text-right">
+                        <p className="text-blue-400 text-xs font-bold">{order.total_amount?.toLocaleString()} ر.س</p>
+                        <p className="text-slate-500 text-[10px]">{t('Waiting for approval', 'في انتظار الاعتماد')}</p>
+                      </div>
+                      <ChevronRight className="text-slate-700 group-hover:text-slate-400 group-hover:translate-x-1 transition-all" size={18} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
-
-      {/* ── KPI Cards ── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" role="region" aria-label={t.totalAlerts}>
-        <KpiCard icon="🚨" label={t.outOfStockItems}    value={outOfStock.length}    color="red"   />
-        <KpiCard icon="⚠️" label={t.lowStockItems}      value={lowStock.length}      color="amber" />
-        <KpiCard icon="📦" label={t.pendingOrdersLabel} value={pendingOrders.length} color="blue"  />
-        <KpiCard icon="🔔" label={t.totalAlerts}        value={totalAlerts}          color="slate" />
-      </div>
-
-      {/* ── Filter Tabs ── */}
-      <nav
-        className="flex gap-2 overflow-x-auto pb-1 scrollbar-none -mx-1 px-1"
-        aria-label={t.allAlerts}
-        role="tablist"
-      >
-        <TabButton active={activeTab === "all"}        onClick={() => setActiveTab("all")}        label={t.allAlerts}     count={totalAlerts}          color="text-slate-200" />
-        <TabButton active={activeTab === "outOfStock"} onClick={() => setActiveTab("outOfStock")} label={t.outOfStock}    count={outOfStock.length}    color="text-red-400"   />
-        <TabButton active={activeTab === "lowStock"}   onClick={() => setActiveTab("lowStock")}   label={t.lowStock}      count={lowStock.length}      color="text-amber-400" />
-        <TabButton active={activeTab === "pending"}    onClick={() => setActiveTab("pending")}    label={t.pendingOrders} count={pendingOrders.length} color="text-blue-400"  />
-      </nav>
-
-      {/* ── Action Center (all tab only) ── */}
-      {activeTab === "all" && actionItems.length > 0 && (
-        <section
-          className="bg-slate-900 border border-slate-700/50 rounded-2xl overflow-hidden"
-          aria-label={t.actionCenterTitle}
-        >
-          <div className="px-5 py-4 border-b border-slate-800 flex items-center gap-2.5">
-            <span className="text-xl" aria-hidden="true">⚡</span>
-            <div>
-              <div className="text-white font-bold text-sm">{t.actionCenterTitle}</div>
-              <div className="text-slate-500 text-xs mt-0.5">{t.actionCenterSubtitle}</div>
-            </div>
-          </div>
-          <div className="p-4 space-y-3" role="list">
-            {actionItems.map(({ item, type }) => (
-              <ProductCard key={`action-${type}-${item.id}`} item={item} type={type} t={t} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* ── Priority 1: Out of Stock ── */}
-      {showOutOfStock && (
-        <SectionCard title={t.outOfStockTitle} icon="🚨" count={outOfStock.length} color="red">
-          {sortedOutOfStock.length === 0 ? (
-            <EmptyState icon="✅" title={t.emptyOutOfStock} subtitle={t.emptyOutOfStockSub} color="red" />
-          ) : (
-            sortedOutOfStock.map((item) => (
-              <ProductCard key={item.id} item={item} type="outOfStock" t={t} />
-            ))
-          )}
-        </SectionCard>
-      )}
-
-      {/* ── Priority 2: Low Stock ── */}
-      {showLowStock && (
-        <SectionCard title={t.lowStockTitle} icon="⚠️" count={lowStock.length} color="amber">
-          {sortedLowStock.length === 0 ? (
-            <EmptyState icon="📊" title={t.emptyLowStock} subtitle={t.emptyLowStockSub} color="amber" />
-          ) : (
-            sortedLowStock.map((item) => (
-              <ProductCard key={item.id} item={item} type="lowStock" t={t} />
-            ))
-          )}
-        </SectionCard>
-      )}
-
-      {/* ── Priority 3: Pending Orders ── */}
-      {showPending && (
-        <SectionCard title={t.pendingOrdersTitle} icon="📦" count={pendingOrders.length} color="blue">
-          {pendingOrders.length === 0 ? (
-            <EmptyState icon="🎉" title={t.emptyPending} subtitle={t.emptyPendingSub} color="blue" />
-          ) : (
-            pendingOrders.map((order) => (
-              <OrderCard key={order.id} order={order} t={t} />
-            ))
-          )}
-        </SectionCard>
-      )}
-
-      {/* ── Global empty state (all tab, zero alerts) ── */}
-      {activeTab === "all" && totalAlerts === 0 && (
-        <div className="bg-slate-900 border border-slate-700/30 rounded-2xl">
-          <EmptyState icon="🎯" title={t.emptyAll} subtitle={t.emptyAllSub} color="slate" />
-        </div>
-      )}
-
-      {/* ── Alert Summary (all tab only) ── */}
-      {activeTab === "all" && (
-        <section
-          className="bg-slate-900 border border-slate-700/30 rounded-2xl overflow-hidden"
-          aria-label={t.summaryTitle}
-        >
-          <div className="px-5 py-4 border-b border-slate-800">
-            <div className="text-white font-bold text-sm">{t.summaryTitle}</div>
-          </div>
-          <dl className="divide-y divide-slate-800">
-            <div className="px-5 py-4 flex items-center justify-between">
-              <dt className="flex items-center gap-2.5">
-                <span aria-hidden="true">📦</span>
-                <span className="text-slate-300 text-sm">{t.inventoryAlerts}</span>
-              </dt>
-              <dd className="flex items-center gap-2">
-                <span className="text-white font-bold text-sm">{inventoryAlerts}</span>
-                <span className="text-slate-500 text-xs">{t.items}</span>
-              </dd>
-            </div>
-            <div className="px-5 py-4 flex items-center justify-between">
-              <dt className="flex items-center gap-2.5">
-                <span aria-hidden="true">🛒</span>
-                <span className="text-slate-300 text-sm">{t.orderAlerts}</span>
-              </dt>
-              <dd className="flex items-center gap-2">
-                <span className="text-white font-bold text-sm">{pendingOrders.length}</span>
-                <span className="text-slate-500 text-xs">{t.orders}</span>
-              </dd>
-            </div>
-            <div className="px-5 py-4 flex items-center justify-between">
-              <dt className="flex items-center gap-2.5">
-                <span aria-hidden="true">🔔</span>
-                <span className="text-slate-300 text-sm font-medium">{t.totalAlertsLabel}</span>
-              </dt>
-              <dd className="flex items-center gap-2">
-                <span className="text-white font-bold">{totalAlerts}</span>
-                <span className="text-slate-500 text-xs">{t.alerts}</span>
-              </dd>
-            </div>
-          </dl>
-        </section>
-      )}
-
     </div>
   );
 }

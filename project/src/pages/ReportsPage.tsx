@@ -1,7 +1,20 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { useLang } from "../context/LanguageContext";
+import { 
+  TrendingUp, 
+  Package, 
+  DollarSign, 
+  AlertTriangle, 
+  Activity, 
+  CheckCircle2, 
+  RefreshCcw,
+  BarChart3,
+  Archive,
+  ArrowUpRight,
+  LayoutDashboard
+} from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -16,104 +29,80 @@ type ProductReport = {
 
 const translations = {
   ar: {
-    pageTitle: "التقارير",
-    pageSubtitle: "ملخص أداء المحل والمخزون",
-    loading: "جاري تحميل التقارير...",
+    pageTitle: "تقارير الأعمال",
+    pageSubtitle: "تحليل ذكاء المخزون وأداء المتجر",
+    loading: "جاري تحليل البيانات...",
     noShop: "لم يتم العثور على محل مرتبط بهذا الحساب",
-
-    // KPI
-    totalProducts: "إجمالي المنتجات",
-    totalQuantity: "إجمالي الكمية",
+    totalProducts: "إجمالي الأصناف",
+    totalQuantity: "إجمالي القطع",
     inventoryValue: "قيمة المخزون",
-    lowStockProducts: "منخفض المخزون",
+    lowStockProducts: "تنبيهات المنخفض",
     currency: "ر.س",
-
-    // Inventory Health
-    healthTitle: "صحة المخزون",
-    healthyProducts: "منتجات سليمة",
-    lowStockItems: "منخفض المخزون",
-    reorderNeeded: "تحتاج إعادة طلب",
-
-    // Top Products
-    topProductsTitle: "أعلى المنتجات كمية",
-    colProduct: "المنتج",
+    healthTitle: "مؤشر صحة المخزون",
+    healthyProducts: "مخزون سليم",
+    lowStockItems: "مخزون منخفض",
+    reorderNeeded: "بحاجة لإعادة طلب",
+    topProductsTitle: "المنتجات الأكثر توفراً",
+    colProduct: "اسم المنتج",
     colQuantity: "الكمية",
     colStatus: "الحالة",
-    statusHealthy: "جيد",
+    statusHealthy: "سليم",
     statusLow: "منخفض",
     statusCritical: "حرج",
-
-    // Reorder Center
-    reorderTitle: "مركز إعادة الطلب",
-    reorderSubtitle: "مرتبة حسب الأولوية",
+    reorderTitle: "مركز التوريد",
+    reorderSubtitle: "الأصناف التي قاربت على النفاذ",
     qtyLabel: "الكمية",
-    urgencyHigh: "عاجل",
-    urgencyMedium: "متوسط",
-    urgencyLow: "منخفض",
-
-    // Summary
-    summaryTitle: "ملخص التقرير",
-    summaryValue: "قيمة المخزون",
-    summaryQty: "إجمالي الكمية",
-    summaryAttention: "تحتاج متابعة",
-    pieces: "قطعة",
-    products: "منتج",
-
-    // Empty states
-    emptyProducts: "لا توجد منتجات",
-    emptyProductsSub: "لم يتم إضافة أي منتجات لهذا المحل بعد",
-    emptyReorder: "لا توجد منتجات تحتاج إعادة طلب",
-    emptyReorderSub: "جميع المنتجات ضمن مستويات المخزون الطبيعية",
+    urgencyHigh: "فوري",
+    urgencyMedium: "عاجل",
+    urgencyLow: "قريباً",
+    summaryTitle: "الملخص التنفيذي",
+    summaryValue: "القيمة الإجمالية",
+    summaryQty: "إجمالي الوحدات",
+    summaryAttention: "أصناف للمتابعة",
+    pieces: "وحدة",
+    products: "صنف",
+    emptyProducts: "لا توجد بيانات",
+    emptyProductsSub: "ابدأ بإضافة المنتجات للمخزون لعرض التقارير",
+    emptyReorder: "المخزون مثالي",
+    emptyReorderSub: "لا توجد أصناف تحتاج لإعادة طلب حالياً",
   },
   en: {
-    pageTitle: "Reports",
-    pageSubtitle: "Shop performance and inventory summary",
-    loading: "Loading reports...",
+    pageTitle: "Business Reports",
+    pageSubtitle: "Inventory intelligence and shop performance",
+    loading: "Analyzing data...",
     noShop: "No shop linked to this account",
-
-    // KPI
-    totalProducts: "Total Products",
-    totalQuantity: "Total Quantity",
+    totalProducts: "Total Items",
+    totalQuantity: "Total Units",
     inventoryValue: "Inventory Value",
-    lowStockProducts: "Low Stock",
+    lowStockProducts: "Low Stock Alerts",
     currency: "SAR",
-
-    // Inventory Health
-    healthTitle: "Inventory Health",
-    healthyProducts: "Healthy Products",
+    healthTitle: "Inventory Health Index",
+    healthyProducts: "Healthy Stock",
     lowStockItems: "Low Stock",
     reorderNeeded: "Reorder Needed",
-
-    // Top Products
-    topProductsTitle: "Top Products by Quantity",
-    colProduct: "Product",
+    topProductsTitle: "Top Inventory Holdings",
+    colProduct: "Product Name",
     colQuantity: "Qty",
     colStatus: "Status",
     statusHealthy: "Healthy",
     statusLow: "Low",
     statusCritical: "Critical",
-
-    // Reorder Center
-    reorderTitle: "Reorder Center",
-    reorderSubtitle: "Sorted by priority",
+    reorderTitle: "Procurement Center",
+    reorderSubtitle: "Items reaching critical levels",
     qtyLabel: "Qty",
-    urgencyHigh: "Urgent",
-    urgencyMedium: "Medium",
-    urgencyLow: "Low",
-
-    // Summary
-    summaryTitle: "Report Summary",
-    summaryValue: "Inventory Value",
-    summaryQty: "Total Quantity",
-    summaryAttention: "Needs Attention",
+    urgencyHigh: "Immediate",
+    urgencyMedium: "Urgent",
+    urgencyLow: "Soon",
+    summaryTitle: "Executive Summary",
+    summaryValue: "Total Value",
+    summaryQty: "Total Units",
+    summaryAttention: "Items to Watch",
     pieces: "pcs",
-    products: "products",
-
-    // Empty states
-    emptyProducts: "No products found",
-    emptyProductsSub: "No products have been added to this shop yet",
-    emptyReorder: "No products need reordering",
-    emptyReorderSub: "All products are within normal stock levels",
+    products: "items",
+    emptyProducts: "No Data Found",
+    emptyProductsSub: "Start adding products to see your reports",
+    emptyReorder: "Optimal Levels",
+    emptyReorderSub: "No items currently require reordering",
   },
 };
 
@@ -126,478 +115,312 @@ function getStockStatus(qty: number): "healthy" | "low" | "critical" {
 }
 
 function getUrgency(qty: number): "high" | "medium" | "low" {
-  if (qty === 1) return "high";
+  if (qty <= 1) return "high";
   if (qty === 2) return "medium";
   return "low";
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function KpiCard({
-  icon,
-  label,
-  value,
-  color,
-}: {
-  icon: string;
-  label: string;
-  value: React.ReactNode;
-  color: "white" | "green" | "amber" | "blue";
-}) {
-  const textMap = {
-    white: "text-white",
-    green: "text-emerald-400",
-    amber: "text-amber-400",
-    blue: "text-blue-400",
-  };
-  const iconBgMap = {
-    white: "bg-slate-700/50",
-    green: "bg-emerald-500/15",
-    amber: "bg-amber-500/15",
-    blue: "bg-blue-500/15",
+function KpiCard({ icon: Icon, label, value, color }: { icon: any, label: string, value: React.ReactNode, color: string }) {
+  const colorVariants: Record<string, string> = {
+    emerald: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
+    blue: "text-blue-400 bg-blue-500/10 border-blue-500/20",
+    amber: "text-amber-400 bg-amber-500/10 border-amber-500/20",
+    slate: "text-slate-100 bg-slate-800 border-slate-700",
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 lg:p-5 flex flex-col gap-3">
-      <div className={`w-9 h-9 rounded-xl ${iconBgMap[color]} flex items-center justify-center text-base`}>
-        {icon}
+    <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-all group">
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-4 transition-transform group-hover:scale-110 ${colorVariants[color]}`}>
+        <Icon size={20} />
       </div>
-      <div>
-        <div className={`text-xl lg:text-2xl font-bold ${textMap[color]} leading-none`}>{value}</div>
-        <div className="text-slate-400 text-xs mt-1.5 leading-snug">{label}</div>
-      </div>
+      <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-1">{label}</p>
+      <div className="text-2xl font-black text-white tracking-tight">{value}</div>
     </div>
   );
 }
 
-function HealthBar({
-  label,
-  count,
-  total,
-  color,
-  icon,
-}: {
-  label: string;
-  count: number;
-  total: number;
-  color: string;
-  icon: string;
-}) {
+function HealthBar({ label, count, total, color, icon: Icon }: { label: string, count: number, total: number, color: string, icon: any }) {
   const pct = total > 0 ? Math.round((count / total) * 100) : 0;
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-sm">{icon}</span>
-          <span className="text-slate-300 text-sm">{label}</span>
+    <div className="bg-slate-800/30 p-4 rounded-xl border border-slate-800/50 group">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2.5">
+          <Icon size={16} className={color.replace('bg-', 'text-')} />
+          <span className="text-slate-300 text-sm font-medium">{label}</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-white font-bold text-sm">{count}</span>
-          <span className="text-slate-500 text-xs">/ {total}</span>
+          <span className="text-white font-black text-sm">{count}</span>
+          <span className="text-slate-600 text-[10px] font-bold">/ {total}</span>
         </div>
       </div>
-      <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-500 ${color}`}
-          style={{ width: `${pct}%` }}
+      <div className="h-2 bg-slate-950 rounded-full overflow-hidden flex">
+        <div 
+          className={`h-full rounded-full transition-all duration-700 ease-out ${color} shadow-[0_0_8px_rgba(0,0,0,0.5)]`} 
+          style={{ width: `${pct}%` }} 
         />
       </div>
+      <div className="flex justify-end mt-1">
+        <span className="text-[10px] font-bold text-slate-500">{pct}%</span>
+      </div>
     </div>
   );
 }
 
-function StatusBadge({ status, t }: { status: "healthy" | "low" | "critical"; t: typeof translations.ar }) {
-  const map = {
-    healthy: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
-    low: "text-amber-400 bg-amber-500/10 border-amber-500/20",
-    critical: "text-red-400 bg-red-500/10 border-red-500/20",
-  };
-  const labels = {
-    healthy: t.statusHealthy,
-    low: t.statusLow,
-    critical: t.statusCritical,
-  };
-  return (
-    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${map[status]}`}>
-      {labels[status]}
-    </span>
-  );
-}
-
-function UrgencyBadge({ urgency, t }: { urgency: "high" | "medium" | "low"; t: typeof translations.ar }) {
-  const map = {
-    high: "text-red-400 bg-red-500/10 border-red-500/20",
-    medium: "text-amber-400 bg-amber-500/10 border-amber-500/20",
-    low: "text-yellow-400/80 bg-yellow-500/10 border-yellow-500/20",
-  };
-  const labels = {
-    high: t.urgencyHigh,
-    medium: t.urgencyMedium,
-    low: t.urgencyLow,
-  };
-  return (
-    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${map[urgency]}`}>
-      {labels[urgency]}
-    </span>
-  );
-}
-
-function EmptyState({ icon, title, subtitle }: { icon: string; title: string; subtitle: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-10 gap-3">
-      <div className="text-4xl opacity-30">{icon}</div>
-      <div className="text-slate-300 font-medium text-sm text-center">{title}</div>
-      <div className="text-slate-500 text-xs text-center max-w-xs">{subtitle}</div>
-    </div>
-  );
-}
-
-// ─── Component ────────────────────────────────────────────────────────────────
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function ReportsPage() {
   const { ownedShopId, loading: authLoading } = useAuth();
-  const { isRTL } = useLang();
-
+  const { isRTL, t: langT } = useLang();
   const t = (isRTL ? translations.ar : translations.en) as typeof translations.ar;
 
   const [loading, setLoading] = useState(true);
-
-  const [totalProducts, setTotalProducts]   = useState(0);
-  const [totalQuantity, setTotalQuantity]   = useState(0);
-  const [inventoryValue, setInventoryValue] = useState(0);
-  const [lowStockCount, setLowStockCount]   = useState(0);
-
-  const [topProducts, setTopProducts]         = useState<ProductReport[]>([]);
-  const [reorderProducts, setReorderProducts] = useState<ProductReport[]>([]);
+  const [data, setData] = useState({
+    totalProducts: 0,
+    totalQuantity: 0,
+    inventoryValue: 0,
+    lowStockCount: 0,
+    topProducts: [] as ProductReport[],
+    reorderProducts: [] as ProductReport[],
+  });
 
   useEffect(() => {
     if (authLoading) return;
-    if (!ownedShopId) {
-      setLoading(false);
-      return;
-    }
+    if (!ownedShopId) { setLoading(false); return; }
     loadReport(ownedShopId);
   }, [ownedShopId, authLoading]);
 
-  // ── EXACT original queries + logic, untouched (Phase 9: console.* removed) ─
-
   async function loadReport(currentShopId: number) {
     setLoading(true);
-
-    const { data, error } = await supabase
+    const { data: rawData, error } = await supabase
       .from("products")
-      .select("id, part_name, quantity, price, shop_id")
+      .select("id, part_name, quantity, price")
       .eq("shop_id", currentShopId);
 
-    if (error) {
-      setLoading(false);
-      return;
-    }
+    if (error || !rawData) { setLoading(false); return; }
 
-    const products: ProductReport[] = (data || []).map((p: any) => ({
-      id:        p.id,
+    const products: ProductReport[] = rawData.map((p: any) => ({
+      id: p.id,
       part_name: p.part_name,
-      quantity:  p.quantity || 0,
-      price:     p.price    || 0,
+      quantity: p.quantity || 0,
+      price: p.price || 0,
     }));
 
-    const totalProductsCount = products.length;
+    const val = products.reduce((sum, p) => sum + p.quantity * p.price, 0);
+    const qty = products.reduce((sum, p) => sum + p.quantity, 0);
+    const low = products.filter(p => p.quantity > 0 && p.quantity <= 3);
+    const top = [...products].sort((a, b) => b.quantity - a.quantity).slice(0, 6);
 
-    const quantitySum = products.reduce(
-      (sum, item) => sum + item.quantity,
-      0
-    );
-
-    const stockValue = products.reduce(
-      (sum, item) => sum + item.quantity * item.price,
-      0
-    );
-
-    const lowStock = products.filter(
-      (item) => item.quantity > 0 && item.quantity <= 3
-    );
-
-    const topMoving = [...products]
-      .sort((a, b) => b.quantity - a.quantity)
-      .slice(0, 5);
-
-    setTotalProducts(totalProductsCount);
-    setTotalQuantity(quantitySum);
-    setInventoryValue(stockValue);
-    setLowStockCount(lowStock.length);
-    setTopProducts(topMoving);
-    setReorderProducts(lowStock);
+    setData({
+      totalProducts: products.length,
+      totalQuantity: qty,
+      inventoryValue: val,
+      lowStockCount: low.length,
+      topProducts: top,
+      reorderProducts: low,
+    });
     setLoading(false);
   }
 
-  // ── Loading ───────────────────────────────────────────────────────────────
-
-  if (authLoading || loading) {
+  if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 gap-4">
-        <div className="w-10 h-10 border-2 border-slate-600 border-t-blue-500 rounded-full animate-spin" />
-        <div className="text-slate-400 text-sm">{t.loading}</div>
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
+        <RefreshCcw className="w-8 h-8 text-blue-500 animate-spin" />
+        <p className="text-slate-400 text-sm font-bold animate-pulse uppercase tracking-widest">{t.loading}</p>
       </div>
     );
   }
 
   if (!ownedShopId) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 gap-3">
-        <div className="text-4xl">🔒</div>
-        <div className="text-red-400 text-sm font-medium">{t.noShop}</div>
+      <div className="flex flex-col items-center justify-center min-h-[400px] text-center px-4">
+        <div className="bg-red-500/10 p-6 rounded-full mb-4"><Archive size={48} className="text-red-500" /></div>
+        <h2 className="text-white text-xl font-black mb-2">{t.noShop}</h2>
       </div>
     );
   }
 
-  // ── Derived (real data only) ──────────────────────────────────────────────
-
-  const healthyCount = totalProducts - lowStockCount;
-  const reorderSorted = [...reorderProducts].sort((a, b) => a.quantity - b.quantity);
-
-  // ── Render ────────────────────────────────────────────────────────────────
+  const healthyCount = data.totalProducts - data.lowStockCount;
 
   return (
-    <div className="space-y-5 pb-8" dir={isRTL ? "rtl" : "ltr"}>
-
-      {/* ── Header ── */}
-      <div>
-        <h1 className="text-2xl lg:text-3xl font-bold text-white leading-tight">{t.pageTitle}</h1>
-        <p className="text-slate-400 text-sm mt-1">{t.pageSubtitle}</p>
-      </div>
-
-      {/* ── Phase 2: KPI Cards ── */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-        <KpiCard
-          icon="🗂️"
-          label={t.totalProducts}
-          value={totalProducts}
-          color="white"
-        />
-        <KpiCard
-          icon="📦"
-          label={t.totalQuantity}
-          value={totalQuantity}
-          color="blue"
-        />
-        <KpiCard
-          icon="💰"
-          label={t.inventoryValue}
-          value={
-            <span>
-              {inventoryValue.toLocaleString(isRTL ? "ar-SA" : "en-US")}{" "}
-              <span className="text-sm font-normal text-slate-400">{t.currency}</span>
-            </span>
-          }
-          color="green"
-        />
-        <KpiCard
-          icon="⚠️"
-          label={t.lowStockProducts}
-          value={lowStockCount}
-          color="amber"
-        />
-      </div>
-
-      {/* ── Phase 3: Inventory Health ── */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-        <div className="flex items-center gap-2 mb-5">
-          <span className="text-lg">❤️</span>
-          <h3 className="text-white font-bold text-base">{t.healthTitle}</h3>
-        </div>
-        <div className="space-y-4">
-          <HealthBar
-            label={t.healthyProducts}
-            count={healthyCount}
-            total={totalProducts}
-            color="bg-emerald-500"
-            icon="✅"
-          />
-          <HealthBar
-            label={t.lowStockItems}
-            count={lowStockCount}
-            total={totalProducts}
-            color="bg-amber-500"
-            icon="⚠️"
-          />
-          <HealthBar
-            label={t.reorderNeeded}
-            count={reorderProducts.length}
-            total={totalProducts}
-            color="bg-red-500"
-            icon="🔄"
-          />
-        </div>
-      </div>
-
-      {/* ── Phase 4 + Phase 5: Tables ── */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-
-        {/* Top Products Table */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-800 flex items-center gap-2">
-            <span className="text-lg">🏆</span>
-            <h3 className="text-white font-bold text-base">{t.topProductsTitle}</h3>
+    <div className="pb-20 space-y-8 animate-in fade-in duration-500" dir={isRTL ? "rtl" : "ltr"}>
+      
+      {/* Header Area */}
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-3 mb-2">
+            <LayoutDashboard className="text-blue-500" size={28} />
+            <h1 className="text-3xl font-black text-white tracking-tight">{t.pageTitle}</h1>
           </div>
+          <p className="text-slate-500 text-sm font-medium">{t.pageSubtitle}</p>
+        </div>
+        <button 
+          onClick={() => loadReport(ownedShopId!)}
+          className="flex items-center gap-2 bg-slate-900 border border-slate-800 text-slate-400 hover:text-white px-4 py-2 rounded-xl transition-all"
+        >
+          <RefreshCcw size={16} />
+          <span className="text-xs font-bold uppercase tracking-wider">{langT('Refresh', 'تحديث')}</span>
+        </button>
+      </header>
 
-          {topProducts.length === 0 ? (
-            <EmptyState
-              icon="📦"
-              title={t.emptyProducts}
-              subtitle={t.emptyProductsSub}
-            />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
+      {/* Primary KPIs */}
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard icon={BarChart3} label={t.totalProducts} value={data.totalProducts} color="slate" />
+        <KpiCard icon={Package} label={t.totalQuantity} value={data.totalQuantity.toLocaleString()} color="blue" />
+        <KpiCard icon={DollarSign} label={t.inventoryValue} value={
+          <span className="flex items-baseline gap-1.5">
+            {data.inventoryValue.toLocaleString(isRTL ? "ar-SA" : "en-US")}
+            <span className="text-xs font-normal text-slate-500">{t.currency}</span>
+          </span>
+        } color="emerald" />
+        <KpiCard icon={AlertTriangle} label={t.lowStockProducts} value={data.lowStockCount} color="amber" />
+      </section>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        {/* Inventory Health Index */}
+        <section className="lg:col-span-4 bg-slate-900 border border-slate-800 rounded-2xl p-6 h-fit">
+          <div className="flex items-center gap-3 mb-6">
+            <Activity className="text-emerald-500" size={20} />
+            <h3 className="text-white font-black text-lg">{t.healthTitle}</h3>
+          </div>
+          <div className="space-y-4">
+            <HealthBar label={t.healthyProducts} count={healthyCount} total={data.totalProducts} color="bg-emerald-500" icon={CheckCircle2} />
+            <HealthBar label={t.lowStockItems} count={data.lowStockCount} total={data.totalProducts} color="bg-amber-500" icon={AlertTriangle} />
+            <HealthBar label={t.reorderNeeded} count={data.reorderProducts.length} total={data.totalProducts} color="bg-red-500" icon={RefreshCcw} />
+          </div>
+          
+          <div className="mt-8 p-4 bg-blue-500/5 rounded-2xl border border-blue-500/10">
+             <div className="text-center">
+                <p className="text-[10px] font-black text-slate-500 uppercase mb-1 tracking-widest">{t.summaryQty}</p>
+                <p className="text-2xl font-black text-blue-400">{data.totalQuantity}</p>
+                <p className="text-[10px] text-slate-600 font-bold">{t.pieces}</p>
+             </div>
+          </div>
+        </section>
+
+        {/* Top Products Holding */}
+        <section className="lg:col-span-8 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden flex flex-col">
+          <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <TrendingUp className="text-blue-500" size={20} />
+              <h3 className="text-white font-black text-lg">{t.topProductsTitle}</h3>
+            </div>
+          </div>
+          
+          <div className="flex-1 overflow-x-auto">
+            {data.topProducts.length === 0 ? (
+              <div className="py-20 flex flex-col items-center opacity-40"><Package size={48} /><p className="mt-2 text-sm">{t.emptyProducts}</p></div>
+            ) : (
+              <table className="w-full text-right">
                 <thead>
-                  <tr className="border-b border-slate-800">
-                    <th className="px-5 py-3 text-slate-400 text-xs font-medium text-start">
-                      {t.colProduct}
-                    </th>
-                    <th className="px-5 py-3 text-slate-400 text-xs font-medium text-center">
-                      {t.colQuantity}
-                    </th>
-                    <th className="px-5 py-3 text-slate-400 text-xs font-medium text-end">
-                      {t.colStatus}
-                    </th>
+                  <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest border-b border-slate-800">
+                    <th className="px-6 py-4 text-start">{t.colProduct}</th>
+                    <th className="px-6 py-4 text-center">{t.colQuantity}</th>
+                    <th className="px-6 py-4 text-center">{t.colStatus}</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60">
-                  {topProducts.map((item) => {
-                    const status = getStockStatus(item.quantity);
+                <tbody className="divide-y divide-slate-800/50">
+                  {data.topProducts.map((p) => {
+                    const status = getStockStatus(p.quantity);
+                    const statusColors = { healthy: "text-emerald-500 bg-emerald-500/10", low: "text-amber-500 bg-amber-500/10", critical: "text-red-500 bg-red-500/10" };
                     return (
-                      <tr key={item.id} className="hover:bg-slate-800/30 transition-colors">
-                        <td className="px-5 py-3 text-white text-sm max-w-[140px] truncate">
-                          {item.part_name}
-                        </td>
-                        <td className="px-5 py-3 text-center">
-                          <span className="text-blue-400 font-bold text-sm">{item.quantity}</span>
-                        </td>
-                        <td className="px-5 py-3 text-end">
-                          <StatusBadge status={status} t={t} />
+                      <tr key={p.id} className="hover:bg-slate-800/20 transition-colors">
+                        <td className="px-6 py-4 text-white font-bold text-sm truncate max-w-[240px]">{p.part_name}</td>
+                        <td className="px-6 py-4 text-center text-blue-400 font-mono font-black">{p.quantity}</td>
+                        <td className="px-6 py-4 text-center">
+                          <span className={`px-2 py-1 rounded-md text-[10px] font-black uppercase ${statusColors[status]}`}>
+                            {t[`status${status.charAt(0).toUpperCase() + status.slice(1)}` as any] || status}
+                          </span>
                         </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
-            </div>
-          )}
-        </div>
-
-        {/* Reorder Center */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">🔄</span>
-              <div>
-                <div className="text-white font-bold text-base">{t.reorderTitle}</div>
-                <div className="text-slate-500 text-xs mt-0.5">{t.reorderSubtitle}</div>
-              </div>
-            </div>
-            {reorderProducts.length > 0 && (
-              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-red-500/10 border border-red-500/20 text-red-400">
-                {reorderProducts.length}
-              </span>
             )}
           </div>
+        </section>
+      </div>
 
-          <div className="p-4">
-            {reorderSorted.length === 0 ? (
-              <EmptyState
-                icon="✅"
-                title={t.emptyReorder}
-                subtitle={t.emptyReorderSub}
-              />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        {/* Reorder Procurement Center */}
+        <section className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl shadow-black/20">
+          <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <RefreshCcw className="text-red-500" size={20} />
+              <div>
+                <h3 className="text-white font-black text-lg">{t.reorderTitle}</h3>
+                <p className="text-slate-500 text-xs font-medium">{t.reorderSubtitle}</p>
+              </div>
+            </div>
+            {data.reorderProducts.length > 0 && (
+              <span className="bg-red-500 text-white text-[10px] font-black px-2 py-1 rounded-lg animate-pulse">{data.reorderProducts.length}</span>
+            )}
+          </div>
+          
+          <div className="p-4 max-h-[400px] overflow-y-auto no-scrollbar">
+            {data.reorderProducts.length === 0 ? (
+              <div className="py-16 text-center"><CheckCircle2 className="mx-auto text-emerald-500/20 mb-3" size={48} /><p className="text-slate-500 text-sm">{t.emptyReorderSub}</p></div>
             ) : (
-              <div className="space-y-2.5">
-                {reorderSorted.map((item) => {
-                  const urgency = getUrgency(item.quantity);
-                  const qtyColor =
-                    item.quantity === 1
-                      ? "text-red-400"
-                      : item.quantity === 2
-                      ? "text-amber-400"
-                      : "text-yellow-400";
-
+              <div className="grid gap-3">
+                {[...data.reorderProducts].sort((a,b) => a.quantity - b.quantity).map((p) => {
+                  const urgency = getUrgency(p.quantity);
+                  const urgencyStyles = { high: "border-red-500/20 bg-red-500/5", medium: "border-amber-500/20 bg-amber-500/5", low: "border-slate-800 bg-slate-800/30" };
+                  const urgencyLabels = { high: t.urgencyHigh, medium: t.urgencyMedium, low: t.urgencyLow };
                   return (
-                    <div
-                      key={item.id}
-                      className={`
-                        rounded-xl p-3.5 border flex items-center justify-between gap-3
-                        ${urgency === "high"
-                          ? "bg-red-500/5 border-red-500/15"
-                          : urgency === "medium"
-                          ? "bg-amber-500/5 border-amber-500/15"
-                          : "bg-yellow-500/5 border-yellow-500/15"
-                        }
-                      `}
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div
-                          className={`
-                            w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0
-                            ${urgency === "high" ? "bg-red-500/20 text-red-400" : "bg-amber-500/20 text-amber-400"}
-                          `}
-                        >
-                          {item.quantity}
-                        </div>
+                    <div key={p.id} className={`flex items-center justify-between p-4 rounded-xl border transition-all ${urgencyStyles[urgency]}`}>
+                      <div className="flex items-center gap-4">
+                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-mono font-black text-lg shadow-inner ${urgency === 'high' ? 'bg-red-500 text-white' : 'bg-slate-800 text-slate-400'}`}>{p.quantity}</div>
                         <div className="min-w-0">
-                          <div className="text-white text-sm font-medium truncate">{item.part_name}</div>
-                          <div className={`text-xs mt-0.5 ${qtyColor}`}>
-                            {t.qtyLabel}: {item.quantity}
-                          </div>
+                          <p className="text-white font-bold text-sm truncate max-w-[180px]">{p.part_name}</p>
+                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{t.qtyLabel}: {p.quantity}</p>
                         </div>
                       </div>
-                      <UrgencyBadge urgency={urgency} t={t} />
+                      <div className="flex items-center gap-3">
+                        <span className={`text-[10px] font-black px-2 py-1 rounded-md uppercase border ${urgency === 'high' ? 'border-red-500/30 text-red-500 bg-red-500/10' : 'border-slate-700 text-slate-500 bg-slate-900'}`}>{urgencyLabels[urgency]}</span>
+                        <ArrowUpRight size={14} className="text-slate-700" />
+                      </div>
                     </div>
                   );
                 })}
               </div>
             )}
           </div>
-        </div>
-      </div>
+        </section>
 
-      {/* ── Phase 6: Report Summary ── */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-800">
-          <div className="text-white font-bold text-base">{t.summaryTitle}</div>
-        </div>
-        <div className="divide-y divide-slate-800">
-          <div className="px-5 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <span>💰</span>
-              <span className="text-slate-300 text-sm">{t.summaryValue}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-emerald-400 font-bold text-sm">
-                {inventoryValue.toLocaleString(isRTL ? "ar-SA" : "en-US")}
-              </span>
-              <span className="text-slate-500 text-xs">{t.currency}</span>
-            </div>
+        {/* Executive Summary List */}
+        <section className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+          <div className="p-6 border-b border-slate-800">
+            <h3 className="text-white font-black text-lg flex items-center gap-3"><BarChart3 className="text-emerald-500" size={20} /> {t.summaryTitle}</h3>
           </div>
-          <div className="px-5 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <span>📦</span>
-              <span className="text-slate-300 text-sm">{t.summaryQty}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-blue-400 font-bold text-sm">{totalQuantity}</span>
-              <span className="text-slate-500 text-xs">{t.pieces}</span>
-            </div>
+          <div className="divide-y divide-slate-800/50">
+            {[
+              { icon: DollarSign, label: t.summaryValue, val: data.inventoryValue.toLocaleString(), unit: t.currency, color: 'text-emerald-500' },
+              { icon: Package, label: t.summaryQty, val: data.totalQuantity.toLocaleString(), unit: t.pieces, color: 'text-blue-500' },
+              { icon: AlertTriangle, label: t.summaryAttention, val: data.lowStockCount, unit: t.products, color: 'text-amber-500' }
+            ].map((row, i) => (
+              <div key={i} className="flex items-center justify-between p-6 hover:bg-slate-800/10 transition-colors">
+                <div className="flex items-center gap-4">
+                  <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400"><row.icon size={16} /></div>
+                  <span className="text-slate-400 text-sm font-medium">{row.label}</span>
+                </div>
+                <div className="text-right">
+                  <p className={`text-xl font-black ${row.color}`}>{row.val}</p>
+                  <p className="text-[10px] text-slate-600 font-black uppercase tracking-widest">{row.unit}</p>
+                </div>
+              </div>
+            ))}
           </div>
-          <div className="px-5 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <span>⚠️</span>
-              <span className="text-slate-300 text-sm">{t.summaryAttention}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-amber-400 font-bold text-sm">{lowStockCount}</span>
-              <span className="text-slate-500 text-xs">{t.products}</span>
-            </div>
+          <div className="p-6 bg-slate-950/30 border-t border-slate-800/50">
+             <div className="flex items-center gap-3 text-slate-500 text-xs italic">
+                <Activity size={14} />
+                <span>{t.pageSubtitle}</span>
+             </div>
           </div>
-        </div>
+        </section>
       </div>
 
     </div>

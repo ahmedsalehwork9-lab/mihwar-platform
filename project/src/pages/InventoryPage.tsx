@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { useLang } from "../context/LanguageContext";
@@ -6,9 +6,8 @@ import {
   Package, Plus, Search, RefreshCw, Trash2,
   Edit2, X, Save, AlertCircle, ChevronLeft,
   ChevronRight, Download, Upload, Copy, Check,
-  TrendingDown, ShieldAlert, BoxSelect,
-  Boxes, DollarSign, PackageX, PackageCheck,
-  Filter
+  TrendingDown, BoxSelect, Boxes, DollarSign, 
+  PackageX, PackageCheck, Filter
 } from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -45,17 +44,18 @@ const PAGE_SIZE = 12;
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
-  const handle = (e: React.MouseEvent) => {
+  const handle = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     });
-  };
+  }, [text]);
+
   return (
     <button
       onClick={handle}
-      className="p-1 rounded hover:bg-slate-700 text-slate-500 transition-colors"
+      className="p-1 rounded hover:bg-slate-700 text-slate-500 transition-colors focus:outline-none focus:ring-1 focus:ring-emerald-500"
       title="Copy"
     >
       {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
@@ -87,12 +87,9 @@ export default function InventoryPage() {
 
   const importRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (ownedShopId) fetchProducts();
-  }, [ownedShopId]);
-
   // ── Database Actions ───────────────────────────────────────────────────────
-  const fetchProducts = async () => {
+  const fetchProducts = useCallback(async () => {
+    if (!ownedShopId) return;
     setLoading(true);
     setError(null);
     const { data, error } = await supabase
@@ -103,7 +100,11 @@ export default function InventoryPage() {
     if (error) setError(error.message);
     else setProducts(data || []);
     setLoading(false);
-  };
+  }, [ownedShopId]);
+
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
 
   const handleSave = async () => {
     if (!form.part_number || !form.part_name || !form.quantity) {
@@ -147,28 +148,33 @@ export default function InventoryPage() {
   };
 
   // ── Helpers ────────────────────────────────────────────────────────────────
-  const getStatus = (qty: number): FilterStatus => {
+  const getStatus = useCallback((qty: number): FilterStatus => {
     if (qty > 5) return "in_stock";
     if (qty > 0) return "low_stock";
     return "out_of_stock";
-  };
+  }, []);
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase();
+    const q = search.toLowerCase().trim();
     return products
       .filter(p => filter === 'all' || getStatus(p.quantity) === filter)
       .filter(p => !q || p.part_number?.toLowerCase().includes(q) || p.part_name?.toLowerCase().includes(q) || p.brand?.toLowerCase().includes(q));
-  }, [products, filter, search]);
+  }, [products, filter, search, getStatus]);
 
   const counts = useMemo(() => ({
     all: products.length,
     in_stock: products.filter(p => getStatus(p.quantity) === 'in_stock').length,
     low_stock: products.filter(p => getStatus(p.quantity) === 'low_stock').length,
     out_of_stock: products.filter(p => getStatus(p.quantity) === 'out_of_stock').length,
-  }), [products]);
+  }), [products, getStatus]);
 
-  const totalValue = products.reduce((sum, p) => sum + (p.quantity * p.price), 0);
-  const totalQty   = products.reduce((sum, p) => sum + p.quantity, 0);
+  const totals = useMemo(() => {
+    return products.reduce((acc, p) => {
+      acc.value += (p.quantity * p.price);
+      acc.qty += p.quantity;
+      return acc;
+    }, { value: 0, qty: 0 });
+  }, [products]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const pageItems  = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -187,7 +193,6 @@ export default function InventoryPage() {
   };
   const closeModal = () => setShowModal(false);
 
-  // ── Import/Export ──────────────────────────────────────────────────────────
   const handleExport = () => {
     const csv = [
       ['Part Number', 'Name', 'Brand', 'Model', 'Quantity', 'Price'].join(','),
@@ -232,60 +237,35 @@ export default function InventoryPage() {
     }
   };
 
-  // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className={`max-w-[1400px] mx-auto pb-10 px-4 sm:px-6 animate-in fade-in duration-500`} dir={isRTL ? 'rtl' : 'ltr'}>
+    <div className="max-w-[1400px] mx-auto pb-10 px-4 sm:px-6 animate-in fade-in duration-500" dir={isRTL ? 'rtl' : 'ltr'}>
       
-      {/* Notifications */}
       {successMsg && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] bg-emerald-600 text-white px-4 py-2 rounded-lg shadow-2xl flex items-center gap-2 text-sm font-medium animate-bounce">
           <Check size={16} /> {successMsg}
         </div>
       )}
 
-      {/* Header */}
-      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 py-6">
-        <div>
-          <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-3">
-            <div className="p-2 bg-emerald-500/10 rounded-lg">
-              <Package className="text-emerald-500" size={24} />
-            </div>
-            {t('Local Inventory', 'المخزون المحلي')}
+      {/* ── Header ── */}
+      <header className="flex items-center justify-between gap-4 py-5">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2">
+            <Package className="text-emerald-500 shrink-0" size={24} />
+            <span className="truncate">{t('Local Inventory', 'المخزون المحلي')}</span>
           </h1>
-          <p className="text-slate-500 text-sm mt-1">
-            {loading ? t('Syncing...', 'جاري المزامنة...') : t('Manage and track your shop stock level', 'إدارة ومتابعة مستويات مخزون المحل')}
-          </p>
         </div>
         <button 
           onClick={fetchProducts}
-          className="self-start sm:self-center p-2.5 rounded-xl border border-slate-800 bg-slate-900/50 text-slate-400 hover:text-white hover:border-slate-600 transition-all"
+          className="p-2.5 rounded-xl border border-slate-800 bg-slate-900/50 text-slate-400 hover:text-white transition-all active:scale-95"
+          aria-label={t('Refresh', 'تحديث')}
         >
           <RefreshCw size={18} className={loading ? 'animate-spin text-emerald-500' : ''} />
         </button>
       </header>
 
-      {/* 1. KPIs Section (Reduced height, Improved hierarchy) */}
-      <section className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 mb-8">
-        {[
-          { label: t('Total Value', 'إجمالي القيمة'), val: `${totalValue.toLocaleString()} ر.س`, icon: DollarSign, color: 'text-emerald-400', bg: 'bg-emerald-500/5' },
-          { label: t('Unique Parts', 'قطع فريدة'), val: counts.all, icon: Boxes, color: 'text-blue-400', bg: 'bg-blue-500/5' },
-          { label: t('In Stock', 'متوفر'), val: counts.in_stock, icon: PackageCheck, color: 'text-emerald-500', bg: 'bg-emerald-500/5' },
-          { label: t('Low Stock', 'منخفض'), val: counts.low_stock, icon: TrendingDown, color: 'text-amber-400', bg: 'bg-amber-500/5' },
-          { label: t('Out of Stock', 'نفد'), val: counts.out_of_stock, icon: PackageX, color: 'text-red-400', bg: 'bg-red-500/5' },
-        ].map((kpi, i) => (
-          <div key={i} className={`p-3.5 rounded-2xl border border-slate-800/60 bg-slate-900 flex flex-col justify-between min-h-[90px] hover:border-slate-700 transition-colors group`}>
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{kpi.label}</span>
-              <kpi.icon size={14} className={kpi.color} />
-            </div>
-            <div className={`text-xl font-black ${kpi.color} mt-1`}>{kpi.val}</div>
-          </div>
-        ))}
-      </section>
-
-      {/* 2. Search Section (Improved UX) */}
+      {/* ── Primary Action: Search (Mobile First) ── */}
       <section className="relative mb-4">
-        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-500">
+        <div className={`absolute inset-y-0 ${isRTL ? 'right-0 pr-4' : 'left-0 pl-4'} flex items-center pointer-events-none text-slate-500`}>
           <Search size={18} />
         </div>
         <input
@@ -293,87 +273,108 @@ export default function InventoryPage() {
           value={search}
           onChange={e => {setSearch(e.target.value); setPage(1);}}
           placeholder={t('Search by part number, name or brand...', 'ابحث برقم القطعة، الاسم أو الماركة...')}
-          className="w-full bg-slate-900 border border-slate-800 rounded-2xl py-4 pl-12 pr-12 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition-all placeholder:text-slate-600 shadow-sm"
+          className={`w-full bg-slate-900 border border-slate-800 rounded-2xl py-3.5 ${isRTL ? 'pr-11 pl-11' : 'pl-11 pr-11'} text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition-all placeholder:text-slate-600 shadow-sm text-sm sm:text-base`}
         />
         {search && (
           <button 
             onClick={() => setSearch('')}
-            className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-500 hover:text-white"
+            className={`absolute inset-y-0 ${isRTL ? 'left-0 pl-4' : 'right-0 pr-4'} flex items-center text-slate-500 hover:text-white transition-colors`}
           >
             <X size={18} />
           </button>
         )}
       </section>
 
-      {/* 3. Actions & Filters */}
-      <section className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
-        {/* Filter Chips */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 lg:pb-0 no-scrollbar">
-          <div className="flex items-center gap-1.5 px-2 py-1 text-slate-500 text-xs font-bold border-r border-slate-800 mr-1 uppercase tracking-widest">
-            <Filter size={12} /> {t('Filter', 'تصفية')}
-          </div>
-          {(['all', 'in_stock', 'low_stock', 'out_of_stock'] as FilterStatus[]).map(s => (
-            <button
-              key={s}
-              onClick={() => {setFilter(s); setPage(1);}}
-              className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all border ${
-                filter === s 
-                  ? 'bg-emerald-600 border-emerald-600 text-white shadow-lg shadow-emerald-900/20' 
-                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-600 hover:text-slate-200'
-              }`}
-            >
-              {t(s.replace('_', ' '), s === 'all' ? 'الكل' : s === 'in_stock' ? 'متوفر' : s === 'low_stock' ? 'منخفض' : 'نفد')}
-              <span className={`ml-2 px-1.5 py-0.5 rounded-md text-[10px] ${filter === s ? 'bg-white/20' : 'bg-slate-800'}`}>
-                {counts[s]}
-              </span>
-            </button>
-          ))}
+      {/* ── Filters (Directly below Search) ── */}
+      <section className="flex items-center gap-2 overflow-x-auto pb-4 no-scrollbar">
+        <div className="flex items-center gap-1.5 px-2 py-1 text-slate-500 text-[10px] font-bold border-r border-slate-800 mr-1 uppercase tracking-widest shrink-0">
+          <Filter size={12} /> {t('Filter', 'تصفية')}
         </div>
+        {(['all', 'in_stock', 'low_stock', 'out_of_stock'] as FilterStatus[]).map(s => (
+          <button
+            key={s}
+            onClick={() => {setFilter(s); setPage(1);}}
+            className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all border ${
+              filter === s 
+                ? 'bg-emerald-600 border-emerald-600 text-white shadow-lg' 
+                : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-600 hover:text-slate-200'
+            }`}
+          >
+            {t(s.replace('_', ' '), s === 'all' ? 'الكل' : s === 'in_stock' ? 'متوفر' : s === 'low_stock' ? 'منخفض' : 'نفد')}
+            <span className={`ml-2 px-1.5 py-0.5 rounded-md text-[10px] ${filter === s ? 'bg-white/20' : 'bg-slate-800'}`}>
+              {counts[s]}
+            </span>
+          </button>
+        ))}
+      </section>
 
-        {/* Action Buttons */}
-        <div className="flex items-center gap-2 shrink-0">
+      {/* ── KPI Section (Reduced height on mobile, redesigned hierarchy) ── */}
+      <section className="grid grid-cols-2 md:grid-cols-5 gap-2.5 mb-6">
+        {[
+          { label: t('Total Value', 'إجمالي القيمة'), val: `${totals.value.toLocaleString()} ر.س`, icon: DollarSign, color: 'text-emerald-400', wide: true },
+          { label: t('Total Parts', 'إجمالي القطع'), val: counts.all, icon: Boxes, color: 'text-blue-400' },
+          { label: t('In Stock', 'متوفر'), val: counts.in_stock, icon: PackageCheck, color: 'text-emerald-500' },
+          { label: t('Low Stock', 'منخفض'), val: counts.low_stock, icon: TrendingDown, color: 'text-amber-400' },
+          { label: t('Out of Stock', 'نفد'), val: counts.out_of_stock, icon: PackageX, color: 'text-red-400' },
+        ].map((kpi, i) => (
+          <div 
+            key={i} 
+            className={`p-3 rounded-xl border border-slate-800/60 bg-slate-900 flex flex-col justify-between min-h-[72px] sm:min-h-[90px] transition-colors hover:border-slate-700 group ${kpi.wide ? 'col-span-2 md:col-span-1' : ''}`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate mr-2">{kpi.label}</span>
+              <kpi.icon size={12} className={`${kpi.color} shrink-0`} />
+            </div>
+            <div className={`text-base sm:text-xl font-black ${kpi.color} mt-0.5 truncate`}>{kpi.val}</div>
+          </div>
+        ))}
+      </section>
+
+      {/* ── Table Actions ── */}
+      <section className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-6">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           <input ref={importRef} type="file" accept=".csv" onChange={handleImport} className="hidden" />
           <button 
             onClick={() => importRef.current?.click()}
             disabled={importing}
-            className="flex-1 lg:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-800 bg-slate-900 text-slate-300 text-sm font-bold hover:bg-slate-800 transition-colors disabled:opacity-50"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-800 bg-slate-900 text-slate-300 text-xs font-bold hover:bg-slate-800 transition-colors disabled:opacity-50"
           >
-            <Upload size={16} /> {importing ? t('Wait...', 'لحظة...') : t('Import', 'استيراد')}
+            <Upload size={14} /> {importing ? t('Wait...', 'لحظة...') : t('Import', 'استيراد')}
           </button>
           <button 
             onClick={handleExport}
-            className="flex-1 lg:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-800 bg-slate-900 text-slate-300 text-sm font-bold hover:bg-slate-800 transition-colors"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-800 bg-slate-900 text-slate-300 text-xs font-bold hover:bg-slate-800 transition-colors"
           >
-            <Download size={16} /> {t('Export', 'تصدير')}
-          </button>
-          <button 
-            onClick={openAdd}
-            className="flex-[2] lg:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-black hover:bg-emerald-500 shadow-xl shadow-emerald-900/20 active:scale-95 transition-all"
-          >
-            <Plus size={18} /> {t('Add Part', 'إضافة قطعة')}
+            <Download size={14} /> {t('Export', 'تصدير')}
           </button>
         </div>
+        <button 
+          onClick={openAdd}
+          className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-emerald-600 text-white text-sm font-black hover:bg-emerald-500 shadow-lg active:scale-95 transition-all"
+        >
+          <Plus size={18} /> {t('Add Part', 'إضافة قطعة')}
+        </button>
       </section>
 
-      {/* 4. Inventory Table */}
+      {/* ── Inventory Table ── */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-        <div className="overflow-x-auto overflow-y-hidden">
+        <div className="overflow-x-auto">
           <table className="w-full text-sm text-right border-collapse min-w-[800px]">
             <thead>
               <tr className="bg-slate-950/50 border-b border-slate-800">
                 <th className="p-4 w-12 text-center">
                   <input 
                     type="checkbox" 
-                    className="accent-emerald-500 rounded"
+                    className="accent-emerald-500 rounded cursor-pointer"
                     checked={selected.size === pageItems.length && pageItems.length > 0}
                     onChange={() => selected.size === pageItems.length ? setSelected(new Set()) : setSelected(new Set(pageItems.map(p => p.id)))}
                   />
                 </th>
-                <th className="p-4 text-slate-500 font-bold uppercase text-[11px] tracking-widest">{t('Part Details', 'تفاصيل القطعة')}</th>
-                <th className="p-4 text-slate-500 font-bold uppercase text-[11px] tracking-widest">{t('Vehicle / Brand', 'المركبة / الماركة')}</th>
-                <th className="p-4 text-slate-500 font-bold uppercase text-[11px] tracking-widest">{t('Stock Level', 'المخزون')}</th>
-                <th className="p-4 text-slate-500 font-bold uppercase text-[11px] tracking-widest">{t('Unit Price', 'سعر الوحدة')}</th>
-                <th className="p-4 text-slate-500 font-bold uppercase text-[11px] tracking-widest text-center">{t('Actions', 'إجراء')}</th>
+                <th className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Part Details', 'تفاصيل القطعة')}</th>
+                <th className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Vehicle / Brand', 'المركبة / الماركة')}</th>
+                <th className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Stock Level', 'المخزون')}</th>
+                <th className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Unit Price', 'سعر الوحدة')}</th>
+                <th className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest text-center">{t('Actions', 'إجراء')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/50">
@@ -386,7 +387,7 @@ export default function InventoryPage() {
                   <td className="p-4 text-center">
                     <input 
                       type="checkbox" 
-                      className="accent-emerald-500"
+                      className="accent-emerald-500 cursor-pointer"
                       checked={selected.has(p.id)}
                       onChange={() => {
                         const next = new Set(selected);
@@ -397,17 +398,17 @@ export default function InventoryPage() {
                   </td>
                   <td className="p-4">
                     <div className="flex flex-col">
-                      <span className="text-white font-bold text-sm mb-0.5">{p.part_name}</span>
+                      <span className="text-white font-bold text-sm mb-1">{p.part_name}</span>
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-[11px] text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded leading-none">{p.part_number}</span>
+                        <span className="font-mono text-[10px] text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded leading-none">{p.part_number}</span>
                         <CopyButton text={p.part_number} />
                       </div>
                     </div>
                   </td>
                   <td className="p-4 text-slate-300">
                     <div className="flex flex-col">
-                      <span className="font-medium">{p.brand}</span>
-                      <span className="text-[11px] text-slate-500 uppercase">{p.model || '—'}</span>
+                      <span className="font-medium text-xs">{p.brand || '—'}</span>
+                      <span className="text-[10px] text-slate-500 uppercase">{p.model || '—'}</span>
                     </div>
                   </td>
                   <td className="p-4">
@@ -415,7 +416,7 @@ export default function InventoryPage() {
                       <span className={`text-base font-black w-8 ${getStatus(p.quantity) === 'in_stock' ? 'text-emerald-500' : getStatus(p.quantity) === 'low_stock' ? 'text-amber-500' : 'text-red-500'}`}>
                         {p.quantity}
                       </span>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase tracking-tighter ${
+                      <span className={`text-[9px] px-2 py-0.5 rounded-full border font-bold uppercase tracking-tighter ${
                         p.quantity > 5 ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' :
                         p.quantity > 0 ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' :
                         'bg-red-500/10 border-red-500/20 text-red-500'
@@ -429,8 +430,8 @@ export default function InventoryPage() {
                   </td>
                   <td className="p-4">
                     <div className="flex items-center justify-center gap-2">
-                      <button onClick={() => openEdit(p)} className="p-2 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-all"><Edit2 size={16} /></button>
-                      <button onClick={() => handleDelete(p.id)} className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"><Trash2 size={16} /></button>
+                      <button onClick={() => openEdit(p)} className="p-2 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-all" title={t('Edit', 'تعديل')}><Edit2 size={16} /></button>
+                      <button onClick={() => handleDelete(p.id)} className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all" title={t('Delete', 'حذف')}><Trash2 size={16} /></button>
                     </div>
                   </td>
                 </tr>
@@ -439,19 +440,18 @@ export default function InventoryPage() {
           </table>
         </div>
 
-        {/* Pagination */}
         {totalPages > 1 && (
           <div className="flex items-center justify-between p-4 border-t border-slate-800 bg-slate-950/20">
-            <span className="text-xs text-slate-500">
+            <span className="text-[11px] text-slate-500 font-medium">
               {t('Showing', 'عرض')} {(page-1)*PAGE_SIZE + 1} - {Math.min(page*PAGE_SIZE, filtered.length)} {t('of', 'من')} {filtered.length}
             </span>
             <div className="flex items-center gap-1">
               <button 
                 onClick={() => setPage(p => Math.max(1, p-1))} 
                 disabled={page === 1}
-                className="p-2 rounded-lg border border-slate-800 text-slate-400 disabled:opacity-30 hover:bg-slate-800 transition-colors"
+                className="p-1.5 rounded-lg border border-slate-800 text-slate-400 disabled:opacity-30 hover:bg-slate-800 transition-colors active:scale-90"
               >
-                {isRTL ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+                {isRTL ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
               </button>
               {Array.from({length: Math.min(5, totalPages)}).map((_, i) => {
                 const n = i + 1;
@@ -459,7 +459,7 @@ export default function InventoryPage() {
                   <button 
                     key={n} 
                     onClick={() => setPage(n)}
-                    className={`w-9 h-9 rounded-lg text-xs font-bold transition-all ${page === n ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}
+                    className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${page === n ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}
                   >
                     {n}
                   </button>
@@ -468,77 +468,86 @@ export default function InventoryPage() {
               <button 
                 onClick={() => setPage(p => Math.min(totalPages, p+1))} 
                 disabled={page === totalPages}
-                className="p-2 rounded-lg border border-slate-800 text-slate-400 disabled:opacity-30 hover:bg-slate-800 transition-colors"
+                className="p-1.5 rounded-lg border border-slate-800 text-slate-400 disabled:opacity-30 hover:bg-slate-800 transition-colors active:scale-90"
               >
-                {isRTL ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
+                {isRTL ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
               </button>
             </div>
           </div>
         )}
       </div>
 
-      {/* Add/Edit Modal */}
+      {/* ── Modals ── */}
       {showModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden scale-in-center">
-            <div className="p-6 border-b border-slate-800 flex justify-between items-center">
-              <h2 className="text-xl font-black text-white">{editItem ? t('Edit Part', 'تعديل قطعة') : t('New Inventory Item', 'إضافة قطعة جديدة')}</h2>
-              <button onClick={closeModal} className="p-2 text-slate-500 hover:text-white transition-colors"><X size={20} /></button>
+        <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in slide-in-from-bottom-10 sm:slide-in-from-bottom-0">
+            <div className="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
+              <h2 className="text-lg font-black text-white">{editItem ? t('Edit Part', 'تعديل قطعة') : t('New Inventory Item', 'إضافة قطعة جديدة')}</h2>
+              <button onClick={closeModal} className="p-2 text-slate-500 hover:text-white transition-colors" aria-label={t('Close', 'إغلاق')}><X size={20} /></button>
             </div>
             
-            <div className="p-6 space-y-4">
+            <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto no-scrollbar">
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
-                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Part Name', 'اسم القطعة')}</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Part Name', 'اسم القطعة')}</label>
                   <input 
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-emerald-500 focus:outline-none transition-colors"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-emerald-500 focus:outline-none transition-colors text-sm"
                     value={form.part_name} onChange={e => setForm({...form, part_name: e.target.value})} 
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Part Number', 'رقم القطعة')}</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Part Number', 'رقم القطعة')}</label>
                   <input 
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-emerald-500 focus:outline-none transition-colors font-mono"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-emerald-500 focus:outline-none transition-colors font-mono text-sm"
                     value={form.part_number} onChange={e => setForm({...form, part_number: e.target.value})} 
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Brand', 'الماركة')}</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Brand', 'الماركة')}</label>
                   <input 
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-emerald-500 focus:outline-none transition-colors"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-emerald-500 focus:outline-none transition-colors text-sm"
                     value={form.brand} onChange={e => setForm({...form, brand: e.target.value})} 
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Quantity', 'الكمية')}</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Quantity', 'الكمية')}</label>
                   <input 
-                    type="number" className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-emerald-500 focus:outline-none transition-colors"
+                    type="number" className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-emerald-500 focus:outline-none transition-colors text-sm"
                     value={form.quantity} onChange={e => setForm({...form, quantity: e.target.value})} 
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Unit Price', 'السعر')}</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Unit Price', 'السعر')}</label>
                   <input 
-                    type="number" className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-emerald-500 focus:outline-none transition-colors"
+                    type="number" className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-emerald-500 focus:outline-none transition-colors text-sm"
                     value={form.price} onChange={e => setForm({...form, price: e.target.value})} 
                   />
                 </div>
               </div>
-              {formError && <div className="text-red-400 text-xs bg-red-500/10 p-3 rounded-xl border border-red-500/20">{formError}</div>}
+              {formError && <div className="text-red-400 text-xs bg-red-500/10 p-3 rounded-xl border border-red-500/20 flex items-center gap-2"><AlertCircle size={14} /> {formError}</div>}
             </div>
 
-            <div className="p-6 bg-slate-950/30 flex items-center justify-end gap-3">
-              <button onClick={closeModal} className="px-6 py-2.5 rounded-xl text-slate-400 font-bold hover:text-white transition-colors">{t('Cancel', 'إلغاء')}</button>
+            <div className="p-5 bg-slate-950/30 flex items-center justify-end gap-3 border-t border-slate-800">
+              <button onClick={closeModal} className="px-5 py-2.5 rounded-xl text-slate-400 text-sm font-bold hover:text-white transition-colors">{t('Cancel', 'إلغاء')}</button>
               <button 
                 onClick={handleSave} 
                 disabled={saving}
-                className="px-8 py-2.5 rounded-xl bg-emerald-600 text-white font-black hover:bg-emerald-500 transition-all disabled:opacity-50 flex items-center gap-2"
+                className="px-8 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-black hover:bg-emerald-500 transition-all disabled:opacity-50 flex items-center gap-2 active:scale-95 shadow-lg"
               >
                 {saving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
                 {t('Save Details', 'حفظ التفاصيل')}
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Error View */}
+      {error && (
+        <div className="mt-4 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm flex items-center gap-3">
+          <AlertCircle size={20} className="shrink-0" />
+          <p className="flex-1">{error}</p>
+          <button onClick={fetchProducts} className="underline font-bold text-xs">{t('Retry', 'إعادة المحاولة')}</button>
         </div>
       )}
     </div>

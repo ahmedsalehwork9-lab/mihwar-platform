@@ -410,10 +410,8 @@ const CartSheet = memo(({
           />
         ))}
       </div>
-      <div
-        className="shrink-0 bg-slate-950 border-t border-slate-800 px-4 pt-4"
-        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 5.5rem)' }}
-      >
+      {/* Cart summary — above the button */}
+      <div className="shrink-0 bg-slate-950 border-t border-slate-800 px-4 pt-3 pb-2">
         <CartSummary
           cartTotal={cartTotal}
           cart={cart}
@@ -421,6 +419,12 @@ const CartSheet = memo(({
           cartShopCount={cartShopCount}
           t={t}
         />
+      </div>
+      {/* Submit button — extra bottom padding to sit above bottom nav bar */}
+      <div
+        className="shrink-0 bg-slate-950 px-4 pt-1"
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 5.5rem)' }}
+      >
         <button
           onClick={onCreateOrder}
           className="w-full bg-blue-600 hover:bg-blue-500 active:bg-blue-700 active:scale-[0.99] text-white font-black rounded-2xl shadow-xl shadow-blue-900/30 flex items-center justify-center gap-2.5 transition-all"

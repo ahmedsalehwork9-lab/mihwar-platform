@@ -19,6 +19,8 @@ import {
   X,
   ArrowRight,
   Plus,
+  MessageCircle,
+  Navigation,
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────
@@ -114,7 +116,6 @@ const SuccessModal = ({
 }) => (
   <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
     <div className="bg-slate-900 border border-slate-700 rounded-3xl p-8 w-full max-w-md shadow-2xl">
-      {/* Icon */}
       <div className="flex justify-center mb-5">
         <div className="w-16 h-16 bg-emerald-500/15 border border-emerald-500/25 rounded-full flex items-center justify-center">
           <CheckCircle size={32} className="text-emerald-400" />
@@ -128,7 +129,6 @@ const SuccessModal = ({
         تم إنشاء المحل والحساب وربطهما بنجاح
       </p>
 
-      {/* Info */}
       <div className="bg-slate-800/60 border border-slate-700/50 rounded-2xl p-4 space-y-3 mb-6">
         {[
           { label: 'اسم المحل', value: info.shop_name },
@@ -142,7 +142,6 @@ const SuccessModal = ({
         ))}
       </div>
 
-      {/* Actions */}
       <div className="flex gap-3">
         <button
           onClick={onNewClient}
@@ -173,11 +172,10 @@ export default function CreateShopPage() {
   const [successInfo, setSuccessInfo] = useState<SuccessInfo | null>(null);
   const [passwordError, setPasswordError] = useState('');
 
-  // ── Account settings (UI-only, no backend yet) ──
   const [accountStatus, setAccountStatus] = useState<AccountStatus>('active');
   const [accountType, setAccountType] = useState<AccountType>('basic');
 
-  // ── Form state (original fields + new UI fields) ──
+  // ── TASK 2: Added whatsapp + google_maps_url to form state ──
   const [form, setForm] = useState({
     shop_name: '',
     owner_name: '',
@@ -188,6 +186,8 @@ export default function CreateShopPage() {
     city: '',
     address: '',
     commercial_reg: '',
+    whatsapp: '',
+    google_maps_url: '',
   });
 
   const updateField = (field: string, value: string) => {
@@ -197,19 +197,12 @@ export default function CreateShopPage() {
     }
   };
 
-  // ── Load stats on mount ──
   useEffect(() => {
     const loadStats = async () => {
       const [totalRes, activeRes, trialRes] = await Promise.all([
         supabase.from('shops').select('id', { count: 'exact', head: true }),
-        supabase
-          .from('shops')
-          .select('id', { count: 'exact', head: true })
-          .eq('is_active', true),
-        supabase
-          .from('shops')
-          .select('id', { count: 'exact', head: true })
-          .eq('is_trial', true),
+        supabase.from('shops').select('id', { count: 'exact', head: true }).eq('is_active', true),
+        supabase.from('shops').select('id', { count: 'exact', head: true }).eq('is_trial', true),
       ]);
       setStats({
         total: totalRes.count ?? 0,
@@ -220,11 +213,11 @@ export default function CreateShopPage() {
     loadStats();
   }, []);
 
-  // ── Original handleSubmit — unchanged business logic ──
+  // ── Original handleSubmit — business logic unchanged ──
+  // TASK 2: whatsapp + google_maps_url added to payload
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validate passwords match
     if (form.password !== form.confirm_password) {
       setPasswordError('كلمة المرور وتأكيدها غير متطابقتين');
       return;
@@ -233,7 +226,6 @@ export default function CreateShopPage() {
     try {
       setLoading(true);
 
-      // Pass only original fields to the Edge Function
       const { data, error } = await supabase.functions.invoke('create-shop', {
         body: {
           shop_name: form.shop_name,
@@ -242,6 +234,8 @@ export default function CreateShopPage() {
           password: form.password,
           phone: form.phone,
           city: form.city,
+          whatsapp: form.whatsapp || null,
+          google_maps_url: form.google_maps_url || null,
         },
       });
 
@@ -249,14 +243,13 @@ export default function CreateShopPage() {
 
       console.log(data);
 
-      // Show success modal instead of alert
       setSuccessInfo({
         shop_name: form.shop_name,
         email: form.email,
         city: form.city,
       });
 
-      // Reset form
+      // Reset form including new fields
       setForm({
         shop_name: '',
         owner_name: '',
@@ -267,17 +260,15 @@ export default function CreateShopPage() {
         city: '',
         address: '',
         commercial_reg: '',
+        whatsapp: '',
+        google_maps_url: '',
       });
       setAccountStatus('active');
       setAccountType('basic');
 
-      // Refresh stats
       const [totalRes, activeRes] = await Promise.all([
         supabase.from('shops').select('id', { count: 'exact', head: true }),
-        supabase
-          .from('shops')
-          .select('id', { count: 'exact', head: true })
-          .eq('is_active', true),
+        supabase.from('shops').select('id', { count: 'exact', head: true }).eq('is_active', true),
       ]);
       setStats((prev) => ({
         ...prev,
@@ -319,9 +310,7 @@ export default function CreateShopPage() {
   return (
     <div className="max-w-5xl mx-auto space-y-8 pb-12">
 
-      {/* ══════════════════════════════════════════
-          SECTION 1 — STATS
-      ══════════════════════════════════════════ */}
+      {/* SECTION 1 — STATS */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {[
           {
@@ -346,13 +335,8 @@ export default function CreateShopPage() {
             border: 'border-amber-500/20',
           },
         ].map((s) => (
-          <div
-            key={s.label}
-            className={`bg-slate-900 border ${s.border} rounded-3xl p-5 flex items-center gap-4`}
-          >
-            <div className={`p-3 rounded-2xl ${s.bg} flex-shrink-0`}>
-              {s.icon}
-            </div>
+          <div key={s.label} className={`bg-slate-900 border ${s.border} rounded-3xl p-5 flex items-center gap-4`}>
+            <div className={`p-3 rounded-2xl ${s.bg} flex-shrink-0`}>{s.icon}</div>
             <div>
               <p className="text-slate-400 text-xs mb-1">{s.label}</p>
               <p className="text-white text-2xl font-black">{s.value}</p>
@@ -364,22 +348,15 @@ export default function CreateShopPage() {
       {/* Page title */}
       <div>
         <h1 className="text-white text-2xl font-black">إنشاء عميل جديد</h1>
-        <p className="text-slate-500 text-sm mt-1">
-          إنشاء محل جديد وربطه بصاحبه من لوحة الأدمن
-        </p>
+        <p className="text-slate-500 text-sm mt-1">إنشاء محل جديد وربطه بصاحبه من لوحة الأدمن</p>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
 
         {/* ══ LEFT: Forms ══ */}
-        <form
-          onSubmit={handleSubmit}
-          className="xl:col-span-2 space-y-6"
-        >
+        <form onSubmit={handleSubmit} className="xl:col-span-2 space-y-6">
 
-          {/* ──────────────────────────────────────
-              SECTION 3 — SHOP INFO
-          ────────────────────────────────────── */}
+          {/* SECTION 3 — SHOP INFO */}
           <div className="bg-slate-900 border border-slate-700/60 rounded-3xl p-6 shadow-xl">
             <CardHeader
               icon={<Store size={18} className="text-blue-400" />}
@@ -413,6 +390,29 @@ export default function CreateShopPage() {
                   required
                 />
               </div>
+
+              {/* ── TASK 2: WhatsApp field ── */}
+              <InputField
+                label="واتساب"
+                icon={<MessageCircle size={17} />}
+                optional
+                value={form.whatsapp}
+                onChange={(e) => updateField('whatsapp', e.target.value)}
+                placeholder="0500000000"
+                dir="ltr"
+              />
+
+              {/* ── TASK 2: Google Maps URL field ── */}
+              <InputField
+                label="رابط الموقع على الخريطة"
+                icon={<Navigation size={17} />}
+                optional
+                value={form.google_maps_url}
+                onChange={(e) => updateField('google_maps_url', e.target.value)}
+                placeholder="https://maps.google.com/..."
+                dir="ltr"
+              />
+
               <InputField
                 label="العنوان"
                 icon={<Building2 size={17} />}
@@ -431,9 +431,7 @@ export default function CreateShopPage() {
             </div>
           </div>
 
-          {/* ──────────────────────────────────────
-              SECTION 4 — OWNER INFO
-          ────────────────────────────────────── */}
+          {/* SECTION 4 — OWNER INFO */}
           <div className="bg-slate-900 border border-slate-700/60 rounded-3xl p-6 shadow-xl">
             <CardHeader
               icon={<User size={18} className="text-purple-400" />}
@@ -483,9 +481,7 @@ export default function CreateShopPage() {
             </div>
           </div>
 
-          {/* ──────────────────────────────────────
-              SECTION 5 — ACCOUNT SETTINGS
-          ────────────────────────────────────── */}
+          {/* SECTION 5 — ACCOUNT SETTINGS */}
           <div className="bg-slate-900 border border-slate-700/60 rounded-3xl p-6 shadow-xl">
             <CardHeader
               icon={<ShieldCheck size={18} className="text-teal-400" />}
@@ -493,11 +489,8 @@ export default function CreateShopPage() {
               subtitle="نوع الحساب والحالة الابتدائية"
             />
 
-            {/* Status toggle */}
             <div className="mb-6">
-              <p className="text-slate-400 text-xs font-medium mb-3 uppercase tracking-wider">
-                حالة الحساب
-              </p>
+              <p className="text-slate-400 text-xs font-medium mb-3 uppercase tracking-wider">حالة الحساب</p>
               <div className="flex items-center gap-4">
                 <button
                   type="button"
@@ -508,14 +501,7 @@ export default function CreateShopPage() {
                       : 'border-slate-700 text-slate-500 hover:border-slate-600'
                   }`}
                 >
-                  <ToggleRight
-                    size={18}
-                    className={
-                      accountStatus === 'active'
-                        ? 'text-emerald-400'
-                        : 'text-slate-600'
-                    }
-                  />
+                  <ToggleRight size={18} className={accountStatus === 'active' ? 'text-emerald-400' : 'text-slate-600'} />
                   نشط
                 </button>
                 <button
@@ -527,54 +513,38 @@ export default function CreateShopPage() {
                       : 'border-slate-700 text-slate-500 hover:border-slate-600'
                   }`}
                 >
-                  <ToggleLeft
-                    size={18}
-                    className={
-                      accountStatus === 'suspended'
-                        ? 'text-red-400'
-                        : 'text-slate-600'
-                    }
-                  />
+                  <ToggleLeft size={18} className={accountStatus === 'suspended' ? 'text-red-400' : 'text-slate-600'} />
                   موقوف
                 </button>
               </div>
             </div>
 
-            {/* Account type */}
             <div>
-              <p className="text-slate-400 text-xs font-medium mb-3 uppercase tracking-wider">
-                نوع الحساب
-              </p>
+              <p className="text-slate-400 text-xs font-medium mb-3 uppercase tracking-wider">نوع الحساب</p>
               <div className="grid grid-cols-3 gap-3">
-                {(Object.keys(accountTypeConfig) as AccountType[]).map(
-                  (type) => {
-                    const cfg = accountTypeConfig[type];
-                    const isActive = accountType === type;
-                    return (
-                      <button
-                        key={type}
-                        type="button"
-                        onClick={() => setAccountType(type)}
-                        className={`flex flex-col items-center gap-2 p-4 rounded-2xl border text-sm font-medium transition-all ${
-                          isActive ? cfg.active : cfg.color + ' hover:border-slate-500'
-                        }`}
-                      >
-                        {cfg.icon}
-                        <span>{cfg.label}</span>
-                        {isActive && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                        )}
-                      </button>
-                    );
-                  }
-                )}
+                {(Object.keys(accountTypeConfig) as AccountType[]).map((type) => {
+                  const cfg = accountTypeConfig[type];
+                  const isActive = accountType === type;
+                  return (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => setAccountType(type)}
+                      className={`flex flex-col items-center gap-2 p-4 rounded-2xl border text-sm font-medium transition-all ${
+                        isActive ? cfg.active : cfg.color + ' hover:border-slate-500'
+                      }`}
+                    >
+                      {cfg.icon}
+                      <span>{cfg.label}</span>
+                      {isActive && <span className="w-1.5 h-1.5 rounded-full bg-current" />}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
 
-          {/* ──────────────────────────────────────
-              SECTION 6 — SUBMIT
-          ────────────────────────────────────── */}
+          {/* SECTION 6 — SUBMIT */}
           <button
             type="submit"
             disabled={loading}
@@ -583,24 +553,9 @@ export default function CreateShopPage() {
             <span className="flex items-center justify-center gap-2">
               {loading ? (
                 <>
-                  <svg
-                    className="animate-spin h-5 w-5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8v8H4z"
-                    />
+                  <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                   </svg>
                   جاري إنشاء العميل...
                 </>
@@ -616,10 +571,6 @@ export default function CreateShopPage() {
 
         {/* ══ RIGHT: Summary Card ══ */}
         <div className="space-y-5">
-
-          {/* ──────────────────────────────────────
-              SECTION 2 — QUICK SUMMARY
-          ────────────────────────────────────── */}
           <div className="bg-slate-900 border border-slate-700/60 rounded-3xl p-6 shadow-xl sticky top-6">
             <div className="flex items-center gap-2.5 mb-5">
               <div className="p-2 bg-blue-500/10 rounded-xl">
@@ -637,31 +588,18 @@ export default function CreateShopPage() {
                 { label: 'تفعيل الحساب', done: accountStatus === 'active' },
               ].map(({ label, done }) => (
                 <div key={label} className="flex items-center gap-3">
-                  <div
-                    className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-300 ${
-                      done
-                        ? 'bg-emerald-500/20 border border-emerald-500/40'
-                        : 'bg-slate-800 border border-slate-700'
-                    }`}
-                  >
-                    {done ? (
-                      <CheckCircle size={12} className="text-emerald-400" />
-                    ) : (
-                      <X size={10} className="text-slate-600" />
-                    )}
+                  <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-300 ${
+                    done ? 'bg-emerald-500/20 border border-emerald-500/40' : 'bg-slate-800 border border-slate-700'
+                  }`}>
+                    {done ? <CheckCircle size={12} className="text-emerald-400" /> : <X size={10} className="text-slate-600" />}
                   </div>
-                  <span
-                    className={`text-sm transition-colors ${
-                      done ? 'text-slate-200' : 'text-slate-500'
-                    }`}
-                  >
+                  <span className={`text-sm transition-colors ${done ? 'text-slate-200' : 'text-slate-500'}`}>
                     {label}
                   </span>
                 </div>
               ))}
             </div>
 
-            {/* Progress bar */}
             <div className="mt-5">
               {(() => {
                 const steps = [
@@ -671,16 +609,12 @@ export default function CreateShopPage() {
                   !!form.shop_name && !!form.owner_name,
                   accountStatus === 'active',
                 ];
-                const pct = Math.round(
-                  (steps.filter(Boolean).length / steps.length) * 100
-                );
+                const pct = Math.round((steps.filter(Boolean).length / steps.length) * 100);
                 return (
                   <>
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="text-slate-500 text-xs">اكتمال النموذج</span>
-                      <span className="text-slate-300 text-xs font-semibold">
-                        {pct}%
-                      </span>
+                      <span className="text-slate-300 text-xs font-semibold">{pct}%</span>
                     </div>
                     <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
                       <div
@@ -694,31 +628,26 @@ export default function CreateShopPage() {
             </div>
           </div>
 
-          {/* Tips card */}
           <div className="bg-slate-900 border border-slate-700/60 rounded-3xl p-5">
-            <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-3">
-              ملاحظات
-            </p>
+            <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-3">ملاحظات</p>
             <ul className="space-y-2 text-slate-400 text-xs leading-relaxed">
               <li>• سيتلقى المالك بريداً إلكترونياً بمعلومات الدخول</li>
               <li>• يمكن تعديل البيانات لاحقاً من صفحة المحلات</li>
               <li>• السجل التجاري اختياري ويمكن إضافته لاحقاً</li>
               <li>• تأكد من صحة البريد الإلكتروني قبل الإرسال</li>
+              <li>• الواتساب والخريطة اختياريان ويمكن إضافتهما لاحقاً</li>
             </ul>
           </div>
         </div>
       </div>
 
-      {/* ══════════════════════════════════════════
-          SECTION 7 — SUCCESS MODAL
-      ══════════════════════════════════════════ */}
+      {/* SECTION 7 — SUCCESS MODAL */}
       {successInfo && (
         <SuccessModal
           info={successInfo}
           onNewClient={() => setSuccessInfo(null)}
           onGoToShops={() => {
             setSuccessInfo(null);
-            // Navigation handled by parent if needed
           }}
         />
       )}

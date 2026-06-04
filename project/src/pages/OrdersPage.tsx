@@ -9,7 +9,6 @@ import {
   Search, Save, ChevronDown,
   Printer, ArrowRightLeft, DollarSign,
   TrendingUp, Clock, CheckCircle,
-  Phone, MessageCircle, MapPin,
 } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────
@@ -43,9 +42,6 @@ type OrderItem = {
 type Shop = {
   id: number;
   shop_name: string;
-  phone?: string | null;
-  whatsapp?: string | null;
-  google_maps_url?: string | null;
 };
 
 type Product = {
@@ -92,15 +88,7 @@ function escapeHTML(str: string | null | undefined): string {
     .replace(/'/g, "&#039;");
 }
 
-/** Formats a Saudi phone number to WhatsApp international format */
-function formatWhatsApp(num: string): string {
-  const clean = num.replace(/\D/g, "");
-  if (clean.startsWith("966")) return clean;
-  if (clean.startsWith("05")) return "966" + clean.slice(1);
-  return clean;
-}
-
-function buildPrintHTML(order: Order, items: OrderItem[], supplierShop?: Shop | null): string {
+function buildPrintHTML(order: Order, items: OrderItem[]): string {
   const now = new Date();
   const date = new Date(order.created_at).toLocaleDateString("ar-SA", {
     year: "numeric", month: "long", day: "numeric",
@@ -146,44 +134,33 @@ function buildPrintHTML(order: Order, items: OrderItem[], supplierShop?: Shop | 
   const qrData = encodeURIComponent(
     `PO:${poNumber}|ID:${order.id}|DATE:${date}|STATUS:${order.status}|TOTAL:${order.total_amount}`
   );
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${qrData}&color=002B5B&bgcolor=ffffff&qzone=1`;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${qrData}&color=1E3A5F&bgcolor=ffffff&qzone=1`;
 
-  // ── PART 2: Arabic-first wordmark — محور only ──
+  // Arabic-first wordmark — محور only, no icon
   const logoSVG = `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start;">
-    <div style="font-family:'IBM Plex Sans Arabic',Tahoma,Arial;font-weight:800;font-size:40px;color:#002B5B;line-height:1;letter-spacing:-0.5px;">محور</div>
+    <div style="font-family:'IBM Plex Sans Arabic',Tahoma,Arial;font-weight:800;font-size:38px;color:#0A2A6B;line-height:1;letter-spacing:-0.5px;">محور</div>
     <div style="font-family:'IBM Plex Sans Arabic',Tahoma,Arial;font-weight:400;font-size:10px;color:#94A3B8;letter-spacing:0.3px;">منصة قطع غيار ايسوزو B2B</div>
   </div>`;
-
-  // ── PART 9: Supplier contact rows for PDF ──
-  const supplierContactRows = supplierShop ? [
-    supplierShop.phone
-      ? `<div class="icr"><span class="ick">رقم الجوال</span><span class="icv mono">${escapeHTML(supplierShop.phone)}</span></div>`
-      : "",
-    supplierShop.whatsapp
-      ? `<div class="icr"><span class="ick">واتساب</span><span class="icv mono">${escapeHTML(supplierShop.whatsapp)}</span></div>`
-      : "",
-    supplierShop.google_maps_url
-      ? `<div class="icr"><span class="ick">الموقع</span><span class="icv"><a href="${escapeHTML(supplierShop.google_maps_url)}" style="color:#00A86B;text-decoration:none;font-size:11px;">فتح الموقع ↗</a></span></div>`
-      : "",
-  ].join("") : "";
 
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<title>${poNumber} — أمر شراء محور</title>
+<title>${poNumber} — أمر شراء MIHWAR</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
 
 :root {
-  --navy:    #002B5B;
-  --navy2:   #0A4D68;
-  --accent:  #00A86B;
-  --blue-lt: #EFF6FF;
+  --navy:    #1E3A5F;
+  --blue1:   #1E40AF;
+  --blue2:   #2563EB;
+  --blue-lt: #DBEAFE;
+  --green:   #10B981;
+  --green-lt:#DCFCE7;
   --bg:      #F8FAFC;
   --border:  #CBD5E1;
   --border2: #E2E8F0;
-  --text:    #002B5B;
+  --text:    #1E3A5F;
   --muted:   #64748B;
   --muted2:  #94A3B8;
 }
@@ -197,12 +174,12 @@ body {
   line-height: 1.6; -webkit-print-color-adjust: exact; print-color-adjust: exact;
 }
 
-/* ── PART 6: WATERMARK — محور only, reduced opacity ── */
+/* ── WATERMARK ── */
 .wm {
   position: fixed; top: 50%; left: 50%;
   transform: translate(-50%,-50%) rotate(-30deg);
   font-size: 80px; font-weight: 800; letter-spacing: 0.12em;
-  color: rgba(0,43,91,0.018); white-space: nowrap;
+  color: rgba(30,58,95,0.02); white-space: nowrap;
   pointer-events: none; z-index: 0; user-select: none;
   font-family: 'IBM Plex Sans Arabic', sans-serif;
 }
@@ -210,39 +187,41 @@ body {
 .page { width: 100%; max-width: 794px; margin: 0 auto; position: relative; z-index: 1; }
 
 /* ════════════════════════════════
-   PART 3: HEADER
+   HEADER — white top bar
 ════════════════════════════════ */
 .hdr {
   background: #fff;
   border: 1.5px solid var(--border);
   border-radius: 10px 10px 0 0;
-  border-bottom: 3px solid var(--navy);
-  padding: 18px 22px 16px;
+  border-bottom: 3px solid var(--blue1);
+  padding: 16px 22px 14px;
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
   page-break-inside: avoid;
 }
 
+/* Logo area */
 .logo-wrap { flex-shrink: 0; min-width: 160px; }
 
+/* Center — Arabic-first title */
 .hdr-title { flex: 1; text-align: center; }
 .title-ar {
-  font-size: 28px; font-weight: 800; color: var(--navy);
+  font-size: 26px; font-weight: 800; color: var(--navy);
   font-family: 'IBM Plex Sans Arabic', Tahoma; line-height: 1;
   letter-spacing: 0.02em;
 }
 .title-en {
   font-size: 11px; font-weight: 600; color: var(--muted);
-  letter-spacing: 3px; text-transform: uppercase; margin-top: 5px;
+  letter-spacing: 3px; text-transform: uppercase; margin-top: 4px;
   display: block;
 }
 .title-rule {
-  width: 48px; height: 2.5px;
-  background: linear-gradient(90deg, var(--navy), var(--accent));
-  margin: 9px auto 0; border-radius: 2px;
+  width: 40px; height: 2.5px; background: var(--blue2);
+  margin: 8px auto 0; border-radius: 2px;
 }
 
+/* PO number box */
 .po-box {
-  background: var(--navy); border-radius: 8px;
+  background: var(--blue1); border-radius: 8px;
   padding: 10px 16px; min-width: 138px; flex-shrink: 0;
 }
 .po-lbl { font-size: 8px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #93C5FD; display: block; text-align: right; }
@@ -254,7 +233,7 @@ body {
 .po-date { font-size: 10px; color: #BFDBFE; display: block; text-align: right; margin-top: 3px; font-family: Tahoma; }
 
 /* ════════════════════════════════
-   PART 4: STATUS BAR — #002B5B
+   STATUS / META BAR
 ════════════════════════════════ */
 .sbar {
   background: var(--navy);
@@ -264,10 +243,11 @@ body {
 }
 .meta-grp { display: flex; align-items: center; gap: 14px; }
 .mi { display: flex; align-items: center; gap: 5px; }
-.mk { font-size: 8px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #93C5FD; }
-.mv { font-size: 9.5px; color: #BFDBFE; font-family: 'JetBrains Mono', monospace; }
-.msep { width: 1px; height: 13px; background: rgba(255,255,255,0.12); }
+.mk { font-size: 8px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #475569; }
+.mv { font-size: 9.5px; color: #94A3B8; font-family: 'JetBrains Mono', monospace; }
+.msep { width: 1px; height: 13px; background: #2D4A6A; }
 
+/* Status badge */
 .sbadge {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 4px 12px 4px 10px; border-radius: 20px; border: none;
@@ -275,17 +255,17 @@ body {
 }
 .sdot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .off-tag {
-  font-size: 8px; font-weight: 700; letter-spacing: 1px; color: #93C5FD;
-  text-transform: uppercase; border: 1px solid rgba(255,255,255,0.15); padding: 2px 8px; border-radius: 4px;
+  font-size: 8px; font-weight: 700; letter-spacing: 1px; color: #475569;
+  text-transform: uppercase; border: 1px solid #2D4A6A; padding: 2px 8px; border-radius: 4px;
 }
 
 /* ════════════════════════════════
-   PART 4: INFO CARDS — navy headers
+   INFO CARDS
 ════════════════════════════════ */
 .icard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
 .icard { border: 1.5px solid var(--border); border-radius: 9px; overflow: hidden; }
 .ich {
-  background: var(--navy); padding: 8px 14px;
+  background: var(--blue1); padding: 8px 14px;
   display: flex; align-items: center; justify-content: space-between;
 }
 .ich-ar { font-size: 12px; font-weight: 700; color: #fff; font-family: Tahoma; }
@@ -304,20 +284,20 @@ body {
    SECTION LABEL
 ════════════════════════════════ */
 .slbl { display: flex; align-items: center; gap: 8px; margin: 13px 0 7px; }
-.sbar2 { width: 4px; height: 17px; background: var(--accent); border-radius: 3px; }
+.sbar2 { width: 4px; height: 17px; background: var(--blue2); border-radius: 3px; }
 .sar  { font-size: 13px; font-weight: 700; color: var(--navy); font-family: Tahoma; }
 .sen  { font-size: 9px; font-weight: 600; color: var(--muted2); letter-spacing: 1px; text-transform: uppercase; margin-top: 1px; }
 
 /* ════════════════════════════════
-   PART 4: ITEMS TABLE — navy header
+   ITEMS TABLE
 ════════════════════════════════ */
 .twrap { border: 1.5px solid var(--border); border-radius: 9px; overflow: hidden; }
 table.items { width: 100%; border-collapse: collapse; }
-table.items thead tr { background: var(--navy); }
+table.items thead tr { background: var(--blue1); }
 table.items thead th {
   padding: 10px 12px; font-size: 9.5px; font-weight: 700;
   letter-spacing: 0.8px; text-transform: uppercase; color: #93C5FD;
-  text-align: right; white-space: nowrap; border-bottom: 1px solid rgba(255,255,255,0.08);
+  text-align: right; white-space: nowrap; border-bottom: 1px solid #1E3A8A;
 }
 th.th-en { font-size: 8px; display: block; color: #60A5FA; font-weight: 500; margin-top: 1px; letter-spacing: 0.5px; }
 th.tc { text-align: center; }
@@ -339,7 +319,7 @@ td.tf { font-weight: 700; font-size: 13px; color: var(--navy); }
 .cur  { font-size: 9px; font-weight: 500; color: var(--muted2); }
 
 /* ════════════════════════════════
-   NOTES + PART 10: TOTALS
+   NOTES + TOTALS
 ════════════════════════════════ */
 .brow {
   display: flex; border: 1.5px solid var(--border); border-top: none;
@@ -355,41 +335,30 @@ td.tf { font-weight: 700; font-size: 13px; color: var(--navy); }
 }
 .sk  { color: var(--muted); font-weight: 600; font-family: Tahoma; }
 .sv  { font-weight: 700; color: var(--text); font-family: 'JetBrains Mono', monospace; }
-/* PART 10: Total row — #002B5B bg, #00A86B amount */
+/* Total row — strong blue */
 .stot {
-  background: var(--navy); padding: 14px 14px;
+  background: var(--blue1); padding: 14px 14px;
   display: flex; justify-content: space-between; align-items: center;
 }
 .stk { font-size: 11.5px; font-weight: 700; color: #BFDBFE; font-family: Tahoma; }
-.stv { font-size: 22px; font-weight: 800; color: var(--accent); font-family: 'JetBrains Mono', monospace; letter-spacing: -0.02em; }
-.stc { font-size: 11px; font-weight: 600; color: #6EE7B7; margin-right: 4px; }
+.stv { font-size: 22px; font-weight: 800; color: #34D399; font-family: 'JetBrains Mono', monospace; letter-spacing: -0.02em; }
+.stc { font-size: 11px; font-weight: 600; color: #64A07A; margin-right: 4px; }
 
 /* ════════════════════════════════
-   PART 5: QR + SIGNATURES
+   QR + SIGNATURES
 ════════════════════════════════ */
 .qsrow { display: flex; gap: 10px; margin-top: 14px; page-break-inside: avoid; align-items: stretch; }
-.qrcard {
-  width: 148px; flex-shrink: 0;
-  border: 1.5px solid var(--border); border-radius: 12px;
-  overflow: hidden; display: flex; flex-direction: column;
-  box-shadow: 0 2px 8px rgba(0,43,91,0.08);
-  background: #fff;
-}
-.qrch  { background: var(--navy); padding: 9px 12px; }
+.qrcard { width: 142px; flex-shrink: 0; border: 1.5px solid var(--border); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+.qrch  { background: var(--blue1); padding: 8px 10px; }
 .qrcar { font-size: 12px; font-weight: 700; color: #fff; display: block; text-align: center; font-family: Tahoma; letter-spacing: 0.3px; }
 .qrcen { font-size: 8px; font-weight: 500; color: #93C5FD; display: block; text-align: center; margin-top: 2px; letter-spacing: 0.5px; }
-.qrcb  {
-  flex: 1; background: #ffffff;
-  display: flex; flex-direction: column; align-items: center;
-  justify-content: center; padding: 14px 12px 12px; gap: 0;
-}
+.qrcb  { flex: 1; background: #F8FAFC; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 12px 10px 10px; gap: 0; }
 .qrpo  { font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600; color: var(--navy); display: block; text-align: center; }
-.qrhint { font-size: 8px; color: var(--muted); display: block; text-align: center; margin-top: 3px; }
+.qrhint { font-size: 8px; color: var(--muted); display: block; text-align: center; margin-top: 1px; }
 
-/* PART 4: Signature section headers — navy */
 .siggrid { flex: 1; display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; }
 .sigcard { border: 1.5px solid var(--border); border-radius: 9px; overflow: hidden; display: flex; flex-direction: column; page-break-inside: avoid; }
-.sigch { background: var(--navy); padding: 7px 10px; text-align: center; }
+.sigch { background: var(--blue1); padding: 7px 10px; text-align: center; }
 .sigar { font-size: 11px; font-weight: 700; color: #fff; display: block; font-family: Tahoma; }
 .sigen { font-size: 8px; font-weight: 500; color: #93C5FD; display: block; margin-top: 2px; letter-spacing: 0.5px; }
 .sigcb { flex: 1; background: #fff; padding: 9px 10px; display: flex; flex-direction: column; gap: 7px; }
@@ -399,22 +368,21 @@ td.tf { font-weight: 700; font-size: 13px; color: var(--navy); }
 .siglg { border-bottom: 1px solid var(--border); height: 24px; }
 
 /* ════════════════════════════════
-   PART 11: FOOTER with contact info
+   FOOTER
 ════════════════════════════════ */
 .ftr {
-  margin-top: 14px; background: var(--navy);
+  margin-top: 14px; background: var(--blue1);
   border-radius: 0 0 10px 10px;
-  border-top: 3px solid var(--accent);
+  border-top: 3px solid var(--blue2);
   padding: 11px 22px;
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   page-break-inside: avoid;
 }
 .fbrand-ar { font-size: 13px; font-weight: 700; color: #fff; font-family: Tahoma; }
-.fbrand-en { font-size: 8.5px; color: #93C5FD; margin-top: 2px; }
-.fcenter   { text-align: center; display: flex; flex-direction: column; gap: 3px; }
-.fcontact  { font-size: 9px; font-weight: 500; color: #93C5FD; letter-spacing: 0.5px; font-family: 'JetBrains Mono', monospace; }
+.fbrand-en { font-size: 8.5px; color: #60A5FA; margin-top: 2px; }
+.fcenter   { font-size: 9px; font-weight: 600; color: #60A5FA; letter-spacing: 1.5px; text-transform: uppercase; text-align: center; }
 .fmeta     { text-align: left; display: flex; flex-direction: column; gap: 2px; }
-.fml       { font-size: 8.5px; color: #93C5FD; font-family: 'JetBrains Mono', monospace; }
+.fml       { font-size: 8.5px; color: #60A5FA; font-family: 'JetBrains Mono', monospace; }
 .fml strong { color: #BFDBFE; }
 
 @media print {
@@ -429,26 +397,32 @@ td.tf { font-weight: 700; font-size: 13px; color: var(--navy); }
 </style>
 </head>
 <body>
-<!-- PART 6: Watermark — محور only -->
-<div class="wm">محور</div>
+<div class="wm">محور MIHWAR</div>
 <div class="page">
 
-<!-- ════ PART 3: WHITE HEADER ════ -->
+<!-- ════ WHITE HEADER ════ -->
 <div class="hdr">
+
+  <!-- Logo — right in RTL -->
   <div class="logo-wrap">${logoSVG}</div>
+
+  <!-- Arabic-first title — center -->
   <div class="hdr-title">
     <div class="title-ar">أمر شراء</div>
     <span class="title-en">Purchase Order</span>
     <div class="title-rule"></div>
   </div>
+
+  <!-- PO number box — left in RTL -->
   <div class="po-box">
     <span class="po-lbl">رقم المستند</span>
     <span class="po-num">${poNumber}</span>
     <span class="po-date">${date}</span>
   </div>
+
 </div>
 
-<!-- ════ PART 4: STATUS BAR ════ -->
+<!-- ════ STATUS BAR ════ -->
 <div class="sbar">
   <div class="meta-grp">
     <div class="mi"><span class="mk">صدر</span><span class="mv">${issueTime}</span></div>
@@ -467,7 +441,7 @@ td.tf { font-weight: 700; font-size: 13px; color: var(--navy); }
   </div>
 </div>
 
-<!-- ════ PART 4 + PART 9: INFO CARDS ════ -->
+<!-- ════ INFO CARDS ════ -->
 <div class="icard-grid">
 
   <div class="icard">
@@ -502,7 +476,6 @@ td.tf { font-weight: 700; font-size: 13px; color: var(--navy); }
       </div>
       <div class="icr"><span class="ick">عدد الأصناف</span><span class="icv">${items.length} صنف</span></div>
       <div class="icr"><span class="ick">تاريخ الطباعة</span><span class="icv">${printDate}</span></div>
-      ${supplierContactRows}
     </div>
   </div>
 
@@ -534,7 +507,7 @@ td.tf { font-weight: 700; font-size: 13px; color: var(--navy); }
   </table>
 </div>
 
-<!-- ════ NOTES + PART 10: TOTALS ════ -->
+<!-- ════ NOTES + TOTALS ════ -->
 <div class="brow">
   ${order.notes ? `
   <div class="npane">
@@ -551,7 +524,7 @@ td.tf { font-weight: 700; font-size: 13px; color: var(--navy); }
   </div>
 </div>
 
-<!-- ════ PART 5: QR + SIGNATURES ════ -->
+<!-- ════ QR + SIGNATURES ════ -->
 <div class="qsrow">
 
   <div class="qrcard">
@@ -560,10 +533,10 @@ td.tf { font-weight: 700; font-size: 13px; color: var(--navy); }
       <span class="qrcen">Document Verification</span>
     </div>
     <div class="qrcb">
-      <div style="background:#fff;border:1.5px solid #E2E8F0;border-radius:10px;padding:8px;display:inline-block;box-shadow:0 1px 4px rgba(0,43,91,0.08);">
+      <div style="background:#fff;border:1.5px solid #E2E8F0;border-radius:8px;padding:6px;display:inline-block;">
         <img src="${qrUrl}" alt="QR ${poNumber}" style="width:90px;height:90px;display:block;" />
       </div>
-      <div style="text-align:center;margin-top:8px;">
+      <div style="text-align:center;margin-top:6px;">
         <span class="qrpo">${poNumber}</span>
         <span class="qrhint" style="display:block;margin-top:3px;font-family:Tahoma,Arial;font-size:8.5px;color:#64748B;line-height:1.4;">امسح الرمز لعرض<br>الطلب في النظام</span>
       </div>
@@ -589,17 +562,13 @@ td.tf { font-weight: 700; font-size: 13px; color: var(--navy); }
 
 </div>
 
-<!-- ════ PART 11: FOOTER with support contact ════ -->
+<!-- ════ FOOTER ════ -->
 <div class="ftr">
   <div>
     <div class="fbrand-ar">منصة محور لقطع الغيار</div>
     <div class="fbrand-en">MIHWAR B2B Auto Parts Marketplace</div>
   </div>
-  <div class="fcenter">
-    <span class="fcontact">support@mehwar.sa</span>
-    <span class="fcontact">0500000000</span>
-    <span class="fcontact">www.mehwar.sa</span>
-  </div>
+  <div class="fcenter">MIHWAR ERP SYSTEM</div>
   <div class="fmeta">
     <span class="fml"><strong>رقم الأمر :</strong> ${poNumber}</span>
     <span class="fml"><strong>التاريخ :</strong> ${printDate}</span>
@@ -675,12 +644,8 @@ export default function OrdersPage() {
     setLoading(false);
   }, [isAdmin, ownedShopId]);
 
-  // PART 7: Fetch shops with phone, whatsapp, google_maps_url
   const fetchShops = useCallback(async () => {
-    const { data } = await supabase
-      .from("shops")
-      .select("id, shop_name, phone, whatsapp, google_maps_url")
-      .order("shop_name");
+    const { data } = await supabase.from("shops").select("id, shop_name").order("shop_name");
     setShops((data as Shop[]) || []);
   }, []);
 
@@ -778,21 +743,15 @@ export default function OrdersPage() {
     setDetailLoading(false);
   }, []);
 
-  // PART 8: Resolve supplier shop data for drawer + print
-  const detailSupplierShop = useMemo(() => {
-    if (!detailOrder) return null;
-    return shops.find(s => s.id === detailOrder.to_shop_id) ?? null;
-  }, [detailOrder, shops]);
-
   const handlePrint = useCallback(() => {
     if (!detailOrder) return;
-    const html = buildPrintHTML(detailOrder, detailItems, detailSupplierShop);
+    const html = buildPrintHTML(detailOrder, detailItems);
     const win = window.open("", "_blank");
     if (!win) return;
     win.document.write(html);
     win.document.close();
     win.print();
-  }, [detailOrder, detailItems, detailSupplierShop]);
+  }, [detailOrder, detailItems]);
 
   const handleApprove = useCallback(async (orderId: number) => {
     setActionId(orderId);
@@ -942,7 +901,7 @@ export default function OrdersPage() {
         </div>
       </div>
 
-      {/* ── KPI Cards ── */}
+      {/* ── KPI Cards (4 stats with live data) ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         {[
           {
@@ -986,6 +945,7 @@ export default function OrdersPage() {
 
       {/* ── Filters & Tabs ── */}
       <div className="flex flex-col lg:flex-row gap-3 mb-5">
+        {/* Tabs */}
         <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800 overflow-x-auto no-scrollbar shrink-0" role="tablist">
           {(["all", "incoming", "outgoing"] as const).map(k => (
             <button
@@ -1002,6 +962,7 @@ export default function OrdersPage() {
           ))}
         </div>
 
+        {/* Search + Status */}
         <div className="flex-1 flex gap-2">
           <div className="relative flex-1">
             <Search
@@ -1046,12 +1007,15 @@ export default function OrdersPage() {
             onClick={() => openDetail(o)}
             className="w-full text-right bg-slate-900 border border-slate-800 rounded-2xl p-4 active:scale-[0.98] hover:border-slate-700 transition-all block"
           >
+            {/* Row 1: ID + Status */}
             <div className="flex items-center justify-between mb-3">
               <span className="text-white font-mono font-black text-sm">
                 #{o.id.toString().padStart(5, "0")}
               </span>
               <StatusBadge status={o.status} isRTL={isRTL} />
             </div>
+
+            {/* Row 2: From → To */}
             <div className="flex items-center gap-2 bg-slate-950/40 rounded-xl px-3 py-2 border border-slate-800/50 mb-3">
               <div className="flex-1 min-w-0">
                 <p className="text-[9px] text-slate-600 uppercase font-bold leading-none mb-0.5">{t("From", "من")}</p>
@@ -1063,6 +1027,8 @@ export default function OrdersPage() {
                 <p className="text-xs text-white font-bold truncate">{o.to_shop?.shop_name}</p>
               </div>
             </div>
+
+            {/* Row 3: Items + Date + Amount */}
             <div className="flex items-center justify-between">
               <div className="text-slate-500 text-[11px] space-y-0.5">
                 <p className="flex items-center gap-1">
@@ -1194,6 +1160,7 @@ export default function OrdersPage() {
                   {new Date(detailOrder.created_at).toLocaleString()}
                 </p>
               </div>
+              {/* Print button in header for easy access on mobile */}
               <div className="flex items-center gap-2 shrink-0 ml-3">
                 <button
                   onClick={handlePrint}
@@ -1215,56 +1182,15 @@ export default function OrdersPage() {
 
             {/* Drawer Body */}
             <div className="overflow-y-auto no-scrollbar flex-1 p-5 space-y-4">
-
               {/* Shop Info */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-slate-950/40 border border-slate-800 rounded-xl p-3">
                   <p className="text-[9px] font-bold text-slate-600 uppercase tracking-wider mb-1">{t("Requester", "الطالب")}</p>
                   <p className="text-sm font-bold text-white truncate">{detailOrder.from_shop?.shop_name}</p>
                 </div>
-
-                {/* PART 8: Supplier card with contact actions */}
                 <div className="bg-slate-950/40 border border-slate-800 rounded-xl p-3">
                   <p className="text-[9px] font-bold text-slate-600 uppercase tracking-wider mb-1">{t("Supplier", "المورد")}</p>
-                  <p className="text-sm font-bold text-white truncate mb-2">{detailOrder.to_shop?.shop_name}</p>
-                  {detailSupplierShop && (
-                    <div className="flex flex-wrap gap-1.5 mt-1">
-                      {detailSupplierShop.phone && (
-                        <a
-                          href={`tel:${detailSupplierShop.phone}`}
-                          className="flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold hover:bg-emerald-500/20 transition-colors"
-                          onClick={e => e.stopPropagation()}
-                        >
-                          <Phone size={11} />
-                          {t("اتصال", "اتصال")}
-                        </a>
-                      )}
-                      {detailSupplierShop.whatsapp && (
-                        <a
-                          href={`https://wa.me/${formatWhatsApp(detailSupplierShop.whatsapp)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-1 px-2 py-1 rounded-lg bg-green-500/10 border border-green-500/20 text-green-400 text-[10px] font-bold hover:bg-green-500/20 transition-colors"
-                          onClick={e => e.stopPropagation()}
-                        >
-                          <MessageCircle size={11} />
-                          {t("واتساب", "واتساب")}
-                        </a>
-                      )}
-                      {detailSupplierShop.google_maps_url && (
-                        <a
-                          href={detailSupplierShop.google_maps_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-bold hover:bg-blue-500/20 transition-colors"
-                          onClick={e => e.stopPropagation()}
-                        >
-                          <MapPin size={11} />
-                          {t("الموقع", "الموقع")}
-                        </a>
-                      )}
-                    </div>
-                  )}
+                  <p className="text-sm font-bold text-white truncate">{detailOrder.to_shop?.shop_name}</p>
                 </div>
               </div>
 
@@ -1313,7 +1239,7 @@ export default function OrdersPage() {
             </div>
 
             {/* Drawer Footer: Total + Actions */}
-            <div className="px-5 py-4 border-t border-slate-800 bg-slate-900 shrink-0 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+            <div className="px-5 py-4 border-t border-slate-800 bg-slate-900 shrink-0 pb-[calc(5.5rem+env(safe-area-inset-bottom))] lg:pb-[calc(1rem+env(safe-area-inset-bottom))]">
               <div className="flex items-center justify-between mb-4">
                 <span className="text-slate-500 font-bold text-xs uppercase tracking-widest">{t("Total Amount", "الإجمالي الكلي")}</span>
                 <span className="text-2xl font-black text-emerald-400">
@@ -1503,7 +1429,7 @@ export default function OrdersPage() {
               </div>
             </div>
 
-            <div className="px-5 py-4 border-t border-slate-800 bg-slate-900 shrink-0 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+            <div className="px-5 py-4 border-t border-slate-800 bg-slate-900 shrink-0 pb-[calc(5.5rem+env(safe-area-inset-bottom))] lg:pb-[calc(1rem+env(safe-area-inset-bottom))]">
               <button
                 onClick={handleSubmit}
                 disabled={saving || cart.length === 0}

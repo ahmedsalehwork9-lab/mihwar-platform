@@ -376,14 +376,20 @@ const CartSheet = memo(({
   onCreateOrder: () => void; t: any; isRTL: boolean;
 }) => (
   <div className="fixed inset-0 z-50 flex items-end lg:hidden" dir={isRTL ? 'rtl' : 'ltr'}>
+    {/* Backdrop */}
     <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
+
+    {/* Sheet — stops ABOVE the fixed button (pb-32 = 128px clears nav+button) */}
     <div
       className="relative w-full bg-slate-900 rounded-t-[1.75rem] border-t border-slate-800 shadow-2xl flex flex-col"
       style={{ maxHeight: 'calc(92vh - env(safe-area-inset-top, 0px))' }}
     >
+      {/* Drag handle */}
       <div className="flex justify-center pt-3 pb-1 shrink-0">
         <div className="w-12 h-1.5 rounded-full bg-slate-700" />
       </div>
+
+      {/* Header */}
       <div className="px-5 py-3 flex justify-between items-center border-b border-slate-800 shrink-0">
         <div className="flex items-center gap-2">
           <ShoppingCart size={17} className="text-emerald-400" />
@@ -396,6 +402,8 @@ const CartSheet = memo(({
           <X size={16} />
         </button>
       </div>
+
+      {/* Scrollable items */}
       <div
         className="flex-1 overflow-y-auto overscroll-contain px-4 py-1"
         style={{ WebkitOverflowScrolling: 'touch' } as any}
@@ -410,8 +418,9 @@ const CartSheet = memo(({
           />
         ))}
       </div>
-      {/* Cart summary — above the button */}
-      <div className="shrink-0 bg-slate-950 border-t border-slate-800 px-4 pt-3 pb-2">
+
+      {/* Summary — inside sheet, no extra bottom space */}
+      <div className="shrink-0 bg-slate-950 border-t border-slate-800 px-4 pt-3 pb-32">
         <CartSummary
           cartTotal={cartTotal}
           cart={cart}
@@ -420,20 +429,21 @@ const CartSheet = memo(({
           t={t}
         />
       </div>
-      {/* Submit button — extra bottom padding to sit above bottom nav bar */}
-      <div
-        className="shrink-0 bg-slate-950 px-4 pt-1"
-        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 5.5rem)' }}
+    </div>
+
+    {/* ── ORDER BUTTON — fixed overlay, always above bottom nav ── */}
+    <div
+      className="fixed left-0 right-0 z-[60] px-4"
+      style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 5rem)' }}
+    >
+      <button
+        onClick={onCreateOrder}
+        className="w-full bg-blue-600 hover:bg-blue-500 active:bg-blue-700 active:scale-[0.99] text-white font-black rounded-2xl shadow-2xl shadow-blue-900/60 flex items-center justify-center gap-2.5 transition-all"
+        style={{ height: '56px' }}
       >
-        <button
-          onClick={onCreateOrder}
-          className="w-full bg-blue-600 hover:bg-blue-500 active:bg-blue-700 active:scale-[0.99] text-white font-black rounded-2xl shadow-xl shadow-blue-900/30 flex items-center justify-center gap-2.5 transition-all"
-          style={{ height: '56px' }}
-        >
-          <ShoppingCart size={18} />
-          <span className="text-base">{t('Place Order', 'إرسال الطلب الآن')}</span>
-        </button>
-      </div>
+        <ShoppingCart size={18} />
+        <span className="text-base">{t('Place Order', 'إرسال الطلب الآن')}</span>
+      </button>
     </div>
   </div>
 ));

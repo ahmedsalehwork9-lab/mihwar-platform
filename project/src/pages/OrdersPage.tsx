@@ -9,6 +9,7 @@ import {
   Search, Save, ChevronDown,
   Printer, ArrowRightLeft, DollarSign,
   TrendingUp, Clock, CheckCircle,
+  Phone, MessageCircle, MapPin,
 } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────
@@ -42,6 +43,9 @@ type OrderItem = {
 type Shop = {
   id: number;
   shop_name: string;
+  phone?: string | null;
+  whatsapp?: string | null;
+  google_maps_url?: string | null;
 };
 
 type Product = {
@@ -86,6 +90,14 @@ function escapeHTML(str: string | null | undefined): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+/** Formats a Saudi phone number to WhatsApp international format */
+function formatWhatsApp(num: string): string {
+  const clean = num.replace(/\D/g, "");
+  if (clean.startsWith("966")) return clean;
+  if (clean.startsWith("05")) return "966" + clean.slice(1);
+  return clean;
 }
 
 function buildPrintHTML(order: Order, items: OrderItem[]): string {
@@ -645,7 +657,7 @@ export default function OrdersPage() {
   }, [isAdmin, ownedShopId]);
 
   const fetchShops = useCallback(async () => {
-    const { data } = await supabase.from("shops").select("id, shop_name").order("shop_name");
+    const { data } = await supabase.from("shops").select("id, shop_name, phone, whatsapp, google_maps_url").order("shop_name");
     setShops((data as Shop[]) || []);
   }, []);
 
@@ -742,6 +754,11 @@ export default function OrdersPage() {
     setDetailItems((data as OrderItem[]) || []);
     setDetailLoading(false);
   }, []);
+
+  // Resolve supplier shop data for contact buttons
+  const detailSupplierShop = detailOrder
+    ? shops.find(s => s.id === detailOrder.to_shop_id) ?? null
+    : null;
 
   const handlePrint = useCallback(() => {
     if (!detailOrder) return;
@@ -1188,9 +1205,48 @@ export default function OrdersPage() {
                   <p className="text-[9px] font-bold text-slate-600 uppercase tracking-wider mb-1">{t("Requester", "الطالب")}</p>
                   <p className="text-sm font-bold text-white truncate">{detailOrder.from_shop?.shop_name}</p>
                 </div>
+                {/* Supplier card with contact actions */}
                 <div className="bg-slate-950/40 border border-slate-800 rounded-xl p-3">
                   <p className="text-[9px] font-bold text-slate-600 uppercase tracking-wider mb-1">{t("Supplier", "المورد")}</p>
-                  <p className="text-sm font-bold text-white truncate">{detailOrder.to_shop?.shop_name}</p>
+                  <p className="text-sm font-bold text-white truncate mb-2">{detailOrder.to_shop?.shop_name}</p>
+                  {detailSupplierShop && (
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {detailSupplierShop.phone && (
+                        <a
+                          href={`tel:${detailSupplierShop.phone}`}
+                          className="flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold hover:bg-emerald-500/20 transition-colors"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <Phone size={11} />
+                          {t("Call", "اتصال")}
+                        </a>
+                      )}
+                      {detailSupplierShop.whatsapp && (
+                        <a
+                          href={`https://wa.me/${formatWhatsApp(detailSupplierShop.whatsapp)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 px-2 py-1 rounded-lg bg-green-500/10 border border-green-500/20 text-green-400 text-[10px] font-bold hover:bg-green-500/20 transition-colors"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <MessageCircle size={11} />
+                          {t("WhatsApp", "واتساب")}
+                        </a>
+                      )}
+                      {detailSupplierShop.google_maps_url && (
+                        <a
+                          href={detailSupplierShop.google_maps_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-bold hover:bg-blue-500/20 transition-colors"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <MapPin size={11} />
+                          {t("Location", "الموقع")}
+                        </a>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 

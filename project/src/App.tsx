@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
+import { NotificationProvider } from './context/NotificationContext';
 import LoginPage from './pages/LoginPage';
-import LandingPage from './pages/LandingPage'; // Added Import
+import LandingPage from './pages/LandingPage';
 import Layout, { Page } from './components/Layout';
 
 // Pages
@@ -25,8 +26,6 @@ import GlobalOrdersPage from './pages/GlobalOrdersPage';
 function AppContent() {
   const { session, loading, isAdmin } = useAuth();
   const [page, setPage] = useState<Page>('dashboard');
-  
-  // Local state to toggle between Landing and Login when not authenticated
   const [showLanding, setShowLanding] = useState(true);
 
   if (loading) {
@@ -37,7 +36,6 @@ function AppContent() {
     );
   }
 
-  // If there is no active session (user not logged in)
   if (!session) {
     if (showLanding) {
       return <LandingPage onLogin={() => setShowLanding(false)} />;
@@ -45,58 +43,54 @@ function AppContent() {
     return <LoginPage />;
   }
 
-  // If session exists, render the Authenticated Application
   const renderAdminPlaceholder = (title: string) => (
     <div className="flex items-center justify-center h-[70vh]">
       <div className="bg-blue-500/10 border border-blue-500/20 rounded-3xl p-10 text-center">
-        <h2 className="text-2xl font-bold text-blue-400 mb-3">
-          {title}
-        </h2>
-
-        <p className="text-slate-400">
-          هذه الصفحة تحت التطوير
-        </p>
+        <h2 className="text-2xl font-bold text-blue-400 mb-3">{title}</h2>
+        <p className="text-slate-400">هذه الصفحة تحت التطوير</p>
       </div>
     </div>
   );
 
   return (
-    <Layout page={page} setPage={setPage}>
-      {/* User Pages */}
-      {page === 'dashboard' && <DashboardPage />}
-      {page === 'search' && <SearchPage />}
-      {page === 'inventory' && <InventoryPage />}
-      {page === 'orders' && <OrdersPage />}
-      {page === 'reports' && <ReportsPage />}
-      {page === 'alerts' && <AlertsPage />}
+    <NotificationProvider>
+      <Layout page={page} setPage={setPage}>
+        {/* User Pages */}
+        {page === 'dashboard' && <DashboardPage />}
+        {page === 'search' && <SearchPage />}
+        {page === 'inventory' && <InventoryPage />}
+        {page === 'orders' && <OrdersPage />}
+        {page === 'reports' && <ReportsPage />}
+        {page === 'alerts' && <AlertsPage />}
 
-      {/* Admin Pages */}
-      {page === 'admin' &&
-        (isAdmin ? <AdminDashboardPage /> : <AccessDenied />)}
+        {/* Admin Pages */}
+        {page === 'admin' &&
+          (isAdmin ? <AdminDashboardPage /> : <AccessDenied />)}
 
-      {page === 'shops' &&
-        (isAdmin ? <ShopsPage /> : <AccessDenied />)}
+        {page === 'shops' &&
+          (isAdmin ? <ShopsPage /> : <AccessDenied />)}
 
-      {page === 'create-shop' &&
-        (isAdmin ? <CreateShopPage /> : <AccessDenied />)}
+        {page === 'create-shop' &&
+          (isAdmin ? <CreateShopPage /> : <AccessDenied />)}
 
-      {page === 'users' &&
-        (isAdmin ? <UsersPage /> : <AccessDenied />)}
+        {page === 'users' &&
+          (isAdmin ? <UsersPage /> : <AccessDenied />)}
 
-      {page === 'permissions' &&
-        (isAdmin ? <PermissionsPage /> : <AccessDenied />)}
+        {page === 'permissions' &&
+          (isAdmin ? <PermissionsPage /> : <AccessDenied />)}
 
-      {page === 'global-inventory' &&
-        (isAdmin ? <GlobalInventoryPage /> : <AccessDenied />)}
+        {page === 'global-inventory' &&
+          (isAdmin ? <GlobalInventoryPage /> : <AccessDenied />)}
 
-      {page === 'global-orders' &&
-        (isAdmin ? <GlobalOrdersPage /> : <AccessDenied />)}
+        {page === 'global-orders' &&
+          (isAdmin ? <GlobalOrdersPage /> : <AccessDenied />)}
 
-      {page === 'system-settings' &&
-        (isAdmin
-          ? renderAdminPlaceholder('إعدادات النظام')
-          : <AccessDenied />)}
-    </Layout>
+        {page === 'system-settings' &&
+          (isAdmin
+            ? renderAdminPlaceholder('إعدادات النظام')
+            : <AccessDenied />)}
+      </Layout>
+    </NotificationProvider>
   );
 }
 
@@ -104,13 +98,8 @@ function AccessDenied() {
   return (
     <div className="flex items-center justify-center h-[70vh]">
       <div className="bg-red-500/10 border border-red-500/20 rounded-3xl p-10 text-center max-w-md">
-        <h2 className="text-2xl font-bold text-red-400 mb-3">
-          غير مصرح
-        </h2>
-
-        <p className="text-slate-400">
-          ليس لديك صلاحية الوصول إلى هذه المنطقة الإدارية
-        </p>
+        <h2 className="text-2xl font-bold text-red-400 mb-3">غير مصرح</h2>
+        <p className="text-slate-400">ليس لديك صلاحية الوصول إلى هذه المنطقة الإدارية</p>
       </div>
     </div>
   );

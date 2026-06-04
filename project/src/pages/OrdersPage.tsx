@@ -9,6 +9,7 @@ import {
   Search, Save, ChevronDown,
   Printer, ArrowRightLeft, DollarSign,
   TrendingUp, Clock, CheckCircle,
+  Phone, MessageCircle, MapPin,
 } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────
@@ -42,6 +43,9 @@ type OrderItem = {
 type Shop = {
   id: number;
   shop_name: string;
+  phone?: string | null;
+  whatsapp?: string | null;
+  google_maps_url?: string | null;
 };
 
 type Product = {
@@ -77,50 +81,535 @@ const STATUS_META: Record<OrderStatus, { label: { ar: string; en: string }; colo
 // HELPERS
 // ─────────────────────────────────────────────────────────────
 
-function buildPrintHTML(order: Order, items: OrderItem[]): string {
+/** Escapes user-supplied strings before injecting into HTML — prevents XSS. */
+function escapeHTML(str: string | null | undefined): string {
+  if (!str) return "—";
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+/** Formats a Saudi phone number to WhatsApp international format */
+function formatWhatsApp(num: string): string {
+  const clean = num.replace(/\D/g, "");
+  if (clean.startsWith("966")) return clean;
+  if (clean.startsWith("05")) return "966" + clean.slice(1);
+  return clean;
+}
+
+function buildPrintHTML(order: Order, items: OrderItem[], supplierShop?: Shop | null): string {
+  const now = new Date();
   const date = new Date(order.created_at).toLocaleDateString("ar-SA", {
     year: "numeric", month: "long", day: "numeric",
   });
-  const rows = items.map((item, i) => `
-    <tr style="border-bottom: 1px solid #f3f4f6;">
-      <td style="padding: 12px 8px; font-size: 13px;">${i + 1}</td>
-      <td style="padding: 12px 8px; font-weight: 600; font-size: 14px;">${item.product?.part_name ?? "—"}</td>
-      <td style="padding: 12px 8px; font-family: monospace; font-size: 12px;">${item.product?.part_number ?? "—"}</td>
-      <td style="padding: 12px 8px; text-align: center;">${item.quantity}</td>
-      <td style="padding: 12px 8px; text-align: left;">${item.price.toLocaleString()}</td>
-      <td style="padding: 12px 8px; text-align: left; font-weight: 700;">${(item.price * item.quantity).toLocaleString()}</td>
-    </tr>
-  `).join("");
+  const issueTime = new Date(order.created_at).toLocaleTimeString("ar-SA", {
+    hour: "2-digit", minute: "2-digit",
+  });
+  const printDate = now.toLocaleDateString("ar-SA", {
+    year: "numeric", month: "long", day: "numeric",
+  });
+  const printTime = now.toLocaleTimeString("ar-SA", {
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  });
+  const poNumber = `PO-${String(order.id).padStart(6, "0")}`;
 
-  return `
-    <!DOCTYPE html>
-    <html lang="ar" dir="rtl">
-    <head>
-      <meta charset="UTF-8">
-      <style>
-        body { font-family: system-ui, -apple-system, sans-serif; padding: 40px; color: #1e293b; line-height: 1.5; }
-        .header { display: flex; justify-content: space-between; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 30px; }
-        h1 { margin: 0; color: #0f172a; font-size: 24px; }
-        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-        th { text-align: right; background: #f8fafc; padding: 12px 8px; font-size: 12px; text-transform: uppercase; color: #64748b; }
-        .total-box { margin-top: 30px; padding: 20px; background: #0f172a; color: white; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; }
-        .total-label { font-size: 14px; opacity: 0.8; }
-        .total-amount { font-size: 24px; font-weight: 800; }
-      </style>
-    </head>
-    <body>
-      <div class="header">
-        <div><h1>طلب شراء PO</h1><p style="color: #64748b;">رقم المرجع: PO-${order.id}</p></div>
-        <div style="text-align: left;"><p>التاريخ: ${date}</p><p>من: ${order.from_shop?.shop_name}</p><p>إلى: ${order.to_shop?.shop_name}</p></div>
+  // ── Status config ──
+  const statusCfg: Record<string, { ar: string; en: string; bg: string; color: string; dot: string }> = {
+    pending:   { ar: "معلق",   en: "Pending",   bg: "#FEF3C7", color: "#92400E", dot: "#D97706" },
+    approved:  { ar: "معتمد",  en: "Approved",  bg: "#DCFCE7", color: "#166534", dot: "#16A34A" },
+    rejected:  { ar: "مرفوض", en: "Rejected",  bg: "#FEE2E2", color: "#991B1B", dot: "#DC2626" },
+    completed: { ar: "مكتمل",  en: "Completed", bg: "#DBEAFE", color: "#1D4ED8", dot: "#2563EB" },
+  };
+  const sc = statusCfg[order.status] || statusCfg.pending;
+
+  const hasBrand = items.some(i => i.product?.brand);
+
+  const rows = items.map((item, i) => {
+    const lineTotal = item.price * item.quantity;
+    return `
+    <tr class="${i % 2 === 0 ? "re" : "ro"}">
+      <td class="tc ts">${i + 1}</td>
+      <td class="tn"><span class="pn">${escapeHTML(item.product?.part_name)}</span></td>
+      <td class="tm">${escapeHTML(item.product?.part_number)}</td>
+      ${hasBrand ? `<td class="tbr">${escapeHTML(item.product?.brand)}</td>` : ""}
+      <td class="tc tq">${item.quantity}</td>
+      <td class="tl">${item.price.toLocaleString("en-SA")}<span class="cur"> ر.س</span></td>
+      <td class="tl tf">${lineTotal.toLocaleString("en-SA")}<span class="cur"> ر.س</span></td>
+    </tr>`;
+  }).join("");
+
+  const subtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
+
+  const qrData = encodeURIComponent(
+    `PO:${poNumber}|ID:${order.id}|DATE:${date}|STATUS:${order.status}|TOTAL:${order.total_amount}`
+  );
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${qrData}&color=002B5B&bgcolor=ffffff&qzone=1`;
+
+  // ── PART 2: Arabic-first wordmark — محور only ──
+  const logoSVG = `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start;">
+    <div style="font-family:'IBM Plex Sans Arabic',Tahoma,Arial;font-weight:800;font-size:40px;color:#002B5B;line-height:1;letter-spacing:-0.5px;">محور</div>
+    <div style="font-family:'IBM Plex Sans Arabic',Tahoma,Arial;font-weight:400;font-size:10px;color:#94A3B8;letter-spacing:0.3px;">منصة قطع غيار ايسوزو B2B</div>
+  </div>`;
+
+  // ── PART 9: Supplier contact rows for PDF ──
+  const supplierContactRows = supplierShop ? [
+    supplierShop.phone
+      ? `<div class="icr"><span class="ick">رقم الجوال</span><span class="icv mono">${escapeHTML(supplierShop.phone)}</span></div>`
+      : "",
+    supplierShop.whatsapp
+      ? `<div class="icr"><span class="ick">واتساب</span><span class="icv mono">${escapeHTML(supplierShop.whatsapp)}</span></div>`
+      : "",
+    supplierShop.google_maps_url
+      ? `<div class="icr"><span class="ick">الموقع</span><span class="icv"><a href="${escapeHTML(supplierShop.google_maps_url)}" style="color:#00A86B;text-decoration:none;font-size:11px;">فتح الموقع ↗</a></span></div>`
+      : "",
+  ].join("") : "";
+
+  return `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>${poNumber} — أمر شراء محور</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
+
+:root {
+  --navy:    #002B5B;
+  --navy2:   #0A4D68;
+  --accent:  #00A86B;
+  --blue-lt: #EFF6FF;
+  --bg:      #F8FAFC;
+  --border:  #CBD5E1;
+  --border2: #E2E8F0;
+  --text:    #002B5B;
+  --muted:   #64748B;
+  --muted2:  #94A3B8;
+}
+
+@page { size: A4 portrait; margin: 9mm 11mm; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'IBM Plex Sans Arabic', Tahoma, 'Arial Unicode MS', Arial, sans-serif;
+  font-size: 12px; color: var(--text); background: #fff;
+  line-height: 1.6; -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+
+/* ── PART 6: WATERMARK — محور only, reduced opacity ── */
+.wm {
+  position: fixed; top: 50%; left: 50%;
+  transform: translate(-50%,-50%) rotate(-30deg);
+  font-size: 80px; font-weight: 800; letter-spacing: 0.12em;
+  color: rgba(0,43,91,0.018); white-space: nowrap;
+  pointer-events: none; z-index: 0; user-select: none;
+  font-family: 'IBM Plex Sans Arabic', sans-serif;
+}
+
+.page { width: 100%; max-width: 794px; margin: 0 auto; position: relative; z-index: 1; }
+
+/* ════════════════════════════════
+   PART 3: HEADER
+════════════════════════════════ */
+.hdr {
+  background: #fff;
+  border: 1.5px solid var(--border);
+  border-radius: 10px 10px 0 0;
+  border-bottom: 3px solid var(--navy);
+  padding: 18px 22px 16px;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  page-break-inside: avoid;
+}
+
+.logo-wrap { flex-shrink: 0; min-width: 160px; }
+
+.hdr-title { flex: 1; text-align: center; }
+.title-ar {
+  font-size: 28px; font-weight: 800; color: var(--navy);
+  font-family: 'IBM Plex Sans Arabic', Tahoma; line-height: 1;
+  letter-spacing: 0.02em;
+}
+.title-en {
+  font-size: 11px; font-weight: 600; color: var(--muted);
+  letter-spacing: 3px; text-transform: uppercase; margin-top: 5px;
+  display: block;
+}
+.title-rule {
+  width: 48px; height: 2.5px;
+  background: linear-gradient(90deg, var(--navy), var(--accent));
+  margin: 9px auto 0; border-radius: 2px;
+}
+
+.po-box {
+  background: var(--navy); border-radius: 8px;
+  padding: 10px 16px; min-width: 138px; flex-shrink: 0;
+}
+.po-lbl { font-size: 8px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #93C5FD; display: block; text-align: right; }
+.po-num {
+  font-family: 'JetBrains Mono', monospace; font-size: 20px;
+  font-weight: 600; color: #fff; display: block; text-align: right;
+  letter-spacing: 0.5px; line-height: 1.2; margin-top: 3px;
+}
+.po-date { font-size: 10px; color: #BFDBFE; display: block; text-align: right; margin-top: 3px; font-family: Tahoma; }
+
+/* ════════════════════════════════
+   PART 4: STATUS BAR — #002B5B
+════════════════════════════════ */
+.sbar {
+  background: var(--navy);
+  border-right: 1.5px solid var(--border); border-left: 1.5px solid var(--border);
+  padding: 7px 22px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.meta-grp { display: flex; align-items: center; gap: 14px; }
+.mi { display: flex; align-items: center; gap: 5px; }
+.mk { font-size: 8px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #93C5FD; }
+.mv { font-size: 9.5px; color: #BFDBFE; font-family: 'JetBrains Mono', monospace; }
+.msep { width: 1px; height: 13px; background: rgba(255,255,255,0.12); }
+
+.sbadge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 12px 4px 10px; border-radius: 20px; border: none;
+  font-size: 11px; font-weight: 700; font-family: Tahoma;
+}
+.sdot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.off-tag {
+  font-size: 8px; font-weight: 700; letter-spacing: 1px; color: #93C5FD;
+  text-transform: uppercase; border: 1px solid rgba(255,255,255,0.15); padding: 2px 8px; border-radius: 4px;
+}
+
+/* ════════════════════════════════
+   PART 4: INFO CARDS — navy headers
+════════════════════════════════ */
+.icard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.icard { border: 1.5px solid var(--border); border-radius: 9px; overflow: hidden; }
+.ich {
+  background: var(--navy); padding: 8px 14px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.ich-ar { font-size: 12px; font-weight: 700; color: #fff; font-family: Tahoma; }
+.ich-en { font-size: 9px; font-weight: 600; color: #93C5FD; letter-spacing: 0.5px; }
+.icb { padding: 10px 14px; background: #fff; }
+.icr {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding: 5px 0; border-bottom: 1px solid var(--border2); gap: 8px;
+}
+.icr:last-child { border-bottom: none; }
+.ick { font-size: 10.5px; color: var(--muted); font-weight: 600; font-family: Tahoma; white-space: nowrap; }
+.icv { font-size: 12px; color: var(--text); font-weight: 700; text-align: left; }
+.icv.mono { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+
+/* ════════════════════════════════
+   SECTION LABEL
+════════════════════════════════ */
+.slbl { display: flex; align-items: center; gap: 8px; margin: 13px 0 7px; }
+.sbar2 { width: 4px; height: 17px; background: var(--accent); border-radius: 3px; }
+.sar  { font-size: 13px; font-weight: 700; color: var(--navy); font-family: Tahoma; }
+.sen  { font-size: 9px; font-weight: 600; color: var(--muted2); letter-spacing: 1px; text-transform: uppercase; margin-top: 1px; }
+
+/* ════════════════════════════════
+   PART 4: ITEMS TABLE — navy header
+════════════════════════════════ */
+.twrap { border: 1.5px solid var(--border); border-radius: 9px; overflow: hidden; }
+table.items { width: 100%; border-collapse: collapse; }
+table.items thead tr { background: var(--navy); }
+table.items thead th {
+  padding: 10px 12px; font-size: 9.5px; font-weight: 700;
+  letter-spacing: 0.8px; text-transform: uppercase; color: #93C5FD;
+  text-align: right; white-space: nowrap; border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+th.th-en { font-size: 8px; display: block; color: #60A5FA; font-weight: 500; margin-top: 1px; letter-spacing: 0.5px; }
+th.tc { text-align: center; }
+th.tl { text-align: left; }
+
+tr.re { background: #fff; }
+tr.ro { background: var(--bg); }
+table.items tbody tr { border-bottom: 1px solid var(--border2); page-break-inside: avoid; }
+table.items tbody tr:last-child { border-bottom: none; }
+table.items tbody td { padding: 10px 12px; font-size: 12px; color: var(--text); vertical-align: middle; }
+td.tc { text-align: center; }
+td.ts { font-weight: 700; color: var(--muted2); font-size: 11px; width: 36px; }
+.pn  { font-weight: 700; font-size: 12.5px; color: var(--navy); }
+td.tm { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); }
+td.tbr { font-size: 11px; color: var(--muted); }
+td.tq { font-weight: 700; font-size: 13px; color: var(--navy); }
+td.tl { text-align: left; }
+td.tf { font-weight: 700; font-size: 13px; color: var(--navy); }
+.cur  { font-size: 9px; font-weight: 500; color: var(--muted2); }
+
+/* ════════════════════════════════
+   NOTES + PART 10: TOTALS
+════════════════════════════════ */
+.brow {
+  display: flex; border: 1.5px solid var(--border); border-top: none;
+  border-radius: 0 0 9px 9px; overflow: hidden; page-break-inside: avoid;
+}
+.npane { flex: 1; background: #FFFBEB; border-left: 1.5px solid var(--border2); padding: 12px 14px; }
+.nlbl  { font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #B45309; margin-bottom: 5px; font-family: Tahoma; }
+.ntxt  { font-size: 11.5px; color: #78350F; line-height: 1.7; font-family: Tahoma; }
+.spane { width: 256px; flex-shrink: 0; background: var(--bg); }
+.sr {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 14px; border-bottom: 1px solid var(--border); font-size: 12px;
+}
+.sk  { color: var(--muted); font-weight: 600; font-family: Tahoma; }
+.sv  { font-weight: 700; color: var(--text); font-family: 'JetBrains Mono', monospace; }
+/* PART 10: Total row — #002B5B bg, #00A86B amount */
+.stot {
+  background: var(--navy); padding: 14px 14px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.stk { font-size: 11.5px; font-weight: 700; color: #BFDBFE; font-family: Tahoma; }
+.stv { font-size: 22px; font-weight: 800; color: var(--accent); font-family: 'JetBrains Mono', monospace; letter-spacing: -0.02em; }
+.stc { font-size: 11px; font-weight: 600; color: #6EE7B7; margin-right: 4px; }
+
+/* ════════════════════════════════
+   PART 5: QR + SIGNATURES
+════════════════════════════════ */
+.qsrow { display: flex; gap: 10px; margin-top: 14px; page-break-inside: avoid; align-items: stretch; }
+.qrcard {
+  width: 148px; flex-shrink: 0;
+  border: 1.5px solid var(--border); border-radius: 12px;
+  overflow: hidden; display: flex; flex-direction: column;
+  box-shadow: 0 2px 8px rgba(0,43,91,0.08);
+  background: #fff;
+}
+.qrch  { background: var(--navy); padding: 9px 12px; }
+.qrcar { font-size: 12px; font-weight: 700; color: #fff; display: block; text-align: center; font-family: Tahoma; letter-spacing: 0.3px; }
+.qrcen { font-size: 8px; font-weight: 500; color: #93C5FD; display: block; text-align: center; margin-top: 2px; letter-spacing: 0.5px; }
+.qrcb  {
+  flex: 1; background: #ffffff;
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; padding: 14px 12px 12px; gap: 0;
+}
+.qrpo  { font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600; color: var(--navy); display: block; text-align: center; }
+.qrhint { font-size: 8px; color: var(--muted); display: block; text-align: center; margin-top: 3px; }
+
+/* PART 4: Signature section headers — navy */
+.siggrid { flex: 1; display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; }
+.sigcard { border: 1.5px solid var(--border); border-radius: 9px; overflow: hidden; display: flex; flex-direction: column; page-break-inside: avoid; }
+.sigch { background: var(--navy); padding: 7px 10px; text-align: center; }
+.sigar { font-size: 11px; font-weight: 700; color: #fff; display: block; font-family: Tahoma; }
+.sigen { font-size: 8px; font-weight: 500; color: #93C5FD; display: block; margin-top: 2px; letter-spacing: 0.5px; }
+.sigcb { flex: 1; background: #fff; padding: 9px 10px; display: flex; flex-direction: column; gap: 7px; }
+.sigf  { display: flex; flex-direction: column; gap: 2px; }
+.sigfl { font-size: 7.5px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--muted2); font-family: Tahoma; }
+.sigl  { border-bottom: 1px solid var(--border); height: 16px; }
+.siglg { border-bottom: 1px solid var(--border); height: 24px; }
+
+/* ════════════════════════════════
+   PART 11: FOOTER with contact info
+════════════════════════════════ */
+.ftr {
+  margin-top: 14px; background: var(--navy);
+  border-radius: 0 0 10px 10px;
+  border-top: 3px solid var(--accent);
+  padding: 11px 22px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  page-break-inside: avoid;
+}
+.fbrand-ar { font-size: 13px; font-weight: 700; color: #fff; font-family: Tahoma; }
+.fbrand-en { font-size: 8.5px; color: #93C5FD; margin-top: 2px; }
+.fcenter   { text-align: center; display: flex; flex-direction: column; gap: 3px; }
+.fcontact  { font-size: 9px; font-weight: 500; color: #93C5FD; letter-spacing: 0.5px; font-family: 'JetBrains Mono', monospace; }
+.fmeta     { text-align: left; display: flex; flex-direction: column; gap: 2px; }
+.fml       { font-size: 8.5px; color: #93C5FD; font-family: 'JetBrains Mono', monospace; }
+.fml strong { color: #BFDBFE; }
+
+@media print {
+  body { background: #fff !important; }
+  .wm { position: fixed; }
+  .page { page-break-after: always; }
+  .icard-grid, .brow, .qsrow, .sigcard, .ftr { page-break-inside: avoid; }
+  table.items { page-break-inside: auto; }
+  table.items thead { display: table-header-group; }
+  table.items tbody tr { page-break-inside: avoid; page-break-after: auto; }
+}
+</style>
+</head>
+<body>
+<!-- PART 6: Watermark — محور only -->
+<div class="wm">محور</div>
+<div class="page">
+
+<!-- ════ PART 3: WHITE HEADER ════ -->
+<div class="hdr">
+  <div class="logo-wrap">${logoSVG}</div>
+  <div class="hdr-title">
+    <div class="title-ar">أمر شراء</div>
+    <span class="title-en">Purchase Order</span>
+    <div class="title-rule"></div>
+  </div>
+  <div class="po-box">
+    <span class="po-lbl">رقم المستند</span>
+    <span class="po-num">${poNumber}</span>
+    <span class="po-date">${date}</span>
+  </div>
+</div>
+
+<!-- ════ PART 4: STATUS BAR ════ -->
+<div class="sbar">
+  <div class="meta-grp">
+    <div class="mi"><span class="mk">صدر</span><span class="mv">${issueTime}</span></div>
+    <div class="msep"></div>
+    <div class="mi"><span class="mk">طُبع</span><span class="mv">${printTime}</span></div>
+    <div class="msep"></div>
+    <div class="mi"><span class="mk">الأصناف</span><span class="mv">${items.length}</span></div>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px;">
+    <span class="sbadge" style="background:${sc.bg};color:${sc.color};">
+      <span class="sdot" style="background:${sc.dot};"></span>
+      ${sc.ar}
+      <span style="font-size:9px;font-weight:500;opacity:0.7;margin-right:3px;">${sc.en}</span>
+    </span>
+    <span class="off-tag">مستند رسمي</span>
+  </div>
+</div>
+
+<!-- ════ PART 4 + PART 9: INFO CARDS ════ -->
+<div class="icard-grid">
+
+  <div class="icard">
+    <div class="ich">
+      <div><div class="ich-ar">بيانات المشتري</div><div class="ich-en">Buyer Information</div></div>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#93C5FD" stroke-width="2">
+        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+      </svg>
+    </div>
+    <div class="icb">
+      <div class="icr"><span class="ick">اسم المحل</span><span class="icv">${escapeHTML(order.from_shop?.shop_name)}</span></div>
+      <div class="icr"><span class="ick">رقم الأمر</span><span class="icv mono">${poNumber}</span></div>
+      <div class="icr"><span class="ick">تاريخ الإصدار</span><span class="icv">${date}</span></div>
+      <div class="icr"><span class="ick">وقت الإصدار</span><span class="icv mono">${issueTime}</span></div>
+    </div>
+  </div>
+
+  <div class="icard">
+    <div class="ich">
+      <div><div class="ich-ar">بيانات المورد</div><div class="ich-en">Supplier Information</div></div>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#93C5FD" stroke-width="2">
+        <rect x="2" y="7" width="20" height="14" rx="2"/>
+        <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+      </svg>
+    </div>
+    <div class="icb">
+      <div class="icr"><span class="ick">اسم المحل</span><span class="icv">${escapeHTML(order.to_shop?.shop_name)}</span></div>
+      <div class="icr"><span class="ick">حالة الأمر</span>
+        <span class="sbadge" style="background:${sc.bg};color:${sc.color};padding:2px 8px;font-size:10px;">
+          <span class="sdot" style="background:${sc.dot};width:5px;height:5px;"></span>${sc.ar}
+        </span>
       </div>
-      <table>
-        <thead><tr><th>#</th><th>الصنف</th><th>رقم القطعة</th><th style="text-align:center">الكمية</th><th style="text-align:left">السعر</th><th style="text-align:left">الإجمالي</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-      <div class="total-box"><span class="total-label">الإجمالي الكلي</span><span class="total-amount">${order.total_amount.toLocaleString()} ر.س</span></div>
-    </body>
-    </html>
-  `;
+      <div class="icr"><span class="ick">عدد الأصناف</span><span class="icv">${items.length} صنف</span></div>
+      <div class="icr"><span class="ick">تاريخ الطباعة</span><span class="icv">${printDate}</span></div>
+      ${supplierContactRows}
+    </div>
+  </div>
+
+</div>
+
+<!-- ════ ITEMS TABLE ════ -->
+<div class="slbl">
+  <div class="sbar2"></div>
+  <div>
+    <div class="sar">الأصناف المطلوبة</div>
+    <div class="sen">Order Items</div>
+  </div>
+</div>
+
+<div class="twrap">
+  <table class="items">
+    <thead>
+      <tr>
+        <th style="width:36px" class="tc">#</th>
+        <th>اسم القطعة<span class="th-en">Part Name</span></th>
+        <th style="width:118px">رقم القطعة<span class="th-en">Part No.</span></th>
+        ${hasBrand ? `<th style="width:88px">العلامة<span class="th-en">Brand</span></th>` : ""}
+        <th style="width:54px" class="tc">الكمية<span class="th-en">Qty</span></th>
+        <th style="width:108px" class="tl">سعر الوحدة<span class="th-en">Unit Price</span></th>
+        <th style="width:118px" class="tl">الإجمالي<span class="th-en">Total</span></th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+</div>
+
+<!-- ════ NOTES + PART 10: TOTALS ════ -->
+<div class="brow">
+  ${order.notes ? `
+  <div class="npane">
+    <div class="nlbl">ملاحظات · Notes</div>
+    <div class="ntxt">${escapeHTML(order.notes)}</div>
+  </div>` : `<div style="flex:1;background:var(--bg);"></div>`}
+  <div class="spane">
+    <div class="sr"><span class="sk">المجموع الفرعي</span><span class="sv">${subtotal.toLocaleString("en-SA")} ر.س</span></div>
+    <div class="sr"><span class="sk">ضريبة القيمة المضافة</span><span class="sv" style="color:var(--muted2);">—</span></div>
+    <div class="stot">
+      <span class="stk">الإجمالي الكلي</span>
+      <span class="stv">${order.total_amount.toLocaleString("en-SA")}<span class="stc">ر.س</span></span>
+    </div>
+  </div>
+</div>
+
+<!-- ════ PART 5: QR + SIGNATURES ════ -->
+<div class="qsrow">
+
+  <div class="qrcard">
+    <div class="qrch">
+      <span class="qrcar">التحقق من المستند</span>
+      <span class="qrcen">Document Verification</span>
+    </div>
+    <div class="qrcb">
+      <div style="background:#fff;border:1.5px solid #E2E8F0;border-radius:10px;padding:8px;display:inline-block;box-shadow:0 1px 4px rgba(0,43,91,0.08);">
+        <img src="${qrUrl}" alt="QR ${poNumber}" style="width:90px;height:90px;display:block;" />
+      </div>
+      <div style="text-align:center;margin-top:8px;">
+        <span class="qrpo">${poNumber}</span>
+        <span class="qrhint" style="display:block;margin-top:3px;font-family:Tahoma,Arial;font-size:8.5px;color:#64748B;line-height:1.4;">امسح الرمز لعرض<br>الطلب في النظام</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="siggrid">
+    ${[
+      ["إعداد الطلب",    "Prepared By"],
+      ["اعتماد الإدارة", "Approved By"],
+      ["توقيع المورد",   "Supplier Signature"],
+      ["توقيع المشتري",  "Buyer Signature"],
+    ].map(([ar, en]) => `
+    <div class="sigcard">
+      <div class="sigch"><span class="sigar">${ar}</span><span class="sigen">${en}</span></div>
+      <div class="sigcb">
+        <div class="sigf"><span class="sigfl">الاسم · Name</span><div class="sigl"></div></div>
+        <div class="sigf"><span class="sigfl">التوقيع · Signature</span><div class="siglg"></div></div>
+        <div class="sigf"><span class="sigfl">التاريخ · Date</span><div class="sigl"></div></div>
+      </div>
+    </div>`).join("")}
+  </div>
+
+</div>
+
+<!-- ════ PART 11: FOOTER with support contact ════ -->
+<div class="ftr">
+  <div>
+    <div class="fbrand-ar">منصة محور لقطع الغيار</div>
+    <div class="fbrand-en">MIHWAR B2B Auto Parts Marketplace</div>
+  </div>
+  <div class="fcenter">
+    <span class="fcontact">support@mehwar.sa</span>
+    <span class="fcontact">0500000000</span>
+    <span class="fcontact">www.mehwar.sa</span>
+  </div>
+  <div class="fmeta">
+    <span class="fml"><strong>رقم الأمر :</strong> ${poNumber}</span>
+    <span class="fml"><strong>التاريخ :</strong> ${printDate}</span>
+    <span class="fml"><strong>الوقت :</strong> ${printTime}</span>
+  </div>
+</div>
+
+</div>
+</body>
+</html>`;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -186,8 +675,12 @@ export default function OrdersPage() {
     setLoading(false);
   }, [isAdmin, ownedShopId]);
 
+  // PART 7: Fetch shops with phone, whatsapp, google_maps_url
   const fetchShops = useCallback(async () => {
-    const { data } = await supabase.from("shops").select("id, shop_name").order("shop_name");
+    const { data } = await supabase
+      .from("shops")
+      .select("id, shop_name, phone, whatsapp, google_maps_url")
+      .order("shop_name");
     setShops((data as Shop[]) || []);
   }, []);
 
@@ -285,15 +778,21 @@ export default function OrdersPage() {
     setDetailLoading(false);
   }, []);
 
+  // PART 8: Resolve supplier shop data for drawer + print
+  const detailSupplierShop = useMemo(() => {
+    if (!detailOrder) return null;
+    return shops.find(s => s.id === detailOrder.to_shop_id) ?? null;
+  }, [detailOrder, shops]);
+
   const handlePrint = useCallback(() => {
     if (!detailOrder) return;
-    const html = buildPrintHTML(detailOrder, detailItems);
+    const html = buildPrintHTML(detailOrder, detailItems, detailSupplierShop);
     const win = window.open("", "_blank");
     if (!win) return;
     win.document.write(html);
     win.document.close();
     win.print();
-  }, [detailOrder, detailItems]);
+  }, [detailOrder, detailItems, detailSupplierShop]);
 
   const handleApprove = useCallback(async (orderId: number) => {
     setActionId(orderId);
@@ -443,7 +942,7 @@ export default function OrdersPage() {
         </div>
       </div>
 
-      {/* ── KPI Cards (4 stats with live data) ── */}
+      {/* ── KPI Cards ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         {[
           {
@@ -487,7 +986,6 @@ export default function OrdersPage() {
 
       {/* ── Filters & Tabs ── */}
       <div className="flex flex-col lg:flex-row gap-3 mb-5">
-        {/* Tabs */}
         <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800 overflow-x-auto no-scrollbar shrink-0" role="tablist">
           {(["all", "incoming", "outgoing"] as const).map(k => (
             <button
@@ -504,7 +1002,6 @@ export default function OrdersPage() {
           ))}
         </div>
 
-        {/* Search + Status */}
         <div className="flex-1 flex gap-2">
           <div className="relative flex-1">
             <Search
@@ -549,15 +1046,12 @@ export default function OrdersPage() {
             onClick={() => openDetail(o)}
             className="w-full text-right bg-slate-900 border border-slate-800 rounded-2xl p-4 active:scale-[0.98] hover:border-slate-700 transition-all block"
           >
-            {/* Row 1: ID + Status */}
             <div className="flex items-center justify-between mb-3">
               <span className="text-white font-mono font-black text-sm">
                 #{o.id.toString().padStart(5, "0")}
               </span>
               <StatusBadge status={o.status} isRTL={isRTL} />
             </div>
-
-            {/* Row 2: From → To */}
             <div className="flex items-center gap-2 bg-slate-950/40 rounded-xl px-3 py-2 border border-slate-800/50 mb-3">
               <div className="flex-1 min-w-0">
                 <p className="text-[9px] text-slate-600 uppercase font-bold leading-none mb-0.5">{t("From", "من")}</p>
@@ -569,8 +1063,6 @@ export default function OrdersPage() {
                 <p className="text-xs text-white font-bold truncate">{o.to_shop?.shop_name}</p>
               </div>
             </div>
-
-            {/* Row 3: Items + Date + Amount */}
             <div className="flex items-center justify-between">
               <div className="text-slate-500 text-[11px] space-y-0.5">
                 <p className="flex items-center gap-1">
@@ -702,7 +1194,6 @@ export default function OrdersPage() {
                   {new Date(detailOrder.created_at).toLocaleString()}
                 </p>
               </div>
-              {/* Print button in header for easy access on mobile */}
               <div className="flex items-center gap-2 shrink-0 ml-3">
                 <button
                   onClick={handlePrint}
@@ -724,15 +1215,56 @@ export default function OrdersPage() {
 
             {/* Drawer Body */}
             <div className="overflow-y-auto no-scrollbar flex-1 p-5 space-y-4">
+
               {/* Shop Info */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-slate-950/40 border border-slate-800 rounded-xl p-3">
                   <p className="text-[9px] font-bold text-slate-600 uppercase tracking-wider mb-1">{t("Requester", "الطالب")}</p>
                   <p className="text-sm font-bold text-white truncate">{detailOrder.from_shop?.shop_name}</p>
                 </div>
+
+                {/* PART 8: Supplier card with contact actions */}
                 <div className="bg-slate-950/40 border border-slate-800 rounded-xl p-3">
                   <p className="text-[9px] font-bold text-slate-600 uppercase tracking-wider mb-1">{t("Supplier", "المورد")}</p>
-                  <p className="text-sm font-bold text-white truncate">{detailOrder.to_shop?.shop_name}</p>
+                  <p className="text-sm font-bold text-white truncate mb-2">{detailOrder.to_shop?.shop_name}</p>
+                  {detailSupplierShop && (
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {detailSupplierShop.phone && (
+                        <a
+                          href={`tel:${detailSupplierShop.phone}`}
+                          className="flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold hover:bg-emerald-500/20 transition-colors"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <Phone size={11} />
+                          {t("اتصال", "اتصال")}
+                        </a>
+                      )}
+                      {detailSupplierShop.whatsapp && (
+                        <a
+                          href={`https://wa.me/${formatWhatsApp(detailSupplierShop.whatsapp)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 px-2 py-1 rounded-lg bg-green-500/10 border border-green-500/20 text-green-400 text-[10px] font-bold hover:bg-green-500/20 transition-colors"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <MessageCircle size={11} />
+                          {t("واتساب", "واتساب")}
+                        </a>
+                      )}
+                      {detailSupplierShop.google_maps_url && (
+                        <a
+                          href={detailSupplierShop.google_maps_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-bold hover:bg-blue-500/20 transition-colors"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <MapPin size={11} />
+                          {t("الموقع", "الموقع")}
+                        </a>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 

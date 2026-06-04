@@ -87,6 +87,90 @@ function StockBadge({ quantity, t }: StockBadgeProps) {
   );
 }
 
+// ─── Mobile Product Card ──────────────────────────────────────────────────────
+// Shown only on < md. Receives all data and callbacks from parent.
+// No new state, no new effects, no new logic.
+
+interface MobileProductCardProps {
+  p: Product;
+  selected: boolean;
+  onToggle: (id: number) => void;
+  onEdit: (p: Product) => void;
+  onDelete: (id: number) => void;
+  t: (en: string, ar: string) => string;
+}
+
+function MobileProductCard({ p, selected, onToggle, onEdit, onDelete, t }: MobileProductCardProps) {
+  const status = getStatus(p.quantity);
+  const qtyColor = status === 'in_stock' ? 'text-emerald-400' : status === 'low_stock' ? 'text-amber-400' : 'text-red-400';
+
+  return (
+    <div className={`bg-slate-900 rounded-xl border transition-colors ${selected ? 'border-emerald-500/50' : 'border-slate-800'}`}>
+      {/* Header: checkbox + name + badge */}
+      <div className="flex items-start gap-3 p-3 pb-2">
+        <input
+          type="checkbox"
+          className="accent-emerald-500 cursor-pointer mt-0.5 shrink-0"
+          checked={selected}
+          onChange={() => onToggle(p.id)}
+          aria-label={t(`Select ${p.part_name}`, `تحديد ${p.part_name}`)}
+        />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2">
+            <span className="text-white font-bold text-sm leading-tight">{p.part_name}</span>
+            <StockBadge quantity={p.quantity} t={t} />
+          </div>
+          <div className="flex items-center gap-1.5 mt-1">
+            <span className="font-mono text-[10px] text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded leading-none">{p.part_number}</span>
+            <CopyButton text={p.part_number} />
+          </div>
+        </div>
+      </div>
+
+      {/* Body: brand / model / qty / price */}
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 px-3 py-2.5 border-t border-slate-800/60">
+        <div>
+          <div className="text-[9px] text-slate-600 uppercase tracking-wider mb-0.5">{t('Brand', 'الماركة')}</div>
+          <div className="text-slate-300 text-xs font-medium truncate">{p.brand || '—'}</div>
+        </div>
+        <div>
+          <div className="text-[9px] text-slate-600 uppercase tracking-wider mb-0.5">{t('Model', 'الموديل')}</div>
+          <div className="text-slate-300 text-xs uppercase truncate">{p.model || '—'}</div>
+        </div>
+        <div>
+          <div className="text-[9px] text-slate-600 uppercase tracking-wider mb-0.5">{t('Quantity', 'الكمية')}</div>
+          <div className={`text-sm font-black tabular-nums ${qtyColor}`}>{p.quantity}</div>
+        </div>
+        <div>
+          <div className="text-[9px] text-slate-600 uppercase tracking-wider mb-0.5">{t('Unit Price', 'السعر')}</div>
+          <div className="text-slate-100 text-xs font-bold tabular-nums">
+            {p.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}{' '}
+            <span className="text-[9px] text-slate-500 font-normal">ر.س</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer: actions */}
+      <div className="flex items-center justify-end gap-1 px-3 py-2 border-t border-slate-800/60">
+        <button
+          onClick={() => onEdit(p)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 transition-all text-xs font-bold"
+          aria-label={t(`Edit ${p.part_name}`, `تعديل ${p.part_name}`)}
+        >
+          <Edit2 size={13} /> {t('Edit', 'تعديل')}
+        </button>
+        <button
+          onClick={() => onDelete(p.id)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-all text-xs font-bold"
+          aria-label={t(`Delete ${p.part_name}`, `حذف ${p.part_name}`)}
+        >
+          <Trash2 size={13} /> {t('Delete', 'حذف')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function InventoryPage() {
@@ -113,6 +197,9 @@ export default function InventoryPage() {
 
   const importRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  // Derived: whether search is active. No new state — reads existing `search`.
+  const isSearching = search.trim().length > 0;
 
   // ── Database Actions ───────────────────────────────────────────────────────
   const fetchProducts = useCallback(async () => {
@@ -289,6 +376,47 @@ export default function InventoryPage() {
     });
   }, []);
 
+  // ── Shared pagination UI (used in both mobile and desktop) ────────────────
+  const PaginationControls = () => totalPages > 1 ? (
+    <div className="flex items-center justify-between p-4 border-t border-slate-800 bg-slate-950/20">
+      <span className="text-[11px] text-slate-500 font-medium">
+        {t('Showing', 'عرض')} {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} {t('of', 'من')} {filtered.length}
+      </span>
+      <div className="flex items-center gap-1" role="navigation" aria-label={t('Pagination', 'التنقل بين الصفحات')}>
+        <button
+          onClick={() => setPage(p => Math.max(1, p - 1))}
+          disabled={page === 1}
+          aria-label={t('Previous page', 'الصفحة السابقة')}
+          className="p-1.5 rounded-lg border border-slate-800 text-slate-400 disabled:opacity-30 hover:bg-slate-800 transition-colors active:scale-90"
+        >
+          {isRTL ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+        </button>
+        {Array.from({ length: Math.min(5, totalPages) }).map((_, i) => {
+          const n = i + 1;
+          return (
+            <button
+              key={n}
+              onClick={() => setPage(n)}
+              aria-label={t(`Page ${n}`, `صفحة ${n}`)}
+              aria-current={page === n ? 'page' : undefined}
+              className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${page === n ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}
+            >
+              {n}
+            </button>
+          );
+        })}
+        <button
+          onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+          disabled={page === totalPages}
+          aria-label={t('Next page', 'الصفحة التالية')}
+          className="p-1.5 rounded-lg border border-slate-800 text-slate-400 disabled:opacity-30 hover:bg-slate-800 transition-colors active:scale-90"
+        >
+          {isRTL ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+        </button>
+      </div>
+    </div>
+  ) : null;
+
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <div className="max-w-[1400px] mx-auto pb-10 px-4 sm:px-6 animate-in fade-in duration-500" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -317,7 +445,7 @@ export default function InventoryPage() {
         </button>
       </header>
 
-      {/* ── Search (Search-First Design) ── */}
+      {/* ── Search ── */}
       <section className="relative mb-3">
         <div className={`absolute inset-y-0 ${isRTL ? 'right-0 pr-4' : 'left-0 pl-4'} flex items-center pointer-events-none text-slate-500`}>
           <Search size={18} />
@@ -341,7 +469,7 @@ export default function InventoryPage() {
         )}
       </section>
 
-      {/* ── Filters (below Search) ── */}
+      {/* ── Filters ── */}
       <section className="flex items-center gap-2 overflow-x-auto pb-4 no-scrollbar" role="group" aria-label={t('Filter inventory', 'تصفية المخزون')}>
         <div className="flex items-center gap-1.5 px-2 py-1 text-slate-500 text-[10px] font-bold border-r border-slate-800 mr-1 uppercase tracking-widest shrink-0">
           <Filter size={12} /> {t('Filter', 'تصفية')}
@@ -365,23 +493,20 @@ export default function InventoryPage() {
         ))}
       </section>
 
-      {/* ── KPI Cards ── */}
-      {/*
-        Desktop: 5-column row (unchanged)
-        Mobile:  2-col grid, condensed height (-25%)
-          Row 1: Total Value (full width) | Total Parts
-          Row 2: In Stock | Low Stock
-          Row 3: Out of Stock (full width on mobile)
-      */}
-      <section className="mb-6" aria-label={t('Inventory summary', 'ملخص المخزون')}>
-        {/* Desktop layout — hidden on mobile */}
+      {/* ── KPI Cards — hidden on mobile when searching ── */}
+      <section
+        className={`mb-6 ${isSearching ? 'hidden md:block' : 'block'}`}
+        aria-label={t('Inventory summary', 'ملخص المخزون')}
+        aria-hidden={isSearching}
+      >
+        {/* Desktop: 5-column grid */}
         <div className="hidden md:grid md:grid-cols-5 gap-2.5">
           {[
             { label: t('Total Value', 'إجمالي القيمة'), val: `${totals.value.toLocaleString()} ر.س`, icon: DollarSign, color: 'text-emerald-400' },
-            { label: t('Total Parts', 'إجمالي القطع'),  val: counts.all,         icon: Boxes,        color: 'text-blue-400' },
-            { label: t('In Stock', 'متوفر'),             val: counts.in_stock,    icon: PackageCheck, color: 'text-emerald-500' },
-            { label: t('Low Stock', 'منخفض'),            val: counts.low_stock,   icon: TrendingDown, color: 'text-amber-400' },
-            { label: t('Out of Stock', 'نفد'),           val: counts.out_of_stock,icon: PackageX,     color: 'text-red-400' },
+            { label: t('Total Parts', 'إجمالي القطع'),  val: counts.all,          icon: Boxes,        color: 'text-blue-400' },
+            { label: t('In Stock', 'متوفر'),             val: counts.in_stock,     icon: PackageCheck, color: 'text-emerald-500' },
+            { label: t('Low Stock', 'منخفض'),            val: counts.low_stock,    icon: TrendingDown, color: 'text-amber-400' },
+            { label: t('Out of Stock', 'نفد'),           val: counts.out_of_stock, icon: PackageX,     color: 'text-red-400' },
           ].map((kpi, i) => (
             <div
               key={i}
@@ -396,9 +521,8 @@ export default function InventoryPage() {
           ))}
         </div>
 
-        {/* Mobile layout — hidden on desktop, 25% shorter cards */}
+        {/* Mobile: 2-column condensed grid */}
         <div className="grid grid-cols-2 gap-2 md:hidden">
-          {/* Row 1: Total Value (wide) + Total Parts */}
           <div className="col-span-2 p-2.5 rounded-xl border border-slate-800/60 bg-slate-900 flex items-center justify-between min-h-[54px] hover:border-slate-700 transition-colors">
             <div className="flex flex-col">
               <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">{t('Total Value', 'إجمالي القيمة')}</span>
@@ -406,7 +530,6 @@ export default function InventoryPage() {
             </div>
             <DollarSign size={16} className="text-emerald-400/60 shrink-0" />
           </div>
-
           <div className="p-2.5 rounded-xl border border-slate-800/60 bg-slate-900 flex flex-col justify-between min-h-[54px] hover:border-slate-700 transition-colors">
             <div className="flex items-center justify-between">
               <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">{t('Total Parts', 'إجمالي القطع')}</span>
@@ -414,7 +537,6 @@ export default function InventoryPage() {
             </div>
             <span className="text-lg font-black text-blue-400 leading-tight">{counts.all}</span>
           </div>
-
           <div className="p-2.5 rounded-xl border border-slate-800/60 bg-slate-900 flex flex-col justify-between min-h-[54px] hover:border-slate-700 transition-colors">
             <div className="flex items-center justify-between">
               <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">{t('In Stock', 'متوفر')}</span>
@@ -422,7 +544,6 @@ export default function InventoryPage() {
             </div>
             <span className="text-lg font-black text-emerald-500 leading-tight">{counts.in_stock}</span>
           </div>
-
           <div className="p-2.5 rounded-xl border border-slate-800/60 bg-slate-900 flex flex-col justify-between min-h-[54px] hover:border-slate-700 transition-colors">
             <div className="flex items-center justify-between">
               <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">{t('Low Stock', 'منخفض')}</span>
@@ -430,7 +551,6 @@ export default function InventoryPage() {
             </div>
             <span className="text-lg font-black text-amber-400 leading-tight">{counts.low_stock}</span>
           </div>
-
           <div className="p-2.5 rounded-xl border border-slate-800/60 bg-slate-900 flex flex-col justify-between min-h-[54px] hover:border-slate-700 transition-colors">
             <div className="flex items-center justify-between">
               <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">{t('Out of Stock', 'نفد')}</span>
@@ -441,10 +561,13 @@ export default function InventoryPage() {
         </div>
       </section>
 
-      {/* ── Table Actions ── */}
-      <section className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-6">
+      {/* ── Table Actions — hidden on mobile when searching ── */}
+      {/* File input kept outside section so importRef stays mounted at all times */}
+      <input ref={importRef} type="file" accept=".csv" onChange={handleImport} className="hidden" aria-hidden="true" />
+      <section
+        className={`flex flex-col sm:flex-row items-center justify-between gap-3 mb-6 ${isSearching ? 'hidden md:flex' : 'flex'}`}
+      >
         <div className="flex items-center gap-2 w-full sm:w-auto">
-          <input ref={importRef} type="file" accept=".csv" onChange={handleImport} className="hidden" aria-hidden="true" />
           <button
             onClick={() => importRef.current?.click()}
             disabled={importing}
@@ -467,8 +590,71 @@ export default function InventoryPage() {
         </button>
       </section>
 
-      {/* ── Inventory Table ── */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+      {/*
+        ── Product display ───────────────────────────────────────────────────
+        Mobile  (< md) : card list  — no table, no min-width, no horizontal scroll
+        Desktop (md+)  : original table — completely unchanged
+        Both consume the same pageItems, selected, openEdit, handleDelete,
+        toggleSelectOne — zero logic duplication.
+      */}
+
+      {/* ── MOBILE: card list ── */}
+      <div className="md:hidden">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-16 text-slate-500 gap-3">
+            <RefreshCw className="animate-spin" size={22} />
+            <span className="text-sm">{t('Loading...', 'جاري التحميل...')}</span>
+          </div>
+        ) : pageItems.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-slate-600 gap-2">
+            <Package size={28} className="opacity-40" />
+            <span className="text-sm italic">{t('No inventory records found.', 'لا توجد سجلات مخزون.')}</span>
+          </div>
+        ) : (
+          <>
+            {/* Select-all bar */}
+            <div className="flex items-center gap-2 mb-3 px-0.5">
+              <input
+                type="checkbox"
+                className="accent-emerald-500 rounded cursor-pointer"
+                checked={selected.size === pageItems.length && pageItems.length > 0}
+                onChange={toggleSelectAll}
+                aria-label={t('Select all', 'تحديد الكل')}
+              />
+              <span className="text-[11px] text-slate-500">
+                {selected.size > 0
+                  ? `${selected.size} ${t('selected', 'محدد')}`
+                  : t('Select all', 'تحديد الكل')}
+              </span>
+            </div>
+
+            {/* Cards */}
+            <div className="space-y-2">
+              {pageItems.map(p => (
+                <MobileProductCard
+                  key={p.id}
+                  p={p}
+                  selected={selected.has(p.id)}
+                  onToggle={toggleSelectOne}
+                  onEdit={openEdit}
+                  onDelete={handleDelete}
+                  t={t}
+                />
+              ))}
+            </div>
+
+            {/* Mobile pagination */}
+            {totalPages > 1 && (
+              <div className="mt-4 rounded-xl border border-slate-800 overflow-hidden">
+                <PaginationControls />
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* ── DESKTOP: original table (hidden on mobile, zero changes) ── */}
+      <div className="hidden md:block bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-right border-collapse min-w-[800px]" role="grid">
             <thead>
@@ -567,46 +753,7 @@ export default function InventoryPage() {
             </tbody>
           </table>
         </div>
-
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between p-4 border-t border-slate-800 bg-slate-950/20">
-            <span className="text-[11px] text-slate-500 font-medium">
-              {t('Showing', 'عرض')} {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} {t('of', 'من')} {filtered.length}
-            </span>
-            <div className="flex items-center gap-1" role="navigation" aria-label={t('Pagination', 'التنقل بين الصفحات')}>
-              <button
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-                disabled={page === 1}
-                aria-label={t('Previous page', 'الصفحة السابقة')}
-                className="p-1.5 rounded-lg border border-slate-800 text-slate-400 disabled:opacity-30 hover:bg-slate-800 transition-colors active:scale-90"
-              >
-                {isRTL ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-              </button>
-              {Array.from({ length: Math.min(5, totalPages) }).map((_, i) => {
-                const n = i + 1;
-                return (
-                  <button
-                    key={n}
-                    onClick={() => setPage(n)}
-                    aria-label={t(`Page ${n}`, `صفحة ${n}`)}
-                    aria-current={page === n ? 'page' : undefined}
-                    className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${page === n ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}
-                  >
-                    {n}
-                  </button>
-                );
-              })}
-              <button
-                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-                aria-label={t('Next page', 'الصفحة التالية')}
-                className="p-1.5 rounded-lg border border-slate-800 text-slate-400 disabled:opacity-30 hover:bg-slate-800 transition-colors active:scale-90"
-              >
-                {isRTL ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
-              </button>
-            </div>
-          </div>
-        )}
+        <PaginationControls />
       </div>
 
       {/* ── Add / Edit Modal ── */}

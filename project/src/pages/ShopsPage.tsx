@@ -25,10 +25,12 @@ import {
   Save,
   CheckSquare,
   CalendarDays,
-  Clock
+  Clock,
+  MessageCircle,
+  Navigation,
 } from 'lucide-react';
 
-// المطلوب 1: تعديل Interface Shop مع دعم Null Safety
+// ── STEP 1: Extended Shop interface with whatsapp + google_maps_url ──
 interface Shop {
   id: number;
   shop_name: string;
@@ -41,6 +43,8 @@ interface Shop {
   products_count?: number;
   outgoing_orders: { count: number }[];
   incoming_orders: { count: number }[];
+  whatsapp: string | null;
+  google_maps_url: string | null;
 }
 
 export default function ShopsPage() {
@@ -50,20 +54,20 @@ export default function ShopsPage() {
   const [selectedShop, setSelectedShop] = useState<Shop | null>(null);
   const [activeTab, setActiveTab] = useState('all');
 
-  // ── NEW STATES ──────────────────────────────────────────────
   const [editModalOpen, setEditModalOpen] = useState(false);
+  // ── STEP 2: editForm includes whatsapp + google_maps_url ──
   const [editForm, setEditForm] = useState({
     shop_name: '',
     city: '',
     phone: '',
     is_active: true,
+    whatsapp: '',
+    google_maps_url: '',
   });
   const [editLoading, setEditLoading] = useState(false);
   const [editSuccess, setEditSuccess] = useState(false);
   const [now, setNow] = useState(new Date());
-  // ────────────────────────────────────────────────────────────
 
-  // المطلوب 2: إصلاح عداد المحلات التجريبية بناءً على البيانات الفعلية
   const stats = {
     total: shops.length,
     active: shops.filter(s => s.is_active).length,
@@ -75,7 +79,6 @@ export default function ShopsPage() {
     fetchShops();
   }, []);
 
-  // تحديث الوقت كل دقيقة
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 60000);
     return () => clearInterval(timer);
@@ -85,7 +88,6 @@ export default function ShopsPage() {
     try {
       setLoading(true);
 
-      // 1) جلب المحلات الأساسية
       const { data: shopsData, error: shopsError } = await supabase
         .from('shops')
         .select('*')
@@ -99,14 +101,11 @@ export default function ShopsPage() {
 
       const shopIds = shopsData.map((s: any) => s.id);
 
-      // 2) SELECT shop_id, SUM(quantity) as total_quantity, COUNT(*) as products_count
-      //    FROM products GROUP BY shop_id
       const { data: productsData } = await supabase
         .from('products')
         .select('shop_id, quantity')
         .in('shop_id', shopIds);
 
-      // 3) بناء Map: shop_id => { total_quantity, products_count }
       const productsSummary: Record<number, { total_quantity: number; products_count: number }> = {};
       for (const row of (productsData || [])) {
         if (row.shop_id != null) {
@@ -118,7 +117,6 @@ export default function ShopsPage() {
         }
       }
 
-      // 4) جلب الطلبات الصادرة والواردة
       const { data: outgoingData } = await supabase
         .from('orders')
         .select('from_shop_id')
@@ -129,13 +127,14 @@ export default function ShopsPage() {
         .select('to_shop_id')
         .in('to_shop_id', shopIds);
 
-      // 5) دمج البيانات — كل محل يحمل total_quantity و products_count
       const merged = shopsData.map((shop: any) => ({
         ...shop,
         total_quantity: productsSummary[shop.id]?.total_quantity ?? 0,
         products_count: productsSummary[shop.id]?.products_count ?? 0,
         outgoing_orders: [{ count: (outgoingData || []).filter((o: any) => o.from_shop_id === shop.id).length }],
         incoming_orders: [{ count: (incomingData || []).filter((o: any) => o.to_shop_id === shop.id).length }],
+        whatsapp: shop.whatsapp ?? null,
+        google_maps_url: shop.google_maps_url ?? null,
       }));
 
       setShops(merged);
@@ -166,7 +165,7 @@ export default function ShopsPage() {
     }
   };
 
-  // ── NEW: open edit modal and pre-fill form ──────────────────
+  // ── STEP 3: openEditModal pre-fills whatsapp + google_maps_url ──
   const openEditModal = (shop: Shop) => {
     setSelectedShop(shop);
     setEditForm({
@@ -174,12 +173,14 @@ export default function ShopsPage() {
       city: shop.city || '',
       phone: shop.phone || '',
       is_active: shop.is_active,
+      whatsapp: shop.whatsapp || '',
+      google_maps_url: shop.google_maps_url || '',
     });
     setEditSuccess(false);
     setEditModalOpen(true);
   };
 
-  // ── NEW: save edits to Supabase ─────────────────────────────
+  // ── STEP 4: saveEdit includes whatsapp + google_maps_url ──
   const saveEdit = async () => {
     if (!selectedShop) return;
     try {
@@ -191,6 +192,8 @@ export default function ShopsPage() {
           city: editForm.city,
           phone: editForm.phone,
           is_active: editForm.is_active,
+          whatsapp: editForm.whatsapp || null,
+          google_maps_url: editForm.google_maps_url || null,
         })
         .eq('id', selectedShop.id);
 
@@ -199,7 +202,6 @@ export default function ShopsPage() {
       await fetchShops();
       setEditSuccess(true);
 
-      // auto-close after brief success flash
       setTimeout(() => {
         setEditModalOpen(false);
         setEditSuccess(false);
@@ -210,17 +212,13 @@ export default function ShopsPage() {
       setEditLoading(false);
     }
   };
-  // ────────────────────────────────────────────────────────────
 
-  // المطلوب 3 + 4 + 5: إصلاح منطق الفلترة والبحث مع Null Safety
   const filteredShops = shops.filter((shop) => {
-    // معالجة البحث مع حماية ضد Null
     const matchesSearch =
       (shop.shop_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (shop.city || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (shop.phone || '').includes(searchTerm);
 
-    // معالجة التبويبات
     const matchesTab =
       activeTab === "all"
         ? true
@@ -232,6 +230,13 @@ export default function ShopsPage() {
 
     return matchesSearch && matchesTab;
   });
+
+  // ── Helper: format WhatsApp number to wa.me link ──
+  const waLink = (num: string) => {
+    const clean = num.replace(/\D/g, '');
+    const international = clean.startsWith('0') ? '966' + clean.slice(1) : clean;
+    return `https://wa.me/${international}`;
+  };
 
   return (
     <div className="min-h-screen bg-slate-950 p-4 lg:p-8 text-right" dir="rtl">
@@ -249,7 +254,6 @@ export default function ShopsPage() {
         </div>
         
         <div className="flex items-center gap-3 w-full lg:w-auto">
-          {/* زر تحديث */}
           <button 
             onClick={fetchShops}
             className="p-3 bg-slate-900 border border-slate-800 rounded-2xl text-slate-400 hover:text-white transition-all"
@@ -257,9 +261,7 @@ export default function ShopsPage() {
             <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
           </button>
 
-          {/* بطاقة التاريخ والوقت */}
           <div className="flex items-center gap-4 bg-slate-900 border border-slate-800/60 rounded-2xl px-5 py-3 shadow-xl">
-            {/* التاريخ */}
             <div className="flex items-center gap-2">
               <CalendarDays size={16} className="text-blue-400 shrink-0" />
               <div className="text-right">
@@ -271,11 +273,7 @@ export default function ShopsPage() {
                 </p>
               </div>
             </div>
-
-            {/* فاصل */}
             <div className="w-px h-8 bg-slate-700" />
-
-            {/* الوقت */}
             <div className="flex items-center gap-2">
               <Clock size={16} className="text-emerald-400 shrink-0" />
               <p className="text-white font-black text-sm tabular-nums">
@@ -400,12 +398,8 @@ export default function ShopsPage() {
                       <span className="text-blue-500 text-lg">
                         {shop.total_quantity || 0}
                       </span>
-                      <span className="text-[10px] text-slate-500">
-                        قطعة
-                      </span>
-                      <span className="text-[10px] text-slate-400 mt-1">
-                        {shop.products_count || 0} صنف
-                      </span>
+                      <span className="text-[10px] text-slate-500">قطعة</span>
+                      <span className="text-[10px] text-slate-400 mt-1">{shop.products_count || 0} صنف</span>
                     </div>
                   </td>
                   <td className="px-8 py-6 text-center">
@@ -422,11 +416,11 @@ export default function ShopsPage() {
                     <div className="flex items-center justify-center gap-2">
                       <button 
                         onClick={() => setSelectedShop(shop)}
-                        className="p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-400 hover:text-white hover:border-slate-600 transition-all" title="عرض التفاصيل">
+                        className="p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-400 hover:text-white hover:border-slate-600 transition-all"
+                        title="عرض التفاصيل"
+                      >
                         <Eye size={18} />
                       </button>
-
-                      {/* ── FIXED EDIT BUTTON ── */}
                       <button
                         onClick={() => openEditModal(shop)}
                         className="p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-400 hover:text-blue-400 hover:border-blue-500/50 transition-all"
@@ -434,10 +428,9 @@ export default function ShopsPage() {
                       >
                         <Edit2 size={18} />
                       </button>
-
                       <button 
                         onClick={() => toggleStatus(shop)}
-                        className={`p-2.5 bg-slate-950 border border-slate-800 rounded-xl transition-all ${shop.is_active ? 'text-red-400 hover:bg-red-500/10 hover:border-red-500/50' : 'text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/50'}`} 
+                        className={`p-2.5 bg-slate-950 border border-slate-800 rounded-xl transition-all ${shop.is_active ? 'text-red-400 hover:bg-red-500/10 hover:border-red-500/50' : 'text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/50'}`}
                         title={shop.is_active ? 'إيقاف' : 'تفعيل'}
                       >
                         <Activity size={18} />
@@ -452,20 +445,15 @@ export default function ShopsPage() {
       </div>
 
       {/* ══════════════════════════════════════════════════════════
-          SECTION 5: EDIT MODAL (NEW)
+          SECTION 5: EDIT MODAL
       ══════════════════════════════════════════════════════════ */}
       {editModalOpen && selectedShop && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          {/* backdrop */}
           <div
             className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm"
             onClick={() => setEditModalOpen(false)}
           />
-
-          {/* modal card */}
           <div className="relative w-full max-w-md bg-slate-900 border border-slate-700 rounded-[2rem] shadow-2xl overflow-hidden">
-
-            {/* top accent line */}
             <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-blue-500/50 to-transparent" />
 
             {/* header */}
@@ -488,7 +476,7 @@ export default function ShopsPage() {
             </div>
 
             {/* form body */}
-            <div className="px-7 py-6 space-y-5">
+            <div className="px-7 py-6 space-y-5 max-h-[65vh] overflow-y-auto">
 
               {/* shop name */}
               <div className="space-y-1.5">
@@ -523,6 +511,38 @@ export default function ShopsPage() {
                   onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
                   className="w-full bg-slate-950 border border-slate-700 rounded-2xl px-4 h-12 text-white text-sm focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 transition-all"
                   placeholder="05xxxxxxxx"
+                />
+              </div>
+
+              {/* ── STEP 5: WhatsApp field ── */}
+              <div className="space-y-1.5">
+                <label className="text-xs text-slate-400 font-bold uppercase tracking-wide flex items-center gap-1.5">
+                  <MessageCircle size={12} className="text-emerald-500" />
+                  واتساب
+                </label>
+                <input
+                  type="text"
+                  value={editForm.whatsapp}
+                  onChange={(e) => setEditForm({ ...editForm, whatsapp: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-2xl px-4 h-12 text-white text-sm focus:outline-none focus:border-emerald-500/40 focus:ring-1 focus:ring-emerald-500/20 transition-all"
+                  placeholder="0500000000"
+                  dir="ltr"
+                />
+              </div>
+
+              {/* ── STEP 5: Google Maps URL field ── */}
+              <div className="space-y-1.5">
+                <label className="text-xs text-slate-400 font-bold uppercase tracking-wide flex items-center gap-1.5">
+                  <Navigation size={12} className="text-blue-400" />
+                  رابط الموقع
+                </label>
+                <input
+                  type="text"
+                  value={editForm.google_maps_url}
+                  onChange={(e) => setEditForm({ ...editForm, google_maps_url: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-2xl px-4 h-12 text-white text-sm focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 transition-all"
+                  placeholder="https://maps.google.com/..."
+                  dir="ltr"
                 />
               </div>
 
@@ -591,7 +611,7 @@ export default function ShopsPage() {
         </div>
       )}
 
-      {/* SECTION 6: SHOP DETAILS DRAWER (Visual Component) */}
+      {/* SECTION 6: SHOP DETAILS DRAWER */}
       {selectedShop && !editModalOpen && (
         <div className="fixed inset-0 z-50 flex justify-end">
           <div 
@@ -613,10 +633,34 @@ export default function ShopsPage() {
                 </div>
                 <h3 className="text-2xl font-black text-white">{selectedShop.shop_name}</h3>
                 <p className="text-slate-500 mt-1">{selectedShop.phone || '---'}</p>
-                <div className="mt-4 flex gap-2">
+                <div className="mt-4 flex gap-2 flex-wrap justify-center">
                   <button className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-sm font-bold flex items-center gap-2">
                     <Key size={14} /> إعادة تعيين كلمة المرور
                   </button>
+
+                  {/* ── STEP 7: WhatsApp action button ── */}
+                  {selectedShop.whatsapp && (
+                    <a
+                      href={waLink(selectedShop.whatsapp)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2 bg-emerald-600/10 hover:bg-emerald-600/20 border border-emerald-500/20 text-emerald-400 rounded-xl text-sm font-bold flex items-center gap-2 transition-all"
+                    >
+                      <MessageCircle size={14} /> واتساب
+                    </a>
+                  )}
+
+                  {/* ── STEP 7: Google Maps action button ── */}
+                  {selectedShop.google_maps_url && (
+                    <a
+                      href={selectedShop.google_maps_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2 bg-blue-600/10 hover:bg-blue-600/20 border border-blue-500/20 text-blue-400 rounded-xl text-sm font-bold flex items-center gap-2 transition-all"
+                    >
+                      <Navigation size={14} /> الموقع
+                    </a>
+                  )}
                 </div>
               </div>
 
@@ -637,6 +681,7 @@ export default function ShopsPage() {
                 ))}
               </div>
 
+              {/* ── STEP 6: المعلومات الأساسية with whatsapp + google_maps_url ── */}
               <div className="space-y-6">
                 <h4 className="text-white font-black text-lg border-b border-slate-800 pb-2">المعلومات الأساسية</h4>
                 <div className="grid grid-cols-2 gap-y-6">
@@ -657,6 +702,45 @@ export default function ShopsPage() {
                     <span className="text-blue-500 font-bold underline cursor-pointer flex items-center gap-1">
                       {selectedShop.subscription_status === 'trial' ? 'فترة تجريبية' : 'خطة المؤسسات'} <ExternalLink size={12} />
                     </span>
+                  </div>
+
+                  {/* واتساب */}
+                  <div>
+                    <p className="text-slate-500 text-xs font-bold uppercase mb-1 flex items-center gap-1">
+                      <MessageCircle size={11} className="text-emerald-500" /> واتساب
+                    </p>
+                    {selectedShop.whatsapp ? (
+                      <a
+                        href={waLink(selectedShop.whatsapp)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-emerald-400 font-bold hover:text-emerald-300 transition-colors flex items-center gap-1"
+                        dir="ltr"
+                      >
+                        {selectedShop.whatsapp} <ExternalLink size={11} />
+                      </a>
+                    ) : (
+                      <p className="text-slate-600 font-bold">---</p>
+                    )}
+                  </div>
+
+                  {/* الموقع */}
+                  <div>
+                    <p className="text-slate-500 text-xs font-bold uppercase mb-1 flex items-center gap-1">
+                      <Navigation size={11} className="text-blue-400" /> الموقع
+                    </p>
+                    {selectedShop.google_maps_url ? (
+                      <a
+                        href={selectedShop.google_maps_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-400 font-bold hover:text-blue-300 transition-colors flex items-center gap-1"
+                      >
+                        فتح الموقع <ExternalLink size={11} />
+                      </a>
+                    ) : (
+                      <p className="text-slate-600 font-bold">---</p>
+                    )}
                   </div>
                 </div>
               </div>

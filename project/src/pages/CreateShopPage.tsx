@@ -1,26 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import {
-  Store,
-  User,
-  Mail,
-  Phone,
-  MapPin,
-  Lock,
-  CheckCircle,
-  Building2,
-  FileText,
-  ShieldCheck,
-  Zap,
-  Crown,
-  Users,
-  ToggleLeft,
-  ToggleRight,
-  X,
-  ArrowRight,
-  Plus,
-  MessageCircle,
-  Navigation,
+  Store, User, Mail, Phone, MapPin, Lock, CheckCircle,
+  Building2, FileText, ShieldCheck, Zap, Crown, Users,
+  ToggleLeft, ToggleRight, X, ArrowRight, Plus,
+  MessageCircle, Navigation, Camera, Upload, ImageIcon,
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────
@@ -28,49 +12,29 @@ import {
 // ─────────────────────────────────────────────────────────────
 
 type AccountStatus = 'active' | 'suspended';
-type AccountType = 'basic' | 'pro' | 'enterprise';
+type AccountType   = 'basic' | 'pro' | 'enterprise';
 
-type ShopStats = {
-  total: number;
-  active: number;
-  trial: number;
-};
+type ShopStats = { total: number; active: number; trial: number };
 
-type SuccessInfo = {
-  shop_name: string;
-  email: string;
-  city: string;
-};
+type SuccessInfo = { shop_name: string; email: string; city: string };
 
 // ─────────────────────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────────────────────
 
 const InputField = ({
-  label,
-  icon,
-  required = false,
-  optional = false,
-  error,
-  ...props
+  label, icon, required = false, optional = false, error, ...props
 }: {
-  label: string;
-  icon: React.ReactNode;
-  required?: boolean;
-  optional?: boolean;
-  error?: string;
+  label: string; icon: React.ReactNode;
+  required?: boolean; optional?: boolean; error?: string;
 } & React.InputHTMLAttributes<HTMLInputElement>) => (
   <div>
     <label className="text-slate-300 text-sm mb-1.5 flex items-center gap-1.5 block">
       {label}
-      {optional && (
-        <span className="text-slate-500 text-xs font-normal">(اختياري)</span>
-      )}
+      {optional && <span className="text-slate-500 text-xs font-normal">(اختياري)</span>}
     </label>
     <div className="relative">
-      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none">
-        {icon}
-      </span>
+      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none">{icon}</span>
       <input
         {...props}
         required={required}
@@ -83,14 +47,8 @@ const InputField = ({
   </div>
 );
 
-const CardHeader = ({
-  icon,
-  title,
-  subtitle,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  subtitle?: string;
+const CardHeader = ({ icon, title, subtitle }: {
+  icon: React.ReactNode; title: string; subtitle?: string;
 }) => (
   <div className="flex items-center gap-3 mb-6">
     <div className="p-2.5 bg-blue-600/15 rounded-xl">{icon}</div>
@@ -102,17 +60,80 @@ const CardHeader = ({
 );
 
 // ─────────────────────────────────────────────────────────────
+// LOGO UPLOADER
+// ─────────────────────────────────────────────────────────────
+
+function LogoUploader({
+  preview, onChange, uploading,
+}: {
+  preview: string | null;
+  onChange: (file: File) => void;
+  uploading: boolean;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <div>
+      <label className="text-slate-300 text-sm mb-1.5 flex items-center gap-1.5 block">
+        شعار المحل
+        <span className="text-slate-500 text-xs font-normal">(اختياري)</span>
+      </label>
+
+      <div className="flex items-center gap-4">
+        {/* Preview */}
+        <div
+          onClick={() => inputRef.current?.click()}
+          className="w-20 h-20 rounded-2xl border-2 border-dashed border-slate-700 hover:border-blue-500 bg-slate-950 flex items-center justify-center overflow-hidden cursor-pointer transition-colors group shrink-0"
+        >
+          {preview ? (
+            <img src={preview} alt="logo" className="w-full h-full object-cover" />
+          ) : (
+            <div className="flex flex-col items-center gap-1 text-slate-600 group-hover:text-blue-400 transition-colors">
+              <ImageIcon size={22} />
+              <span className="text-[9px] font-bold uppercase tracking-wide">Logo</span>
+            </div>
+          )}
+        </div>
+
+        {/* Upload button */}
+        <div className="flex-1">
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            disabled={uploading}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-700 hover:border-blue-500 bg-slate-950 text-slate-400 hover:text-white text-sm font-medium transition-all disabled:opacity-50"
+          >
+            {uploading ? (
+              <><Upload size={15} className="animate-bounce" /> جارٍ الرفع...</>
+            ) : (
+              <><Camera size={15} /> اختر صورة</>
+            )}
+          </button>
+          <p className="text-slate-600 text-[11px] mt-1.5">PNG أو JPG · أقصى 2MB · مربعة الشكل أفضل</p>
+        </div>
+      </div>
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        className="hidden"
+        onChange={e => {
+          const file = e.target.files?.[0];
+          if (file) onChange(file);
+          e.target.value = '';
+        }}
+      />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
 // SUCCESS MODAL
 // ─────────────────────────────────────────────────────────────
 
-const SuccessModal = ({
-  info,
-  onNewClient,
-  onGoToShops,
-}: {
-  info: SuccessInfo;
-  onNewClient: () => void;
-  onGoToShops: () => void;
+const SuccessModal = ({ info, onNewClient, onGoToShops }: {
+  info: SuccessInfo; onNewClient: () => void; onGoToShops: () => void;
 }) => (
   <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
     <div className="bg-slate-900 border border-slate-700 rounded-3xl p-8 w-full max-w-md shadow-2xl">
@@ -121,19 +142,13 @@ const SuccessModal = ({
           <CheckCircle size={32} className="text-emerald-400" />
         </div>
       </div>
-
-      <h3 className="text-white font-bold text-xl text-center mb-1">
-        تم إنشاء العميل بنجاح
-      </h3>
-      <p className="text-slate-500 text-sm text-center mb-6">
-        تم إنشاء المحل والحساب وربطهما بنجاح
-      </p>
-
+      <h3 className="text-white font-bold text-xl text-center mb-1">تم إنشاء العميل بنجاح</h3>
+      <p className="text-slate-500 text-sm text-center mb-6">تم إنشاء المحل والحساب وربطهما بنجاح</p>
       <div className="bg-slate-800/60 border border-slate-700/50 rounded-2xl p-4 space-y-3 mb-6">
         {[
-          { label: 'اسم المحل', value: info.shop_name },
-          { label: 'البريد الإلكتروني', value: info.email },
-          { label: 'المدينة', value: info.city },
+          { label: 'اسم المحل',         value: info.shop_name },
+          { label: 'البريد الإلكتروني', value: info.email     },
+          { label: 'المدينة',           value: info.city      },
         ].map(({ label, value }) => (
           <div key={label} className="flex items-center justify-between">
             <span className="text-slate-400 text-sm">{label}</span>
@@ -141,21 +156,18 @@ const SuccessModal = ({
           </div>
         ))}
       </div>
-
       <div className="flex gap-3">
         <button
           onClick={onNewClient}
           className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl py-3 text-sm font-semibold transition-colors"
         >
-          <Plus size={16} />
-          إنشاء عميل جديد
+          <Plus size={16} /> إنشاء عميل جديد
         </button>
         <button
           onClick={onGoToShops}
           className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-2xl py-3 text-sm font-medium transition-colors border border-slate-700"
         >
-          المحلات
-          <ArrowRight size={14} />
+          المحلات <ArrowRight size={14} />
         </button>
       </div>
     </div>
@@ -167,33 +179,53 @@ const SuccessModal = ({
 // ─────────────────────────────────────────────────────────────
 
 export default function CreateShopPage() {
-  const [loading, setLoading] = useState(false);
-  const [stats, setStats] = useState<ShopStats>({ total: 0, active: 0, trial: 0 });
-  const [successInfo, setSuccessInfo] = useState<SuccessInfo | null>(null);
+  const [loading, setLoading]           = useState(false);
+  const [stats, setStats]               = useState<ShopStats>({ total: 0, active: 0, trial: 0 });
+  const [successInfo, setSuccessInfo]   = useState<SuccessInfo | null>(null);
   const [passwordError, setPasswordError] = useState('');
 
-  const [accountStatus, setAccountStatus] = useState<AccountStatus>('active');
-  const [accountType, setAccountType] = useState<AccountType>('basic');
+  // Logo state
+  const [logoFile, setLogoFile]         = useState<File | null>(null);
+  const [logoPreview, setLogoPreview]   = useState<string | null>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
 
-  // ── TASK 2: Added whatsapp + google_maps_url to form state ──
+  const [accountStatus, setAccountStatus] = useState<AccountStatus>('active');
+  const [accountType,   setAccountType]   = useState<AccountType>('basic');
+
   const [form, setForm] = useState({
-    shop_name: '',
-    owner_name: '',
-    email: '',
-    password: '',
-    confirm_password: '',
-    phone: '',
-    city: '',
-    address: '',
-    commercial_reg: '',
-    whatsapp: '',
-    google_maps_url: '',
+    shop_name: '', owner_name: '', email: '', password: '',
+    confirm_password: '', phone: '', city: '', address: '',
+    commercial_reg: '', whatsapp: '', google_maps_url: '',
   });
 
   const updateField = (field: string, value: string) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
-    if (field === 'password' || field === 'confirm_password') {
-      setPasswordError('');
+    setForm(prev => ({ ...prev, [field]: value }));
+    if (field === 'password' || field === 'confirm_password') setPasswordError('');
+  };
+
+  const handleLogoSelect = (file: File) => {
+    setLogoFile(file);
+    setLogoPreview(URL.createObjectURL(file));
+  };
+
+  // Upload logo to Supabase Storage, return public URL
+  const uploadLogo = async (shopId: number): Promise<string | null> => {
+    if (!logoFile) return null;
+    setLogoUploading(true);
+    try {
+      const ext      = logoFile.name.split('.').pop();
+      const filePath = `shop-${shopId}/logo.${ext}`;
+      const { error } = await supabase.storage
+        .from('shop-logos')
+        .upload(filePath, logoFile, { upsert: true });
+      if (error) throw error;
+      const { data } = supabase.storage.from('shop-logos').getPublicUrl(filePath);
+      return data.publicUrl;
+    } catch (err) {
+      console.error('Logo upload error:', err);
+      return null;
+    } finally {
+      setLogoUploading(false);
     }
   };
 
@@ -205,16 +237,14 @@ export default function CreateShopPage() {
         supabase.from('shops').select('id', { count: 'exact', head: true }).eq('is_trial', true),
       ]);
       setStats({
-        total: totalRes.count ?? 0,
+        total:  totalRes.count  ?? 0,
         active: activeRes.count ?? 0,
-        trial: trialRes.count ?? 0,
+        trial:  trialRes.count  ?? 0,
       });
     };
     loadStats();
   }, []);
 
-  // ── Original handleSubmit — business logic unchanged ──
-  // TASK 2: whatsapp + google_maps_url added to payload
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -226,43 +256,42 @@ export default function CreateShopPage() {
     try {
       setLoading(true);
 
+      // Step 1: Create shop via edge function
       const { data, error } = await supabase.functions.invoke('create-shop', {
         body: {
-          shop_name: form.shop_name,
-          owner_name: form.owner_name,
-          email: form.email,
-          password: form.password,
-          phone: form.phone,
-          city: form.city,
-          whatsapp: form.whatsapp || null,
+          shop_name:       form.shop_name,
+          owner_name:      form.owner_name,
+          email:           form.email,
+          password:        form.password,
+          phone:           form.phone,
+          city:            form.city,
+          whatsapp:        form.whatsapp        || null,
           google_maps_url: form.google_maps_url || null,
         },
       });
-
       if (error) throw error;
 
-      console.log(data);
+      // Step 2: Upload logo if selected, then save URL to shops table
+      if (logoFile && data?.shop_id) {
+        const logoUrl = await uploadLogo(data.shop_id);
+        if (logoUrl) {
+          await supabase
+            .from('shops')
+            .update({ logo_url: logoUrl })
+            .eq('id', data.shop_id);
+        }
+      }
 
-      setSuccessInfo({
-        shop_name: form.shop_name,
-        email: form.email,
-        city: form.city,
-      });
+      setSuccessInfo({ shop_name: form.shop_name, email: form.email, city: form.city });
 
-      // Reset form including new fields
+      // Reset
       setForm({
-        shop_name: '',
-        owner_name: '',
-        email: '',
-        password: '',
-        confirm_password: '',
-        phone: '',
-        city: '',
-        address: '',
-        commercial_reg: '',
-        whatsapp: '',
-        google_maps_url: '',
+        shop_name: '', owner_name: '', email: '', password: '',
+        confirm_password: '', phone: '', city: '', address: '',
+        commercial_reg: '', whatsapp: '', google_maps_url: '',
       });
+      setLogoFile(null);
+      setLogoPreview(null);
       setAccountStatus('active');
       setAccountType('basic');
 
@@ -270,9 +299,9 @@ export default function CreateShopPage() {
         supabase.from('shops').select('id', { count: 'exact', head: true }),
         supabase.from('shops').select('id', { count: 'exact', head: true }).eq('is_active', true),
       ]);
-      setStats((prev) => ({
+      setStats(prev => ({
         ...prev,
-        total: totalRes.count ?? prev.total,
+        total:  totalRes.count  ?? prev.total,
         active: activeRes.count ?? prev.active,
       }));
     } catch (err: any) {
@@ -283,58 +312,24 @@ export default function CreateShopPage() {
     }
   };
 
-  const accountTypeConfig: Record<
-    AccountType,
-    { label: string; icon: React.ReactNode; color: string; active: string }
-  > = {
-    basic: {
-      label: 'Basic',
-      icon: <Zap size={15} />,
-      color: 'border-slate-600 text-slate-400',
-      active: 'border-blue-500 bg-blue-500/10 text-blue-400',
-    },
-    pro: {
-      label: 'Pro',
-      icon: <ShieldCheck size={15} />,
-      color: 'border-slate-600 text-slate-400',
-      active: 'border-purple-500 bg-purple-500/10 text-purple-400',
-    },
-    enterprise: {
-      label: 'Enterprise',
-      icon: <Crown size={15} />,
-      color: 'border-slate-600 text-slate-400',
-      active: 'border-amber-500 bg-amber-500/10 text-amber-400',
-    },
+  const accountTypeConfig: Record<AccountType, {
+    label: string; icon: React.ReactNode; color: string; active: string;
+  }> = {
+    basic:      { label: 'Basic',      icon: <Zap size={15} />,        color: 'border-slate-600 text-slate-400', active: 'border-blue-500 bg-blue-500/10 text-blue-400'     },
+    pro:        { label: 'Pro',        icon: <ShieldCheck size={15} />, color: 'border-slate-600 text-slate-400', active: 'border-purple-500 bg-purple-500/10 text-purple-400' },
+    enterprise: { label: 'Enterprise', icon: <Crown size={15} />,       color: 'border-slate-600 text-slate-400', active: 'border-amber-500 bg-amber-500/10 text-amber-400'   },
   };
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 pb-12">
 
-      {/* SECTION 1 — STATS */}
+      {/* STATS */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {[
-          {
-            label: 'إجمالي المحلات',
-            value: stats.total,
-            icon: <Store size={20} className="text-blue-400" />,
-            bg: 'bg-blue-500/10',
-            border: 'border-blue-500/20',
-          },
-          {
-            label: 'المحلات النشطة',
-            value: stats.active,
-            icon: <CheckCircle size={20} className="text-emerald-400" />,
-            bg: 'bg-emerald-500/10',
-            border: 'border-emerald-500/20',
-          },
-          {
-            label: 'حسابات تجريبية',
-            value: stats.trial,
-            icon: <Users size={20} className="text-amber-400" />,
-            bg: 'bg-amber-500/10',
-            border: 'border-amber-500/20',
-          },
-        ].map((s) => (
+          { label: 'إجمالي المحلات',  value: stats.total,  icon: <Store size={20} className="text-blue-400" />,    bg: 'bg-blue-500/10',    border: 'border-blue-500/20'    },
+          { label: 'المحلات النشطة',  value: stats.active, icon: <CheckCircle size={20} className="text-emerald-400" />, bg: 'bg-emerald-500/10', border: 'border-emerald-500/20' },
+          { label: 'حسابات تجريبية', value: stats.trial,  icon: <Users size={20} className="text-amber-400" />,    bg: 'bg-amber-500/10',   border: 'border-amber-500/20'   },
+        ].map(s => (
           <div key={s.label} className={`bg-slate-900 border ${s.border} rounded-3xl p-5 flex items-center gap-4`}>
             <div className={`p-3 rounded-2xl ${s.bg} flex-shrink-0`}>{s.icon}</div>
             <div>
@@ -356,7 +351,7 @@ export default function CreateShopPage() {
         {/* ══ LEFT: Forms ══ */}
         <form onSubmit={handleSubmit} className="xl:col-span-2 space-y-6">
 
-          {/* SECTION 3 — SHOP INFO */}
+          {/* SHOP INFO */}
           <div className="bg-slate-900 border border-slate-700/60 rounded-3xl p-6 shadow-xl">
             <CardHeader
               icon={<Store size={18} className="text-blue-400" />}
@@ -364,11 +359,19 @@ export default function CreateShopPage() {
               subtitle="المعلومات الأساسية للمحل"
             />
             <div className="space-y-5">
+
+              {/* Logo uploader */}
+              <LogoUploader
+                preview={logoPreview}
+                onChange={handleLogoSelect}
+                uploading={logoUploading}
+              />
+
               <InputField
                 label="اسم المحل"
                 icon={<Store size={17} />}
                 value={form.shop_name}
-                onChange={(e) => updateField('shop_name', e.target.value)}
+                onChange={e => updateField('shop_name', e.target.value)}
                 placeholder="مثال: محل الخليج لقطع الغيار"
                 required
               />
@@ -377,7 +380,7 @@ export default function CreateShopPage() {
                   label="الجوال"
                   icon={<Phone size={17} />}
                   value={form.phone}
-                  onChange={(e) => updateField('phone', e.target.value)}
+                  onChange={e => updateField('phone', e.target.value)}
                   placeholder="05xxxxxxxx"
                   required
                 />
@@ -385,39 +388,34 @@ export default function CreateShopPage() {
                   label="المدينة"
                   icon={<MapPin size={17} />}
                   value={form.city}
-                  onChange={(e) => updateField('city', e.target.value)}
+                  onChange={e => updateField('city', e.target.value)}
                   placeholder="الرياض"
                   required
                 />
               </div>
-
-              {/* ── TASK 2: WhatsApp field ── */}
               <InputField
                 label="واتساب"
                 icon={<MessageCircle size={17} />}
                 optional
                 value={form.whatsapp}
-                onChange={(e) => updateField('whatsapp', e.target.value)}
+                onChange={e => updateField('whatsapp', e.target.value)}
                 placeholder="0500000000"
                 dir="ltr"
               />
-
-              {/* ── TASK 2: Google Maps URL field ── */}
               <InputField
                 label="رابط الموقع على الخريطة"
                 icon={<Navigation size={17} />}
                 optional
                 value={form.google_maps_url}
-                onChange={(e) => updateField('google_maps_url', e.target.value)}
+                onChange={e => updateField('google_maps_url', e.target.value)}
                 placeholder="https://maps.google.com/..."
                 dir="ltr"
               />
-
               <InputField
                 label="العنوان"
                 icon={<Building2 size={17} />}
                 value={form.address}
-                onChange={(e) => updateField('address', e.target.value)}
+                onChange={e => updateField('address', e.target.value)}
                 placeholder="الحي، الشارع، رقم المبنى"
               />
               <InputField
@@ -425,13 +423,13 @@ export default function CreateShopPage() {
                 icon={<FileText size={17} />}
                 optional
                 value={form.commercial_reg}
-                onChange={(e) => updateField('commercial_reg', e.target.value)}
+                onChange={e => updateField('commercial_reg', e.target.value)}
                 placeholder="10xxxxxxxx"
               />
             </div>
           </div>
 
-          {/* SECTION 4 — OWNER INFO */}
+          {/* OWNER INFO */}
           <div className="bg-slate-900 border border-slate-700/60 rounded-3xl p-6 shadow-xl">
             <CardHeader
               icon={<User size={18} className="text-purple-400" />}
@@ -443,7 +441,7 @@ export default function CreateShopPage() {
                 label="اسم المالك"
                 icon={<User size={17} />}
                 value={form.owner_name}
-                onChange={(e) => updateField('owner_name', e.target.value)}
+                onChange={e => updateField('owner_name', e.target.value)}
                 placeholder="الاسم الكامل"
                 required
               />
@@ -452,7 +450,7 @@ export default function CreateShopPage() {
                 icon={<Mail size={17} />}
                 type="email"
                 value={form.email}
-                onChange={(e) => updateField('email', e.target.value)}
+                onChange={e => updateField('email', e.target.value)}
                 placeholder="owner@example.com"
                 required
               />
@@ -462,7 +460,7 @@ export default function CreateShopPage() {
                   icon={<Lock size={17} />}
                   type="password"
                   value={form.password}
-                  onChange={(e) => updateField('password', e.target.value)}
+                  onChange={e => updateField('password', e.target.value)}
                   placeholder="••••••••"
                   required
                   error={passwordError ? ' ' : undefined}
@@ -472,7 +470,7 @@ export default function CreateShopPage() {
                   icon={<Lock size={17} />}
                   type="password"
                   value={form.confirm_password}
-                  onChange={(e) => updateField('confirm_password', e.target.value)}
+                  onChange={e => updateField('confirm_password', e.target.value)}
                   placeholder="••••••••"
                   required
                   error={passwordError}
@@ -481,49 +479,42 @@ export default function CreateShopPage() {
             </div>
           </div>
 
-          {/* SECTION 5 — ACCOUNT SETTINGS */}
+          {/* ACCOUNT SETTINGS */}
           <div className="bg-slate-900 border border-slate-700/60 rounded-3xl p-6 shadow-xl">
             <CardHeader
               icon={<ShieldCheck size={18} className="text-teal-400" />}
               title="إعدادات الحساب"
               subtitle="نوع الحساب والحالة الابتدائية"
             />
-
             <div className="mb-6">
               <p className="text-slate-400 text-xs font-medium mb-3 uppercase tracking-wider">حالة الحساب</p>
               <div className="flex items-center gap-4">
-                <button
-                  type="button"
-                  onClick={() => setAccountStatus('active')}
-                  className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all ${
-                    accountStatus === 'active'
-                      ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
-                      : 'border-slate-700 text-slate-500 hover:border-slate-600'
-                  }`}
-                >
-                  <ToggleRight size={18} className={accountStatus === 'active' ? 'text-emerald-400' : 'text-slate-600'} />
-                  نشط
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAccountStatus('suspended')}
-                  className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all ${
-                    accountStatus === 'suspended'
-                      ? 'border-red-500 bg-red-500/10 text-red-400'
-                      : 'border-slate-700 text-slate-500 hover:border-slate-600'
-                  }`}
-                >
-                  <ToggleLeft size={18} className={accountStatus === 'suspended' ? 'text-red-400' : 'text-slate-600'} />
-                  موقوف
-                </button>
+                {(['active', 'suspended'] as const).map(s => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setAccountStatus(s)}
+                    className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all ${
+                      accountStatus === s
+                        ? s === 'active'
+                          ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
+                          : 'border-red-500 bg-red-500/10 text-red-400'
+                        : 'border-slate-700 text-slate-500 hover:border-slate-600'
+                    }`}
+                  >
+                    {s === 'active'
+                      ? <><ToggleRight size={18} className={accountStatus === 'active' ? 'text-emerald-400' : 'text-slate-600'} />نشط</>
+                      : <><ToggleLeft  size={18} className={accountStatus === 'suspended' ? 'text-red-400' : 'text-slate-600'} />موقوف</>
+                    }
+                  </button>
+                ))}
               </div>
             </div>
-
             <div>
               <p className="text-slate-400 text-xs font-medium mb-3 uppercase tracking-wider">نوع الحساب</p>
               <div className="grid grid-cols-3 gap-3">
-                {(Object.keys(accountTypeConfig) as AccountType[]).map((type) => {
-                  const cfg = accountTypeConfig[type];
+                {(Object.keys(accountTypeConfig) as AccountType[]).map(type => {
+                  const cfg      = accountTypeConfig[type];
                   const isActive = accountType === type;
                   return (
                     <button
@@ -544,32 +535,23 @@ export default function CreateShopPage() {
             </div>
           </div>
 
-          {/* SECTION 6 — SUBMIT */}
+          {/* SUBMIT */}
           <button
             type="submit"
-            disabled={loading}
-            className="w-full relative overflow-hidden bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-4 rounded-2xl font-bold text-base shadow-lg shadow-blue-500/20 transition-all duration-200 group"
+            disabled={loading || logoUploading}
+            className="w-full relative overflow-hidden bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-4 rounded-2xl font-bold text-base shadow-lg shadow-blue-500/20 transition-all duration-200"
           >
             <span className="flex items-center justify-center gap-2">
               {loading ? (
-                <>
-                  <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                  </svg>
-                  جاري إنشاء العميل...
-                </>
+                <><svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>جاري إنشاء العميل...</>
               ) : (
-                <>
-                  <Plus size={18} />
-                  إنشاء العميل
-                </>
+                <><Plus size={18} />إنشاء العميل</>
               )}
             </span>
           </button>
         </form>
 
-        {/* ══ RIGHT: Summary Card ══ */}
+        {/* ══ RIGHT: Summary ══ */}
         <div className="space-y-5">
           <div className="bg-slate-900 border border-slate-700/60 rounded-3xl p-6 shadow-xl sticky top-6">
             <div className="flex items-center gap-2.5 mb-5">
@@ -578,14 +560,14 @@ export default function CreateShopPage() {
               </div>
               <h2 className="text-white font-bold text-sm">ملخص العملية</h2>
             </div>
-
             <div className="space-y-3">
               {[
-                { label: 'إنشاء محل جديد', done: !!form.shop_name },
-                { label: 'إنشاء حساب مالك المحل', done: !!form.email && !!form.password },
-                { label: 'إنشاء ملف شخصي', done: !!form.owner_name },
-                { label: 'ربط المحل بالمالك', done: !!form.shop_name && !!form.owner_name },
-                { label: 'تفعيل الحساب', done: accountStatus === 'active' },
+                { label: 'إنشاء محل جديد',           done: !!form.shop_name                           },
+                { label: 'إنشاء حساب مالك المحل',    done: !!form.email && !!form.password            },
+                { label: 'إنشاء ملف شخصي',           done: !!form.owner_name                          },
+                { label: 'ربط المحل بالمالك',        done: !!form.shop_name && !!form.owner_name      },
+                { label: 'تفعيل الحساب',             done: accountStatus === 'active'                  },
+                { label: 'شعار المحل',               done: !!logoFile                                  },
               ].map(({ label, done }) => (
                 <div key={label} className="flex items-center gap-3">
                   <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-300 ${
@@ -599,7 +581,6 @@ export default function CreateShopPage() {
                 </div>
               ))}
             </div>
-
             <div className="mt-5">
               {(() => {
                 const steps = [
@@ -608,6 +589,7 @@ export default function CreateShopPage() {
                   !!form.owner_name,
                   !!form.shop_name && !!form.owner_name,
                   accountStatus === 'active',
+                  !!logoFile,
                 ];
                 const pct = Math.round((steps.filter(Boolean).length / steps.length) * 100);
                 return (
@@ -636,19 +618,18 @@ export default function CreateShopPage() {
               <li>• السجل التجاري اختياري ويمكن إضافته لاحقاً</li>
               <li>• تأكد من صحة البريد الإلكتروني قبل الإرسال</li>
               <li>• الواتساب والخريطة اختياريان ويمكن إضافتهما لاحقاً</li>
+              <li>• الشعار اختياري · PNG/JPG · أقصى 2MB</li>
             </ul>
           </div>
         </div>
       </div>
 
-      {/* SECTION 7 — SUCCESS MODAL */}
+      {/* SUCCESS MODAL */}
       {successInfo && (
         <SuccessModal
           info={successInfo}
           onNewClient={() => setSuccessInfo(null)}
-          onGoToShops={() => {
-            setSuccessInfo(null);
-          }}
+          onGoToShops={() => setSuccessInfo(null)}
         />
       )}
     </div>

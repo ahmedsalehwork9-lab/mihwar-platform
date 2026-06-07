@@ -5,20 +5,31 @@ import {
   CheckCircle, XCircle, RefreshCw, Clock,
   ShoppingCart, Store, Calendar, DollarSign, Hash,
   Shield, Search, Package, FileText, QrCode, ExternalLink,
+  MapPin, MessageCircle, Globe, Building2,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type OrderStatus = "pending" | "approved" | "rejected" | "completed";
 
+// Extended shop profile — read-only display
+type ShopProfile = {
+  shop_name:               string;
+  logo_url:                string | null;
+  whatsapp:                string | null;
+  city:                    string | null;
+  commercial_registration: string | null;
+  website:                 string | null;
+};
+
 type VerifiedOrder = {
-  id: number;
-  status: OrderStatus;
+  id:           number;
+  status:       OrderStatus;
   total_amount: number;
-  created_at: string;
-  notes: string | null;
-  from_shop: { shop_name: string } | null;
-  to_shop:   { shop_name: string } | null;
+  created_at:   string;
+  notes:        string | null;
+  from_shop:    ShopProfile | null;
+  to_shop:      ShopProfile | null;
 };
 
 // ─── Status config (badge inside card) ───────────────────────────────────────
@@ -74,12 +85,128 @@ const APP_URL = "https://mihwar-app.vercel.app";
 // ─── Feature list ─────────────────────────────────────────────────────────────
 
 const FEATURES = [
-  { icon: Search,   label: "البحث السريع عن القطع"              },
-  { icon: Package,  label: "إدارة المخزون"                      },
-  { icon: FileText, label: "أوامر شراء إلكترونية"               },
-  { icon: FileText, label: "فواتير احترافية"                    },
-  { icon: QrCode,   label: "التحقق من المستندات عبر QR"         },
+  { icon: Search,   label: "البحث السريع عن القطع"          },
+  { icon: Package,  label: "إدارة المخزون"                  },
+  { icon: FileText, label: "أوامر شراء إلكترونية"           },
+  { icon: FileText, label: "فواتير احترافية"                },
+  { icon: QrCode,   label: "التحقق من المستندات عبر QR"     },
 ];
+
+// ─── Shop Avatar — logo if available, first-letter fallback ──────────────────
+
+function ShopAvatar({ shop }: { shop: ShopProfile }) {
+  if (shop.logo_url) {
+    return (
+      <img
+        src={shop.logo_url}
+        alt={shop.shop_name}
+        className="w-14 h-14 rounded-2xl object-cover border border-slate-700 shrink-0"
+      />
+    );
+  }
+  return (
+    <div className="w-14 h-14 rounded-2xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center font-black text-blue-400 text-2xl shrink-0">
+      {shop.shop_name.charAt(0)}
+    </div>
+  );
+}
+
+// ─── Shop Profile Card — read-only ───────────────────────────────────────────
+
+function ShopProfileCard({
+  shop,
+  role,
+  roleIcon,
+  roleColor,
+}: {
+  shop: ShopProfile;
+  role: string;               // "بيانات المورد" | "بيانات المشتري"
+  roleIcon: React.ReactNode;
+  roleColor: string;          // tailwind text color for icon
+}) {
+  // Build the list of fields to display — hide nulls/empty automatically
+  const fields: { icon: React.ReactNode; label: string; value: string; href?: string }[] = [];
+
+  if (shop.city) fields.push({
+    icon: <MapPin size={13} className="text-slate-400" />,
+    label: "المدينة", value: shop.city,
+  });
+
+  if (shop.whatsapp) {
+    const clean = shop.whatsapp.replace(/\D/g, "");
+    const waNum = clean.startsWith("966") ? clean
+                : clean.startsWith("05")  ? `966${clean.slice(1)}`
+                : clean.startsWith("5")   ? `966${clean}`
+                : clean;
+    fields.push({
+      icon: <MessageCircle size={13} className="text-emerald-400" />,
+      label: "واتساب", value: shop.whatsapp,
+      href: `https://wa.me/${waNum}`,
+    });
+  }
+
+  if (shop.commercial_registration) fields.push({
+    icon: <Building2 size={13} className="text-slate-400" />,
+    label: "السجل التجاري", value: shop.commercial_registration,
+  });
+
+  if (shop.website) fields.push({
+    icon: <Globe size={13} className="text-blue-400" />,
+    label: "الموقع الإلكتروني", value: shop.website,
+    href: shop.website,
+  });
+
+  // If nothing useful to show beyond the name, still render the card
+  return (
+    <div className="bg-slate-900/60 border border-slate-800/60 rounded-2xl overflow-hidden">
+
+      {/* Card label */}
+      <div className="px-4 py-3 border-b border-slate-800/60 flex items-center gap-2">
+        <span className={roleColor}>{roleIcon}</span>
+        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{role}</span>
+      </div>
+
+      {/* Logo + name row */}
+      <div className="px-4 py-4 flex items-center gap-3 border-b border-slate-800/40">
+        <ShopAvatar shop={shop} />
+        <div className="min-w-0 flex-1">
+          <p className="text-white font-black text-base leading-snug truncate">{shop.shop_name}</p>
+          {shop.city && (
+            <p className="text-slate-500 text-xs mt-0.5 flex items-center gap-1">
+              <MapPin size={10} /> {shop.city}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Fields */}
+      {fields.length > 0 && (
+        <div className="px-4 py-3 divide-y divide-slate-800/40">
+          {fields.map(({ icon, label, value, href }) => (
+            <div key={label} className="flex items-center justify-between gap-3 py-2.5">
+              <div className="flex items-center gap-1.5 shrink-0">
+                {icon}
+                <span className="text-slate-500 text-xs font-semibold">{label}</span>
+              </div>
+              {href ? (
+                <a
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-400 text-xs font-bold text-left truncate max-w-[55%] hover:text-blue-300 flex items-center gap-1"
+                >
+                  {value} <ExternalLink size={10} className="shrink-0" />
+                </a>
+              ) : (
+                <span className="text-white text-xs font-bold text-left truncate max-w-[55%]">{value}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -95,8 +222,14 @@ export default function VerifyInvoicePage() {
       .from("orders")
       .select(`
         id, status, total_amount, created_at, notes,
-        from_shop:shops!orders_from_shop_id_fkey(shop_name),
-        to_shop:shops!orders_to_shop_id_fkey(shop_name)
+        from_shop:shops!orders_from_shop_id_fkey(
+          shop_name, logo_url, whatsapp, city,
+          commercial_registration, website
+        ),
+        to_shop:shops!orders_to_shop_id_fkey(
+          shop_name, logo_url, whatsapp, city,
+          commercial_registration, website
+        )
       `)
       .eq("id", Number(orderId))
       .single()
@@ -164,11 +297,15 @@ export default function VerifyInvoicePage() {
     hour: "2-digit", minute: "2-digit",
   });
 
+  // Decide whether to show shop profile cards
+  const showSupplier = !!order!.to_shop;
+  const showBuyer    = !!order!.from_shop;
+
   return (
     <div className="min-h-screen bg-slate-950" dir="rtl">
 
       {/* ══════════════════════════════════════════════════════
-          TOP NAV BAR
+          TOP NAV BAR — UNCHANGED
       ══════════════════════════════════════════════════════ */}
       <div className="border-b border-slate-800/60 bg-slate-900/60 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-lg mx-auto px-5 py-3.5 flex items-center justify-between">
@@ -193,34 +330,25 @@ export default function VerifyInvoicePage() {
       <div className="max-w-lg mx-auto px-4 py-10 space-y-5">
 
         {/* ══════════════════════════════════════════════════════
-            SECTION 1 — HERO + INVOICE CARD
+            SECTION 1 — HERO + INVOICE CARD — UNCHANGED
         ══════════════════════════════════════════════════════ */}
         <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
 
           {/* Hero */}
           <div className="px-6 pt-8 pb-6 text-center border-b border-slate-800/60">
-
-            {/* Platform label */}
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-5">
               MIHWAR Verification Center · منصة محور
             </p>
-
-            {/* Status icon */}
             <div className="flex justify-center mb-4">
               <div className={`w-20 h-20 rounded-full border-2 flex items-center justify-center ${iconBg}`}>
                 <Icon size={38} className={iconColor} />
               </div>
             </div>
-
-            {/* Title */}
             <h1 className="text-2xl font-black text-white mb-1 leading-tight">{titleAr}</h1>
             <p className={`text-sm font-semibold mb-4 ${titleColor}`}>{titleEn}</p>
-
-            {/* Verification chip */}
             <p className="text-[11px] text-slate-500 mb-4">
               تم التحقق من صحة المستند بنجاح
             </p>
-
             {verified && (
               <span className="inline-flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] font-bold px-3 py-1.5 rounded-full">
                 <CheckCircle size={11} />
@@ -238,7 +366,7 @@ export default function VerifyInvoicePage() {
             <span className="font-mono font-black text-white text-lg tracking-wide">{poNumber}</span>
           </div>
 
-          {/* Invoice rows — UNCHANGED DATA */}
+          {/* Invoice rows — UNCHANGED */}
           <div className="px-5 py-1 divide-y divide-slate-800/50">
 
             <div className="flex items-center justify-between py-3.5">
@@ -302,7 +430,30 @@ export default function VerifyInvoicePage() {
         </div>
 
         {/* ══════════════════════════════════════════════════════
-            SECTION 2 — TRUST SECTION
+            NEW — SUPPLIER + BUYER PROFILE CARDS
+            Positioned between invoice card and trust section
+        ══════════════════════════════════════════════════════ */}
+
+        {showSupplier && order!.to_shop && (
+          <ShopProfileCard
+            shop={order!.to_shop}
+            role="بيانات المورد"
+            roleIcon={<Store size={13} />}
+            roleColor="text-emerald-400"
+          />
+        )}
+
+        {showBuyer && order!.from_shop && (
+          <ShopProfileCard
+            shop={order!.from_shop}
+            role="بيانات المشتري"
+            roleIcon={<ShoppingCart size={13} />}
+            roleColor="text-blue-400"
+          />
+        )}
+
+        {/* ══════════════════════════════════════════════════════
+            SECTION 2 — TRUST SECTION — UNCHANGED
         ══════════════════════════════════════════════════════ */}
         <div className="bg-slate-900/60 border border-slate-800/60 rounded-2xl px-5 py-5 flex items-start gap-4">
           <div className="shrink-0 w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mt-0.5">
@@ -319,11 +470,10 @@ export default function VerifyInvoicePage() {
         </div>
 
         {/* ══════════════════════════════════════════════════════
-            SECTION 3 — MARKETING CARD
+            SECTION 3 — MARKETING CARD — UNCHANGED
         ══════════════════════════════════════════════════════ */}
         <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden">
 
-          {/* Card header */}
           <div className="px-5 pt-6 pb-4 border-b border-slate-800/60">
             <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-2">منصة محور · MIHWAR</p>
             <h2 className="text-lg font-black text-white leading-snug">
@@ -334,7 +484,6 @@ export default function VerifyInvoicePage() {
             </p>
           </div>
 
-          {/* Features grid */}
           <div className="px-5 py-4 grid grid-cols-1 gap-2">
             {FEATURES.map(({ icon: FeatIcon, label }) => (
               <div key={label} className="flex items-center gap-2.5">
@@ -346,7 +495,6 @@ export default function VerifyInvoicePage() {
             ))}
           </div>
 
-          {/* Promo banner */}
           <div className="mx-5 mb-5 bg-gradient-to-l from-blue-600/20 to-emerald-600/10 border border-blue-500/20 rounded-xl px-4 py-3 flex items-center gap-3">
             <span className="text-lg">🎁</span>
             <div>
@@ -355,7 +503,6 @@ export default function VerifyInvoicePage() {
             </div>
           </div>
 
-          {/* CTA buttons */}
           <div className="px-5 pb-6 flex flex-col gap-2.5">
             <a
               href={APP_URL}
@@ -377,7 +524,7 @@ export default function VerifyInvoicePage() {
           </div>
         </div>
 
-        {/* ── Brand footer ── */}
+        {/* ── Brand footer — UNCHANGED ── */}
         <div className="pt-2 pb-6 text-center space-y-1">
           <p className="text-slate-700 text-[11px] font-black">محور · MIHWAR</p>
           <p className="text-slate-700 text-[10px]">منصة قطع غيار ايسوزو B2B</p>

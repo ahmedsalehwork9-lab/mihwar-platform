@@ -131,9 +131,9 @@ function buildPrintHTML(order: Order, items: OrderItem[]): string {
 
   const subtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
 
-  const qrData = encodeURIComponent(
-    `PO:${poNumber}|ID:${order.id}|DATE:${date}|STATUS:${order.status}|TOTAL:${order.total_amount}`
-  );
+  // ── QR — verification URL ──
+  const verifyUrl = `${window.location.origin}/verify/${order.id}`;
+  const qrData = encodeURIComponent(verifyUrl);
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${qrData}&color=1E3A5F&bgcolor=ffffff&qzone=1`;
 
   // Arabic-first wordmark — محور only, no icon
@@ -538,7 +538,8 @@ td.tf { font-weight: 700; font-size: 13px; color: var(--navy); }
       </div>
       <div style="text-align:center;margin-top:6px;">
         <span class="qrpo">${poNumber}</span>
-        <span class="qrhint" style="display:block;margin-top:3px;font-family:Tahoma,Arial;font-size:8.5px;color:#64748B;line-height:1.4;">امسح الرمز لعرض<br>الطلب في النظام</span>
+        <span class="qrhint" style="display:block;margin-top:3px;font-family:Tahoma,Arial;font-size:8.5px;color:#64748B;line-height:1.4;">امسح الرمز للتحقق<br>من صحة المستند</span>
+        <span style="display:block;margin-top:5px;font-family:'JetBrains Mono',monospace;font-size:7px;color:#94A3B8;word-break:break-all;text-align:center;line-height:1.4;">${verifyUrl}</span>
       </div>
     </div>
   </div>
@@ -1160,7 +1161,6 @@ export default function OrdersPage() {
                   {new Date(detailOrder.created_at).toLocaleString()}
                 </p>
               </div>
-              {/* Print button in header for easy access on mobile */}
               <div className="flex items-center gap-2 shrink-0 ml-3">
                 <button
                   onClick={handlePrint}

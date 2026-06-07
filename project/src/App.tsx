@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
 import { NotificationProvider } from './context/NotificationContext';
@@ -22,6 +23,9 @@ import UsersPage from './pages/UsersPage';
 import PermissionsPage from './pages/PermissionsPage';
 import GlobalInventoryPage from './pages/GlobalInventoryPage';
 import GlobalOrdersPage from './pages/GlobalOrdersPage';
+
+// Verify Invoice — public, no auth required
+import VerifyInvoicePage from './pages/VerifyInvoicePage';
 
 function AppContent() {
   const { session, loading, isAdmin } = useAuth();
@@ -107,10 +111,23 @@ function AccessDenied() {
 
 export default function App() {
   return (
-    <LanguageProvider>
-      <AuthProvider>
-        <AppContent />
-      </AuthProvider>
-    </LanguageProvider>
+    <BrowserRouter>
+      <Routes>
+        {/* ── Public route — no auth required ── */}
+        <Route path="/verify/:orderId" element={<VerifyInvoicePage />} />
+
+        {/* ── Main app — all existing behaviour unchanged ── */}
+        <Route
+          path="*"
+          element={
+            <LanguageProvider>
+              <AuthProvider>
+                <AppContent />
+              </AuthProvider>
+            </LanguageProvider>
+          }
+        />
+      </Routes>
+    </BrowserRouter>
   );
 }

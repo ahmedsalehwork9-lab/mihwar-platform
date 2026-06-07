@@ -14,7 +14,6 @@ import {
   PackageSearch,
   Copy,
   Check,
-  Package,
   MessageCircle,
   Navigation,
 } from 'lucide-react';
@@ -33,7 +32,6 @@ type Product = {
   shop_id: number;
 };
 
-// STEP 1: Extended Shop type with whatsapp + google_maps_url
 type Shop = {
   id: number;
   shop_name: string;
@@ -48,7 +46,7 @@ type StockStatus = 'in-stock' | 'low-stock' | 'out-of-stock';
 
 function getStockStatus(qty: number): StockStatus {
   if (qty === 0) return 'out-of-stock';
-  if (qty <= 5) return 'low-stock';
+  if (qty <= 10) return 'low-stock';
   return 'in-stock';
 }
 
@@ -66,9 +64,9 @@ function toWaLink(num: string): string {
 const StockBadge = memo(({ quantity, t }: { quantity: number; t: any }) => {
   const status = getStockStatus(quantity);
   const config = {
-    'in-stock':     { label: t('In Stock', 'متوفر'),   dot: 'bg-emerald-400', cls: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
-    'low-stock':    { label: t('Low', 'منخفض'),        dot: 'bg-amber-400',   cls: 'bg-amber-500/10 text-amber-400 border-amber-500/20'       },
-    'out-of-stock': { label: t('Out', 'نفد'),          dot: 'bg-red-400',     cls: 'bg-red-500/10 text-red-400 border-red-500/20'             },
+    'in-stock':     { label: t('In Stock', 'متوفر'),          dot: 'bg-emerald-400', cls: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
+    'low-stock':    { label: t('Limited', 'كمية محدودة'),     dot: 'bg-amber-400',   cls: 'bg-amber-500/10 text-amber-400 border-amber-500/20'       },
+    'out-of-stock': { label: t('Unavailable', 'غير متوفر'),   dot: 'bg-red-400',     cls: 'bg-red-500/10 text-red-400 border-red-500/20'             },
   }[status];
 
   return (
@@ -132,7 +130,6 @@ const QtyControl = memo(({
 
 // ─── Product Card ─────────────────────────────────────────────────────────────
 
-// STEP 4: Extended ProductCard props with shop_whatsapp + shop_location
 const ProductCard = memo(({
   product: p, inCart, cartQty, onAdd, onRemoveOne, t,
 }: {
@@ -163,7 +160,7 @@ const ProductCard = memo(({
         <CopyButton text={p.part_number} />
       </div>
 
-      {/* Meta: brand, shop, qty */}
+      {/* Meta: brand, shop — quantity intentionally hidden from buyers */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12px] text-slate-400">
         {(p.brand || p.model) && (
           <div className="flex items-center gap-1">
@@ -175,15 +172,9 @@ const ProductCard = memo(({
           <Store size={11} className="text-emerald-500 shrink-0" />
           <span className="truncate max-w-[8rem]">{p.shop_name}</span>
         </div>
-        <div className="flex items-center gap-1">
-          <Package size={11} className="text-slate-500 shrink-0" />
-          <span className="tabular-nums">
-            {t('Qty', 'الكمية')}: <strong className={p.quantity <= 5 ? 'text-amber-400' : 'text-slate-200'}>{p.quantity}</strong>
-          </span>
-        </div>
       </div>
 
-      {/* STEP 5 + 6: Supplier contact action buttons */}
+      {/* Supplier contact action buttons */}
       {(p.shop_whatsapp || p.shop_location) && (
         <div className="flex items-center gap-2">
           {p.shop_whatsapp && (
@@ -379,7 +370,7 @@ const CartSheet = memo(({
     {/* Backdrop */}
     <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
 
-    {/* Sheet — stops ABOVE the fixed button (pb-32 = 128px clears nav+button) */}
+    {/* Sheet */}
     <div
       className="relative w-full bg-slate-900 rounded-t-[1.75rem] border-t border-slate-800 shadow-2xl flex flex-col"
       style={{ maxHeight: 'calc(92vh - env(safe-area-inset-top, 0px))' }}
@@ -419,7 +410,7 @@ const CartSheet = memo(({
         ))}
       </div>
 
-      {/* Summary — inside sheet, no extra bottom space */}
+      {/* Summary */}
       <div className="shrink-0 bg-slate-950 border-t border-slate-800 px-4 pt-3 pb-32">
         <CartSummary
           cartTotal={cartTotal}
@@ -431,7 +422,7 @@ const CartSheet = memo(({
       </div>
     </div>
 
-    {/* ── ORDER BUTTON — fixed overlay, always above bottom nav ── */}
+    {/* ORDER BUTTON — fixed overlay, always above bottom nav */}
     <div
       className="fixed left-0 right-0 z-[60] px-4"
       style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 5rem)' }}
@@ -477,7 +468,6 @@ export default function SearchPage() {
 
       let fetchedShops: Shop[] = [];
       if (shopIds.length > 0) {
-        // STEP 2: fetch whatsapp + google_maps_url alongside existing fields
         const { data: shopsData, error: shopsError } = await supabase
           .from('shops')
           .select('id, shop_name, phone, whatsapp, google_maps_url')
@@ -566,15 +556,14 @@ export default function SearchPage() {
     return m;
   }, [shops]);
 
-  // STEP 3: filtered includes shop_whatsapp + shop_location
   const filtered = useMemo(() => {
     const q = query.toLowerCase().trim();
     return products
       .map(p => ({
         ...p,
-        shop_name:      shopMap[p.shop_id]?.shop_name      ?? '—',
-        shop_phone:     shopMap[p.shop_id]?.phone          ?? '—',
-        shop_whatsapp:  shopMap[p.shop_id]?.whatsapp       ?? null,
+        shop_name:      shopMap[p.shop_id]?.shop_name       ?? '—',
+        shop_phone:     shopMap[p.shop_id]?.phone           ?? '—',
+        shop_whatsapp:  shopMap[p.shop_id]?.whatsapp        ?? null,
         shop_location:  shopMap[p.shop_id]?.google_maps_url ?? null,
       }))
       .filter(p => {

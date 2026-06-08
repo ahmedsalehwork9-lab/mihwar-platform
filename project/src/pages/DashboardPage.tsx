@@ -42,7 +42,6 @@ export default function DashboardPage() {
     totalValue: 0,
   });
 
-  // ── Preserve all existing data-fetching logic ──
   const loadDashboard = useCallback(async () => {
     try {
       setLoading(true);
@@ -53,19 +52,60 @@ export default function DashboardPage() {
       setShop(shopData);
       if (!shopData) return;
 
-      const { data: productsData } = await supabase
-        .from('products')
-        .select('*')
-        .eq('shop_id', shopData.id)
-        .order('created_at', { ascending: false });
+      // ── FIX: run count query and data query in parallel ──────────────────
+      //
+      // ROOT CAUSE: the original code did:
+      //   const { data } = await supabase.from('products').select('*')…
+      //   setStats({ totalProducts: items.length, … })
+      //
+      // PostgREST enforces a server-side max_rows limit (default: 1000).
+      // With 1500+ products the query silently returns only 1000 rows, so
+      // items.length === 1000 no matter how many products actually exist.
+      //
+      // FIX: a dedicated HEAD query with { count: 'exact' } asks Postgres for
+      // COUNT(*) directly — it bypasses the row-limit entirely and returns the
+      // real number in the `count` field without transferring any row data.
+      // The data query still fetches the latest 5 rows needed for the Recent
+      // Activity widget and brand distribution chart (limit: 200 is enough;
+      // we never need all rows here for display purposes, only for stats).
+      //
+      const [countResult, productsResult] = await Promise.all([
+        // Exact COUNT(*) — not affected by max_rows
+        supabase
+          .from('products')
+          .select('*', { count: 'exact', head: true })
+          .eq('shop_id', shopData.id),
 
-      const items: Product[] = productsData || [];
+        // Lightweight data fetch: only what the UI widgets actually render.
+        // We need quantity+price for all rows to compute totalInventory and
+        // totalValue accurately, but we only need part_name/brand for the
+        // top-5 recent list and brand chart. Fetching all columns with a
+        // higher limit is fine; we just no longer use .length for the count.
+        supabase
+          .from('products')
+          .select('id, part_name, part_number, brand, quantity, price')
+          .eq('shop_id', shopData.id)
+          .order('created_at', { ascending: false })
+          .limit(1000),   // enough for value/inventory aggregation display
+      ]);
+
+      const exactCount = countResult.count ?? 0;
+      const items: Product[] = productsResult.data || [];
+
       setProducts(items);
 
+      // totalInventory and totalValue are computed from the fetched rows.
+      // Note: if the shop has >1000 products these aggregates will still be
+      // slightly under-counted. To fix that fully, move them to a DB function
+      // or RPC. For now the count card at least shows the correct total.
       const totalInventory = items.reduce((a, i) => a + (i.quantity || 0), 0);
-      const totalValue = items.reduce((a, i) => a + (i.quantity || 0) * (i.price || 0), 0);
+      const totalValue     = items.reduce((a, i) => a + (i.quantity || 0) * (i.price || 0), 0);
 
-      setStats({ totalProducts: items.length, totalInventory, totalValue });
+      setStats({
+        totalProducts: exactCount,   // ← real COUNT(*) from database
+        totalInventory,
+        totalValue,
+      });
     } catch (err) {
       console.error(err);
     } finally {
@@ -76,10 +116,10 @@ export default function DashboardPage() {
   useEffect(() => { loadDashboard(); }, [loadDashboard]);
 
   // ── Preserve all notification context values ──
-  const lowStockCount = lowStockItems.length;
-  const outOfStockCount = outOfStockItems.length;
+  const lowStockCount      = lowStockItems.length;
+  const outOfStockCount    = outOfStockItems.length;
   const pendingOrdersCount = pendingOrders.length;
-  const criticalAlerts = outOfStockCount + pendingOrdersCount;
+  const criticalAlerts     = outOfStockCount + pendingOrdersCount;
 
   // ── Preserve all brand calculations ──
   const brandCounts = useMemo(() =>

@@ -453,30 +453,76 @@ export default function SearchPage() {
   const [cart, setCart]         = useState<any[]>([]);
   const [showCart, setShowCart] = useState(false);
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // FIX: fetch only products whose shop is active AND has an active subscription
+  //
+  // ROOT CAUSE (why stopped shops were appearing):
+  //
+  //   The original query was:
+  //     supabase.from('products').select('*').gt('quantity', 0)
+  //
+  //   It queried the `products` table directly with NO join or reference to the
+  //   `shops` table. The shop's `is_active` and `subscription_status` columns
+  //   live on the `shops` table — they were never consulted. Any product with
+  //   quantity > 0 was returned regardless of whether its parent shop was
+  //   suspended, deactivated, or had an expired subscription.
+  //
+  // THE FIX — two-stage DB-level filtering:
+  //
+  //   Stage 1: query `shops` with is_active = true AND subscription_status =
+  //            'active' to get the set of eligible shop IDs. This runs entirely
+  //            in the database.
+  //
+  //   Stage 2: query `products` filtered by .in('shop_id', eligibleShopIds)
+  //            plus .gt('quantity', 0). Only products whose shop passed Stage 1
+  //            are ever transferred to the client.
+  //
+  //   This approach is safe even if PostgREST doesn't expose a direct
+  //   foreign-key join, and it avoids client-side post-filtering which would
+  //   be insecure (data already transferred) and wasteful.
+  // ─────────────────────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      let productsQuery = supabase
-        .from('products').select('*').gt('quantity', 0).order('created_at', { ascending: false });
-      if (ownedShopId) productsQuery = productsQuery.neq('shop_id', ownedShopId);
 
-      const { data: productsData, error: productsError } = await productsQuery;
-      if (productsError) throw productsError;
+      // ── Stage 1: resolve eligible shop IDs ──────────────────────────────
+      // Only shops that are both active AND have an active subscription are
+      // allowed to appear in the marketplace. This is the authoritative gate.
+      let shopsQuery = supabase
+        .from('shops')
+        .select('id, shop_name, phone, whatsapp, google_maps_url')
+        .eq('is_active', true)
+        .eq('subscription_status', 'active');
 
-      const fetchedProducts: Product[] = productsData || [];
-      const shopIds = [...new Set(fetchedProducts.map(p => p.shop_id))];
+      // Exclude the searcher's own shop (they can't buy from themselves)
+      if (ownedShopId) shopsQuery = shopsQuery.neq('id', ownedShopId);
 
-      let fetchedShops: Shop[] = [];
-      if (shopIds.length > 0) {
-        const { data: shopsData, error: shopsError } = await supabase
-          .from('shops')
-          .select('id, shop_name, phone, whatsapp, google_maps_url')
-          .in('id', shopIds);
-        if (shopsError) throw shopsError;
-        fetchedShops = shopsData || [];
+      const { data: shopsData, error: shopsError } = await shopsQuery;
+      if (shopsError) throw shopsError;
+
+      const fetchedShops: Shop[] = shopsData || [];
+      const eligibleShopIds = fetchedShops.map(s => s.id);
+
+      // If no active shops exist at all, return early with empty state
+      if (eligibleShopIds.length === 0) {
+        setProducts([]);
+        setShops([]);
+        return;
       }
 
-      setProducts(fetchedProducts);
+      // ── Stage 2: fetch products from eligible shops only ─────────────────
+      // .in('shop_id', eligibleShopIds) — DB-level join on the whitelisted IDs
+      // .gt('quantity', 0)              — exclude out-of-stock items
+      const { data: productsData, error: productsError } = await supabase
+        .from('products')
+        .select('*')
+        .in('shop_id', eligibleShopIds)   // ← only active + subscribed shops
+        .gt('quantity', 0)                // ← only available stock
+        .order('created_at', { ascending: false });
+
+      if (productsError) throw productsError;
+
+      setProducts(productsData || []);
       setShops(fetchedShops);
     } catch (error) {
       console.error('[SearchPage] fetchData error:', error);

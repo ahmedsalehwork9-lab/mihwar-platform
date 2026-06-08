@@ -34,11 +34,22 @@ type FormState = {
   price: string;
 };
 
+// ── Import summary returned after a completed sync ──────────────────────────
+type ImportSummary = {
+  totalRows: number;      // lines read from the file (excl. header)
+  validRows: number;      // rows that passed validation
+  skippedRows: number;    // rows that failed validation
+  inserted: number;       // new products created
+  updated: number;        // existing products updated
+  totalProcessed: number; // valid rows actually sent to Supabase
+};
+
 const EMPTY_FORM: FormState = {
   part_number: '', part_name: '', brand: '', model: '', quantity: '', price: ''
 };
 
-const PAGE_SIZE = 12;
+const PAGE_SIZE   = 12;
+const BATCH_SIZE  = 200; // rows per Supabase request — safe for PostgREST
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -46,6 +57,67 @@ function getStatus(qty: number): FilterStatus {
   if (qty > 5) return "in_stock";
   if (qty > 0) return "low_stock";
   return "out_of_stock";
+}
+
+// ─── Production-grade CSV parser ─────────────────────────────────────────────
+// Supports: quoted fields, commas inside quotes, Arabic/UTF-8, empty fields,
+// CRLF + LF line endings, and doubled-quote escaping ("" → ").
+function parseCSV(text: string): string[][] {
+  const rows: string[][] = [];
+  // Normalise line endings
+  const normalised = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  let i = 0;
+
+  while (i < normalised.length) {
+    const row: string[] = [];
+    // Parse one row
+    while (i < normalised.length && normalised[i] !== '\n') {
+      if (normalised[i] === '"') {
+        // Quoted field
+        let field = '';
+        i++; // skip opening quote
+        while (i < normalised.length) {
+          if (normalised[i] === '"') {
+            if (normalised[i + 1] === '"') {
+              // Escaped quote ("")
+              field += '"';
+              i += 2;
+            } else {
+              i++; // skip closing quote
+              break;
+            }
+          } else if (normalised[i] === '\n') {
+            // Newline inside a quoted field (multiline cell) — include it
+            field += normalised[i];
+            i++;
+          } else {
+            field += normalised[i];
+            i++;
+          }
+        }
+        row.push(field.trim());
+        // Skip comma separator if present
+        if (normalised[i] === ',') i++;
+      } else {
+        // Unquoted field — read until comma or newline
+        let field = '';
+        while (i < normalised.length && normalised[i] !== ',' && normalised[i] !== '\n') {
+          field += normalised[i];
+          i++;
+        }
+        row.push(field.trim());
+        // Skip comma separator if present
+        if (normalised[i] === ',') i++;
+      }
+    }
+    if (normalised[i] === '\n') i++; // skip newline
+    // Only push non-empty rows
+    if (row.length > 0 && row.some(cell => cell !== '')) {
+      rows.push(row);
+    }
+  }
+
+  return rows;
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -88,8 +160,6 @@ function StockBadge({ quantity, t }: StockBadgeProps) {
 }
 
 // ─── Mobile Product Card ──────────────────────────────────────────────────────
-// Shown only on < md. Receives all data and callbacks from parent.
-// No new state, no new effects, no new logic.
 
 interface MobileProductCardProps {
   p: Product;
@@ -178,27 +248,28 @@ export default function InventoryPage() {
   const { t, isRTL }   = useLang();
 
   // ── State ──────────────────────────────────────────────────────────────────
-  const [products, setProducts]     = useState<Product[]>([]);
-  const [loading, setLoading]       = useState(false);
-  const [saving, setSaving]         = useState(false);
-  const [importing, setImporting]   = useState(false);
-  const [error, setError]           = useState<string | null>(null);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [products, setProducts]         = useState<Product[]>([]);
+  const [loading, setLoading]           = useState(false);
+  const [saving, setSaving]             = useState(false);
+  const [importing, setImporting]       = useState(false);
+  const [importProgress, setImportProgress] = useState<string | null>(null);
+  const [error, setError]               = useState<string | null>(null);
+  const [successMsg, setSuccessMsg]     = useState<string | null>(null);
+  const [importSummary, setImportSummary] = useState<ImportSummary | null>(null);
 
-  const [search, setSearch]         = useState('');
-  const [filter, setFilter]         = useState<FilterStatus>('all');
-  const [page, setPage]             = useState(1);
-  const [selected, setSelected]     = useState<Set<number>>(new Set());
+  const [search, setSearch]             = useState('');
+  const [filter, setFilter]             = useState<FilterStatus>('all');
+  const [page, setPage]                 = useState(1);
+  const [selected, setSelected]         = useState<Set<number>>(new Set());
 
-  const [showModal, setShowModal]   = useState(false);
-  const [editItem, setEditItem]     = useState<Product | null>(null);
-  const [form, setForm]             = useState<FormState>(EMPTY_FORM);
-  const [formError, setFormError]   = useState<string | null>(null);
+  const [showModal, setShowModal]       = useState(false);
+  const [editItem, setEditItem]         = useState<Product | null>(null);
+  const [form, setForm]                 = useState<FormState>(EMPTY_FORM);
+  const [formError, setFormError]       = useState<string | null>(null);
 
   const importRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
-  // Derived: whether search is active. No new state — reads existing `search`.
   const isSearching = search.trim().length > 0;
 
   // ── Database Actions ───────────────────────────────────────────────────────
@@ -253,6 +324,216 @@ export default function InventoryPage() {
     const { error } = await supabase.from('products').delete().eq('id', id);
     if (!error) { fetchProducts(); showSuccess(t('Deleted', 'تم الحذف')); }
   };
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ── PRODUCTION IMPORT HANDLER ─────────────────────────────────────────────
+  // Capabilities:
+  //   • Full RFC 4180 CSV parser (quoted fields, commas in quotes, Arabic/UTF-8)
+  //   • Row-level validation with skip + log on failure
+  //   • Batch upsert in chunks of BATCH_SIZE (200) to avoid PostgREST limits
+  //   • Upsert on (shop_id, part_number) — NO duplicate products ever created
+  //   • Full console logging for every phase
+  //   • Detailed import summary displayed to the user after completion
+  //   • Meaningful per-batch error messages
+  // ─────────────────────────────────────────────────────────────────────────
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImporting(true);
+    setError(null);
+    setImportSummary(null);
+    setImportProgress(null);
+
+    try {
+      // ── 1. Read file ──────────────────────────────────────────────────────
+      console.log(`[MIHWAR Import] ▶ Starting import — file: "${file.name}", size: ${(file.size / 1024).toFixed(1)} KB`);
+      const text = await file.text();
+
+      // ── 2. Parse CSV ──────────────────────────────────────────────────────
+      const allRows = parseCSV(text);
+      console.log(`[MIHWAR Import] Total rows in file (incl. header): ${allRows.length}`);
+
+      if (allRows.length < 2) {
+        throw new Error(t('CSV file is empty or has no data rows.', 'الملف فارغ أو لا يحتوي على صفوف بيانات.'));
+      }
+
+      // Skip header row (index 0)
+      const dataRows = allRows.slice(1);
+      console.log(`[MIHWAR Import] Data rows (excl. header): ${dataRows.length}`);
+
+      // ── 3. Validate & map rows ────────────────────────────────────────────
+      // Expected CSV columns (0-indexed):
+      //   0: part_number  1: part_name  2: brand  3: model  4: quantity  5: price
+      const toUpsert: Omit<Product, 'id'>[] = [];
+      let skippedRows = 0;
+      const skippedReasons: string[] = [];
+
+      dataRows.forEach((cols, idx) => {
+        const lineNum = idx + 2; // human-readable (1-based + header)
+
+        const part_number = cols[0]?.trim() ?? '';
+        const part_name   = cols[1]?.trim() ?? '';
+        const brand       = cols[2]?.trim() ?? '';
+        const model       = cols[3]?.trim() ?? '';
+        const rawQty      = cols[4]?.trim() ?? '';
+        const rawPrice    = cols[5]?.trim() ?? '';
+
+        // Validation
+        if (!part_number) {
+          skippedRows++;
+          const reason = `Line ${lineNum}: missing part_number`;
+          skippedReasons.push(reason);
+          console.warn(`[MIHWAR Import] SKIP — ${reason}`);
+          return;
+        }
+        if (!part_name) {
+          skippedRows++;
+          const reason = `Line ${lineNum}: missing part_name (part_number: ${part_number})`;
+          skippedReasons.push(reason);
+          console.warn(`[MIHWAR Import] SKIP — ${reason}`);
+          return;
+        }
+
+        const quantity = parseInt(rawQty, 10);
+        const price    = parseFloat(rawPrice);
+
+        if (isNaN(quantity) || quantity < 0) {
+          skippedRows++;
+          const reason = `Line ${lineNum}: invalid quantity "${rawQty}" for part_number "${part_number}"`;
+          skippedReasons.push(reason);
+          console.warn(`[MIHWAR Import] SKIP — ${reason}`);
+          return;
+        }
+        if (isNaN(price) || price < 0) {
+          skippedRows++;
+          const reason = `Line ${lineNum}: invalid price "${rawPrice}" for part_number "${part_number}"`;
+          skippedReasons.push(reason);
+          console.warn(`[MIHWAR Import] SKIP — ${reason}`);
+          return;
+        }
+
+        toUpsert.push({
+          part_number,
+          part_name,
+          brand,
+          model,
+          quantity,
+          price,
+          shop_id: ownedShopId!,
+        });
+      });
+
+      const validRows = toUpsert.length;
+      console.log(`[MIHWAR Import] Valid rows: ${validRows}  |  Skipped: ${skippedRows}`);
+      if (skippedReasons.length > 0) {
+        console.warn(`[MIHWAR Import] Skipped row details:\n${skippedReasons.join('\n')}`);
+      }
+
+      if (validRows === 0) {
+        throw new Error(
+          t(
+            `No valid rows found. ${skippedRows} rows were skipped due to missing or invalid data.`,
+            `لم يتم العثور على صفوف صالحة. تم تخطي ${skippedRows} صف بسبب بيانات ناقصة أو غير صالحة.`
+          )
+        );
+      }
+
+      // ── 4. Batch upsert ───────────────────────────────────────────────────
+      // Upsert strategy: onConflict = 'shop_id,part_number'
+      // This requires a UNIQUE constraint on (shop_id, part_number) in Supabase.
+      // If that constraint does not exist, run this migration once:
+      //   ALTER TABLE products
+      //   ADD CONSTRAINT products_shop_part_unique UNIQUE (shop_id, part_number);
+      //
+      // Behaviour:
+      //   • Row exists  → UPDATE part_name, brand, model, quantity, price
+      //   • Row missing → INSERT new product
+      //   • Uploading the same file twice → idempotent, no duplicates
+
+      const totalBatches = Math.ceil(validRows / BATCH_SIZE);
+      let totalProcessed = 0;
+
+      console.log(`[MIHWAR Import] ▶ Batch upsert — ${validRows} rows in ${totalBatches} batch(es) of ${BATCH_SIZE}`);
+
+      for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+        const start = batchIndex * BATCH_SIZE;
+        const end   = Math.min(start + BATCH_SIZE, validRows);
+        const batch = toUpsert.slice(start, end);
+
+        const batchLabel = `Batch ${batchIndex + 1}/${totalBatches} (rows ${start + 1}–${end})`;
+        console.log(`[MIHWAR Import]   ${batchLabel} — sending ${batch.length} rows…`);
+
+        // Live progress visible to the user during large imports
+        setImportProgress(
+          t(
+            `Processing ${batchLabel}…`,
+            `جاري المعالجة ${batchIndex + 1} من ${totalBatches}…`
+          )
+        );
+
+        const { error: batchError } = await supabase
+          .from('products')
+          .upsert(batch, {
+            onConflict:        'shop_id,part_number', // UPDATE if exists, INSERT if new
+            ignoreDuplicates:  false,                 // always update existing rows
+          });
+
+        if (batchError) {
+          console.error(`[MIHWAR Import] ✖ ${batchLabel} FAILED:`, batchError);
+          throw new Error(
+            t(
+              `${batchLabel} failed: ${batchError.message}`,
+              `فشلت المجموعة ${batchIndex + 1} من ${totalBatches}: ${batchError.message}`
+            )
+          );
+        }
+
+        totalProcessed += batch.length;
+        console.log(`[MIHWAR Import]   ${batchLabel} ✔ — cumulative processed: ${totalProcessed}`);
+      }
+
+      console.log(`[MIHWAR Import] ✔ All batches complete — total processed: ${totalProcessed}`);
+
+      // ── 5. Build summary ──────────────────────────────────────────────────
+      // Note: Supabase upsert does not return separate inserted/updated counts
+      // in its response object. To give meaningful counts we compare against the
+      // existing products we already have in local state (loaded at mount).
+      // This is a best-effort estimate — it is correct for the common case where
+      // the inventory was last fetched before this import started.
+      const existingPartNumbers = new Set(products.map(p => p.part_number));
+      let estimatedInserted = 0;
+      let estimatedUpdated  = 0;
+      toUpsert.forEach(row => {
+        if (existingPartNumbers.has(row.part_number)) estimatedUpdated++;
+        else estimatedInserted++;
+      });
+
+      const summary: ImportSummary = {
+        totalRows:      dataRows.length,
+        validRows,
+        skippedRows,
+        inserted:       estimatedInserted,
+        updated:        estimatedUpdated,
+        totalProcessed,
+      };
+
+      console.log('[MIHWAR Import] Summary:', summary);
+
+      setImportSummary(summary);
+      setImportProgress(null);
+      fetchProducts();
+
+    } catch (err: any) {
+      console.error('[MIHWAR Import] ✖ Fatal error:', err);
+      setError(err.message || t('Import failed unexpectedly.', 'فشل الاستيراد بشكل غير متوقع.'));
+      setImportProgress(null);
+    } finally {
+      setImporting(false);
+      if (importRef.current) importRef.current.value = '';
+    }
+  };
+  // ── END IMPORT HANDLER ────────────────────────────────────────────────────
 
   // ── Derived Data (single-pass for performance) ────────────────────────────
   const { filtered, counts, totals } = useMemo(() => {
@@ -333,37 +614,6 @@ export default function InventoryPage() {
     link.click();
   }, [filtered]);
 
-  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImporting(true);
-    try {
-      const text = await file.text();
-      const rows = text.split('\n').slice(1).filter(r => r.trim());
-      const toInsert = rows.map(row => {
-        const c = row.split(',');
-        return {
-          part_number: c[0]?.trim(),
-          part_name:   c[1]?.trim(),
-          brand:       c[2]?.trim(),
-          model:       c[3]?.trim(),
-          quantity:    Number(c[4]) || 0,
-          price:       Number(c[5]) || 0,
-          shop_id:     ownedShopId!
-        };
-      }).filter(r => r.part_number && r.part_name);
-      const { error } = await supabase.from('products').insert(toInsert);
-      if (error) throw error;
-      fetchProducts();
-      showSuccess(t('Imported successfully', 'تم الاستيراد بنجاح'));
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setImporting(false);
-      if (importRef.current) importRef.current.value = '';
-    }
-  };
-
   const toggleSelectAll = useCallback(() => {
     setSelected(prev => prev.size === pageItems.length ? new Set() : new Set(pageItems.map(p => p.id)));
   }, [pageItems]);
@@ -376,7 +626,7 @@ export default function InventoryPage() {
     });
   }, []);
 
-  // ── Shared pagination UI (used in both mobile and desktop) ────────────────
+  // ── Shared pagination UI ──────────────────────────────────────────────────
   const PaginationControls = () => totalPages > 1 ? (
     <div className="flex items-center justify-between p-4 border-t border-slate-800 bg-slate-950/20">
       <span className="text-[11px] text-slate-500 font-medium">
@@ -562,10 +812,9 @@ export default function InventoryPage() {
       </section>
 
       {/* ── Table Actions — hidden on mobile when searching ── */}
-      {/* File input kept outside section so importRef stays mounted at all times */}
       <input ref={importRef} type="file" accept=".csv" onChange={handleImport} className="hidden" aria-hidden="true" />
       <section
-        className={`flex flex-col sm:flex-row items-center justify-between gap-3 mb-6 ${isSearching ? 'hidden md:flex' : 'flex'}`}
+        className={`flex flex-col sm:flex-row items-center justify-between gap-3 mb-4 ${isSearching ? 'hidden md:flex' : 'flex'}`}
       >
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <button
@@ -573,7 +822,7 @@ export default function InventoryPage() {
             disabled={importing}
             className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-800 bg-slate-900 text-slate-300 text-xs font-bold hover:bg-slate-800 transition-colors disabled:opacity-50"
           >
-            <Upload size={14} /> {importing ? t('Wait...', 'لحظة...') : t('Import', 'استيراد')}
+            <Upload size={14} /> {importing ? t('Importing…', 'جاري الاستيراد…') : t('Import', 'استيراد')}
           </button>
           <button
             onClick={handleExport}
@@ -590,13 +839,61 @@ export default function InventoryPage() {
         </button>
       </section>
 
-      {/*
-        ── Product display ───────────────────────────────────────────────────
-        Mobile  (< md) : card list  — no table, no min-width, no horizontal scroll
-        Desktop (md+)  : original table — completely unchanged
-        Both consume the same pageItems, selected, openEdit, handleDelete,
-        toggleSelectOne — zero logic duplication.
-      */}
+      {/* ── Import Progress Banner ── */}
+      {importProgress && (
+        <div className="mb-4 p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-medium flex items-center gap-3" role="status" aria-live="polite">
+          <RefreshCw size={14} className="animate-spin shrink-0" />
+          {importProgress}
+        </div>
+      )}
+
+      {/* ── Import Summary Banner ── */}
+      {importSummary && (
+        <div className="mb-6 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20" role="status" aria-live="polite">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-emerald-400 text-sm font-black flex items-center gap-2">
+              <PackageCheck size={16} />
+              {t('Import Complete', 'اكتمل الاستيراد')}
+            </span>
+            <button
+              onClick={() => setImportSummary(null)}
+              className="text-slate-500 hover:text-white transition-colors"
+              aria-label={t('Dismiss', 'إغلاق')}
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              {
+                label: t('New Products', 'منتجات جديدة'),
+                val: importSummary.inserted,
+                color: 'text-emerald-400',
+              },
+              {
+                label: t('Updated Products', 'منتجات محدّثة'),
+                val: importSummary.updated,
+                color: 'text-blue-400',
+              },
+              {
+                label: t('Skipped Rows', 'صفوف مُتخطّاة'),
+                val: importSummary.skippedRows,
+                color: 'text-amber-400',
+              },
+              {
+                label: t('Total Processed', 'إجمالي المعالجة'),
+                val: importSummary.totalProcessed,
+                color: 'text-white',
+              },
+            ].map((item, i) => (
+              <div key={i} className="flex flex-col">
+                <span className="text-[9px] text-slate-500 uppercase tracking-wider font-bold mb-0.5">{item.label}</span>
+                <span className={`text-xl font-black tabular-nums ${item.color}`}>{item.val.toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── MOBILE: card list ── */}
       <div className="md:hidden">
@@ -653,7 +950,7 @@ export default function InventoryPage() {
         )}
       </div>
 
-      {/* ── DESKTOP: original table (hidden on mobile, zero changes) ── */}
+      {/* ── DESKTOP: original table ── */}
       <div className="hidden md:block bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-right border-collapse min-w-[800px]" role="grid">
@@ -856,7 +1153,7 @@ export default function InventoryPage() {
         <div className="mt-4 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm flex items-center gap-3" role="alert">
           <AlertCircle size={20} className="shrink-0" />
           <p className="flex-1">{error}</p>
-          <button onClick={fetchProducts} className="underline font-bold text-xs">{t('Retry', 'إعادة المحاولة')}</button>
+          <button onClick={() => setError(null)} className="underline font-bold text-xs shrink-0">{t('Dismiss', 'إغلاق')}</button>
         </div>
       )}
     </div>

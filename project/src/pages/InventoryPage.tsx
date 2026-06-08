@@ -36,12 +36,12 @@ type FormState = {
 
 // ── Import summary returned after a completed sync ──────────────────────────
 type ImportSummary = {
-  totalRows: number;      // lines read from the file (excl. header)
-  validRows: number;      // rows that passed validation
-  skippedRows: number;    // rows that failed validation
-  inserted: number;       // new products created
-  updated: number;        // existing products updated
-  totalProcessed: number; // valid rows actually sent to Supabase
+  totalRows: number;
+  validRows: number;
+  skippedRows: number;
+  inserted: number;
+  updated: number;
+  totalProcessed: number;
 };
 
 const EMPTY_FORM: FormState = {
@@ -49,7 +49,13 @@ const EMPTY_FORM: FormState = {
 };
 
 const PAGE_SIZE   = 12;
-const BATCH_SIZE  = 200; // rows per Supabase request — safe for PostgREST
+const BATCH_SIZE  = 200;
+
+// ─── FETCH PAGE SIZE ──────────────────────────────────────────────────────────
+// PostgREST default max_rows is 1000. We paginate in 1000-row chunks when
+// loading all products so the full dataset is always in memory, regardless
+// of how large the inventory grows.
+const FETCH_CHUNK = 1000;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -60,34 +66,27 @@ function getStatus(qty: number): FilterStatus {
 }
 
 // ─── Production-grade CSV parser ─────────────────────────────────────────────
-// Supports: quoted fields, commas inside quotes, Arabic/UTF-8, empty fields,
-// CRLF + LF line endings, and doubled-quote escaping ("" → ").
 function parseCSV(text: string): string[][] {
   const rows: string[][] = [];
-  // Normalise line endings
   const normalised = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   let i = 0;
 
   while (i < normalised.length) {
     const row: string[] = [];
-    // Parse one row
     while (i < normalised.length && normalised[i] !== '\n') {
       if (normalised[i] === '"') {
-        // Quoted field
         let field = '';
-        i++; // skip opening quote
+        i++;
         while (i < normalised.length) {
           if (normalised[i] === '"') {
             if (normalised[i + 1] === '"') {
-              // Escaped quote ("")
               field += '"';
               i += 2;
             } else {
-              i++; // skip closing quote
+              i++;
               break;
             }
           } else if (normalised[i] === '\n') {
-            // Newline inside a quoted field (multiline cell) — include it
             field += normalised[i];
             i++;
           } else {
@@ -96,22 +95,18 @@ function parseCSV(text: string): string[][] {
           }
         }
         row.push(field.trim());
-        // Skip comma separator if present
         if (normalised[i] === ',') i++;
       } else {
-        // Unquoted field — read until comma or newline
         let field = '';
         while (i < normalised.length && normalised[i] !== ',' && normalised[i] !== '\n') {
           field += normalised[i];
           i++;
         }
         row.push(field.trim());
-        // Skip comma separator if present
         if (normalised[i] === ',') i++;
       }
     }
-    if (normalised[i] === '\n') i++; // skip newline
-    // Only push non-empty rows
+    if (normalised[i] === '\n') i++;
     if (row.length > 0 && row.some(cell => cell !== '')) {
       rows.push(row);
     }
@@ -176,7 +171,6 @@ function MobileProductCard({ p, selected, onToggle, onEdit, onDelete, t }: Mobil
 
   return (
     <div className={`bg-slate-900 rounded-xl border transition-colors ${selected ? 'border-emerald-500/50' : 'border-slate-800'}`}>
-      {/* Header: checkbox + name + badge */}
       <div className="flex items-start gap-3 p-3 pb-2">
         <input
           type="checkbox"
@@ -197,7 +191,6 @@ function MobileProductCard({ p, selected, onToggle, onEdit, onDelete, t }: Mobil
         </div>
       </div>
 
-      {/* Body: brand / model / qty / price */}
       <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 px-3 py-2.5 border-t border-slate-800/60">
         <div>
           <div className="text-[9px] text-slate-600 uppercase tracking-wider mb-0.5">{t('Brand', 'الماركة')}</div>
@@ -220,7 +213,6 @@ function MobileProductCard({ p, selected, onToggle, onEdit, onDelete, t }: Mobil
         </div>
       </div>
 
-      {/* Footer: actions */}
       <div className="flex items-center justify-end gap-1 px-3 py-2 border-t border-slate-800/60">
         <button
           onClick={() => onEdit(p)}
@@ -273,21 +265,114 @@ export default function InventoryPage() {
   const isSearching = search.trim().length > 0;
 
   // ── Database Actions ───────────────────────────────────────────────────────
+  //
+  // FIX: fetchProducts now loads ALL rows by paginating in FETCH_CHUNK-sized
+  // windows until Supabase returns fewer rows than the chunk size.
+  //
+  // Root cause of the original bug:
+  //   PostgREST enforces a server-side max_rows limit (default: 1000).
+  //   The original query had no pagination, so it silently capped results at
+  //   1000 rows. With 1519 products, 519 rows were never fetched, causing every
+  //   stat derived from the `products` array (counts, totals) to be wrong.
+  //
   const fetchProducts = useCallback(async () => {
-    if (!ownedShopId) return;
+    // ── DIAGNOSTIC LOG 1: entry point ────────────────────────────────────────
+    console.log(`[MIHWAR fetchProducts] ▶ called — ownedShopId=${ownedShopId}`);
+    if (!ownedShopId) {
+      console.warn('[MIHWAR fetchProducts] ✖ aborted — ownedShopId is null/undefined');
+      return;
+    }
+
     setLoading(true);
     setError(null);
-    const { data, error } = await supabase
-      .from("products")
-      .select("*")
-      .eq("shop_id", ownedShopId)
-      .order("created_at", { ascending: false });
-    if (error) setError(error.message);
-    else setProducts(data || []);
-    setLoading(false);
+
+    try {
+      // ── DIAGNOSTIC LOG 2: exact DB count (SELECT COUNT(*) equivalent) ──────
+      // This is the ground truth. If this number differs from allProducts.length
+      // at the end, the pagination loop is at fault. If this number is wrong,
+      // the issue is in the database or RLS policy.
+      const { count: dbCount, error: countErr } = await supabase
+        .from('products')
+        .select('*', { count: 'exact', head: true })
+        .eq('shop_id', ownedShopId);
+
+      if (countErr) {
+        console.error('[MIHWAR fetchProducts] COUNT query failed:', countErr.message, countErr);
+      } else {
+        console.log(`[MIHWAR fetchProducts] ── DB COUNT (ground truth): ${dbCount} ──`);
+      }
+
+      // ── Chunked fetch loop ────────────────────────────────────────────────
+      const allProducts: Product[] = [];
+      let from = 0;
+      let keepFetching = true;
+      let chunkIndex = 0;
+
+      while (keepFetching) {
+        const to = from + FETCH_CHUNK - 1;
+        console.log(`[MIHWAR fetchProducts] chunk ${chunkIndex} — range(${from}, ${to})`);
+
+        const { data: chunk, error: fetchErr } = await supabase
+          .from("products")
+          .select("*")
+          .eq("shop_id", ownedShopId)
+          .order("created_at", { ascending: false })
+          .range(from, to);
+
+        if (fetchErr) {
+          console.error(`[MIHWAR fetchProducts] ✖ chunk ${chunkIndex} error:`, fetchErr.message, fetchErr);
+          setError(fetchErr.message);
+          break;
+        }
+
+        const chunkLen = chunk?.length ?? 0;
+        allProducts.push(...(chunk ?? []));
+
+        // ── DIAGNOSTIC LOG 3: per-chunk progress ──────────────────────────
+        console.log(
+          `[MIHWAR fetchProducts] chunk ${chunkIndex} received ${chunkLen} rows` +
+          ` — running total: ${allProducts.length}` +
+          (chunkLen < FETCH_CHUNK ? ' — ✔ last chunk' : ' — fetching next chunk…')
+        );
+
+        if (chunkLen < FETCH_CHUNK) {
+          keepFetching = false;
+        } else {
+          from += FETCH_CHUNK;
+          chunkIndex++;
+        }
+      }
+
+      // ── DIAGNOSTIC LOG 4: final comparison ───────────────────────────────
+      console.log(
+        `[MIHWAR fetchProducts] ── FINAL LOADED: ${allProducts.length} rows` +
+        ` | DB COUNT was: ${dbCount ?? 'n/a (count query failed)'}` +
+        (dbCount !== null && dbCount !== undefined && allProducts.length !== dbCount
+          ? ` ← ⚠ MISMATCH — pagination bug or RLS returning different sets`
+          : ` ← ✔ match`)
+      );
+
+      setProducts(allProducts);
+      setPage(1);
+
+      // ── DIAGNOSTIC LOG 5: confirm React state will reflect new value ──────
+      // Note: products state won't update synchronously here; the log below
+      // records what we are SETTING, not what useState currently holds.
+      console.log(`[MIHWAR fetchProducts] setProducts(${allProducts.length} items) called`);
+
+    } finally {
+      setLoading(false);
+    }
   }, [ownedShopId]);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
+
+  // ── DIAGNOSTIC: log products.length after every state update ─────────────
+  // This confirms whether setProducts() actually committed the full array to
+  // React state, or whether something is truncating/overwriting it.
+  useEffect(() => {
+    console.log(`[MIHWAR STATE] products.length updated → ${products.length}`);
+  }, [products]);
 
   const handleSave = async () => {
     if (!form.part_number || !form.part_name || !form.quantity) {
@@ -327,19 +412,6 @@ export default function InventoryPage() {
 
   // ─────────────────────────────────────────────────────────────────────────
   // ── PRODUCTION IMPORT HANDLER — Manual Upsert Strategy ───────────────────
-  //
-  // WHY MANUAL UPSERT instead of supabase.upsert()?
-  //   supabase.upsert() with onConflict fails when:
-  //     • RLS UPDATE policy is not explicitly granted
-  //     • The constraint name doesn't match PostgREST's internal index lookup
-  //   This handler avoids both issues by:
-  //     1. Fetching all existing part_numbers for this shop (part_number + id)
-  //     2. Splitting validated rows into two buckets: toInsert / toUpdate
-  //     3. Running INSERT batches for new rows (no conflict possible)
-  //     4. Running individual UPDATE calls for existing rows (uses row id)
-  //
-  // Supports: 1 000 – 10 000+ rows without failure.
-  // ─────────────────────────────────────────────────────────────────────────
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -350,7 +422,6 @@ export default function InventoryPage() {
     setImportProgress(null);
 
     try {
-      // ── 1. Read & parse file ──────────────────────────────────────────────
       console.log(`[MIHWAR Import] ▶ File: "${file.name}"  Size: ${(file.size / 1024).toFixed(1)} KB`);
       const text     = await file.text();
       const allRows  = parseCSV(text);
@@ -364,11 +435,9 @@ export default function InventoryPage() {
         ));
       }
 
-      const dataRows = allRows.slice(1); // drop header
+      const dataRows = allRows.slice(1);
       console.log(`[MIHWAR Import] Data rows: ${dataRows.length}`);
 
-      // ── 2. Validate rows ──────────────────────────────────────────────────
-      // CSV column order: part_number, part_name, brand, model, quantity, price
       type ValidRow = Omit<Product, 'id'>;
       const validatedRows: ValidRow[] = [];
       let skippedRows = 0;
@@ -416,13 +485,10 @@ export default function InventoryPage() {
         ));
       }
 
-      // ── 3. Fetch existing part_numbers for this shop ──────────────────────
-      // We do a lightweight select (only part_number + id) to avoid fetching
-      // all product data again. Paginated with .range() to handle 10 000+ rows.
       setImportProgress(t('Loading existing inventory…', 'جاري تحميل المخزون الحالي…'));
       console.log(`[MIHWAR Import] Fetching existing part_numbers for shop ${ownedShopId}…`);
 
-      const existingMap = new Map<string, number>(); // part_number → product id
+      const existingMap = new Map<string, number>();
       const FETCH_PAGE  = 1000;
       let   fetchFrom   = 0;
       let   keepFetching = true;
@@ -450,7 +516,6 @@ export default function InventoryPage() {
 
       console.log(`[MIHWAR Import] Existing products loaded: ${existingMap.size}`);
 
-      // ── 4. Split into INSERT and UPDATE buckets ───────────────────────────
       const toInsert: ValidRow[]                          = [];
       const toUpdate: Array<ValidRow & { id: number }>   = [];
 
@@ -465,7 +530,6 @@ export default function InventoryPage() {
       let totalInserted = 0;
       let totalUpdated  = 0;
 
-      // ── 5. INSERT new products in batches ─────────────────────────────────
       if (toInsert.length > 0) {
         const insertBatches = Math.ceil(toInsert.length / BATCH_SIZE);
         console.log(`[MIHWAR Import] ▶ INSERT phase — ${toInsert.length} rows in ${insertBatches} batch(es)`);
@@ -497,12 +561,6 @@ export default function InventoryPage() {
         }
       }
 
-      // ── 6. UPDATE existing products in batches ────────────────────────────
-      // Strategy: batch UPDATE using .in() filter on ids.
-      // We send the full updated payload for each row in the batch.
-      // Because each row may have different values, we loop individually
-      // but fire them as concurrent Promises within each batch window
-      // to keep total round-trips low (BATCH_SIZE concurrent at a time).
       if (toUpdate.length > 0) {
         const updateBatches = Math.ceil(toUpdate.length / BATCH_SIZE);
         console.log(`[MIHWAR Import] ▶ UPDATE phase — ${toUpdate.length} rows in ${updateBatches} batch(es)`);
@@ -519,7 +577,6 @@ export default function InventoryPage() {
           ));
           console.log(`[MIHWAR Import]   ${label} — ${batch.length} rows`);
 
-          // Fire all updates in this batch concurrently
           const results = await Promise.all(
             batch.map(row =>
               supabase
@@ -532,11 +589,10 @@ export default function InventoryPage() {
                   price:     row.price,
                 })
                 .eq('id', row.id)
-                .eq('shop_id', ownedShopId!) // RLS safety guard
+                .eq('shop_id', ownedShopId!)
             )
           );
 
-          // Check for any errors in this batch
           const batchErrors = results
             .map((r, i) => r.error ? `Row id=${batch[i].id} (${batch[i].part_number}): ${r.error.message}` : null)
             .filter(Boolean);
@@ -554,7 +610,6 @@ export default function InventoryPage() {
         }
       }
 
-      // ── 7. Done ───────────────────────────────────────────────────────────
       const summary: ImportSummary = {
         totalRows:      dataRows.length,
         validRows,
@@ -565,6 +620,34 @@ export default function InventoryPage() {
       };
 
       console.log('[MIHWAR Import] ✔ Complete. Summary:', summary);
+
+      // ── DIAGNOSTIC: independent COUNT query immediately after import ──────
+      // Compare this number against what fetchProducts loads.
+      // If count = 1519 but dashboard shows 1000 → pagination bug in fetchProducts.
+      // If count = 1000 → data never made it to DB, or RLS blocks SELECT.
+      const { count: postImportCount, error: postCountErr } = await supabase
+        .from('products')
+        .select('*', { count: 'exact', head: true })
+        .eq('shop_id', ownedShopId!);
+
+      if (postCountErr) {
+        console.error('[MIHWAR Import] post-import COUNT failed:', postCountErr.message);
+      } else {
+        console.log(
+          `[MIHWAR Import] ── POST-IMPORT DB COUNT: ${postImportCount}` +
+          ` | Expected from summary: ${summary.totalProcessed}` +
+          (postImportCount === summary.totalProcessed
+            ? ' ← ✔ DB matches import summary'
+            : ` ← ⚠ MISMATCH — expected ${summary.totalProcessed}, got ${postImportCount}`)
+        );
+        console.log(
+          postImportCount !== null && postImportCount !== undefined
+            ? (postImportCount > 1000
+              ? `[MIHWAR Import] ⚠ COUNT=${postImportCount} > 1000 — if dashboard shows 1000, the bug is in fetchProducts pagination`
+              : `[MIHWAR Import] COUNT=${postImportCount} ≤ 1000 — if this is wrong, check DB writes or RLS SELECT policy`)
+            : '[MIHWAR Import] COUNT is null — RLS may be blocking the count query entirely'
+        );
+      }
 
       setImportSummary(summary);
       setImportProgress(null);
@@ -579,9 +662,11 @@ export default function InventoryPage() {
       if (importRef.current) importRef.current.value = '';
     }
   };
-  // ── END IMPORT HANDLER ────────────────────────────────────────────────────
 
   // ── Derived Data (single-pass for performance) ────────────────────────────
+  // All stats (counts, totals) are now computed from the FULL `products` array
+  // which is guaranteed to contain every row for this shop (loaded via chunked
+  // pagination above). Filtering/searching for the visible table is separate.
   const { filtered, counts, totals } = useMemo(() => {
     const q = search.toLowerCase().trim();
     let inStock = 0, lowStock = 0, outOfStock = 0;
@@ -789,7 +874,7 @@ export default function InventoryPage() {
         ))}
       </section>
 
-      {/* ── KPI Cards — hidden on mobile when searching ── */}
+      {/* ── KPI Cards ── */}
       <section
         className={`mb-6 ${isSearching ? 'hidden md:block' : 'block'}`}
         aria-label={t('Inventory summary', 'ملخص المخزون')}
@@ -857,7 +942,7 @@ export default function InventoryPage() {
         </div>
       </section>
 
-      {/* ── Table Actions — hidden on mobile when searching ── */}
+      {/* ── Table Actions ── */}
       <input ref={importRef} type="file" accept=".csv" onChange={handleImport} className="hidden" aria-hidden="true" />
       <section
         className={`flex flex-col sm:flex-row items-center justify-between gap-3 mb-4 ${isSearching ? 'hidden md:flex' : 'flex'}`}
@@ -911,26 +996,10 @@ export default function InventoryPage() {
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
-              {
-                label: t('New Products', 'منتجات جديدة'),
-                val: importSummary.inserted,
-                color: 'text-emerald-400',
-              },
-              {
-                label: t('Updated Products', 'منتجات محدّثة'),
-                val: importSummary.updated,
-                color: 'text-blue-400',
-              },
-              {
-                label: t('Skipped Rows', 'صفوف مُتخطّاة'),
-                val: importSummary.skippedRows,
-                color: 'text-amber-400',
-              },
-              {
-                label: t('Total Processed', 'إجمالي المعالجة'),
-                val: importSummary.totalProcessed,
-                color: 'text-white',
-              },
+              { label: t('New Products', 'منتجات جديدة'),     val: importSummary.inserted,       color: 'text-emerald-400' },
+              { label: t('Updated Products', 'منتجات محدّثة'), val: importSummary.updated,         color: 'text-blue-400' },
+              { label: t('Skipped Rows', 'صفوف مُتخطّاة'),    val: importSummary.skippedRows,     color: 'text-amber-400' },
+              { label: t('Total Processed', 'إجمالي المعالجة'), val: importSummary.totalProcessed, color: 'text-white' },
             ].map((item, i) => (
               <div key={i} className="flex flex-col">
                 <span className="text-[9px] text-slate-500 uppercase tracking-wider font-bold mb-0.5">{item.label}</span>
@@ -955,7 +1024,6 @@ export default function InventoryPage() {
           </div>
         ) : (
           <>
-            {/* Select-all bar */}
             <div className="flex items-center gap-2 mb-3 px-0.5">
               <input
                 type="checkbox"
@@ -971,7 +1039,6 @@ export default function InventoryPage() {
               </span>
             </div>
 
-            {/* Cards */}
             <div className="space-y-2">
               {pageItems.map(p => (
                 <MobileProductCard
@@ -986,7 +1053,6 @@ export default function InventoryPage() {
               ))}
             </div>
 
-            {/* Mobile pagination */}
             {totalPages > 1 && (
               <div className="mt-4 rounded-xl border border-slate-800 overflow-hidden">
                 <PaginationControls />

@@ -38,6 +38,7 @@ type Shop = {
   phone: string;
   whatsapp: string | null;
   google_maps_url: string | null;
+  logo_url: string | null;
 };
 
 type StockStatus = 'in-stock' | 'low-stock' | 'out-of-stock';
@@ -51,11 +52,13 @@ function getStockStatus(qty: number): StockStatus {
 }
 
 // Format Saudi number to international wa.me format
+// Handles all common formats: +966xxxxxxxx, 966xxxxxxxx, 05xxxxxxxx, 5xxxxxxxx
 function toWaLink(num: string): string {
+  // Strip ALL non-digit characters first (handles +, spaces, dashes, parentheses)
   const clean = num.replace(/\D/g, '');
   if (clean.startsWith('966')) return `https://wa.me/${clean}`;
-  if (clean.startsWith('05')) return `https://wa.me/966${clean.slice(1)}`;
-  if (clean.startsWith('5')) return `https://wa.me/966${clean}`;
+  if (clean.startsWith('05'))  return `https://wa.me/966${clean.slice(1)}`;
+  if (clean.startsWith('5'))   return `https://wa.me/966${clean}`;
   return `https://wa.me/${clean}`;
 }
 
@@ -492,7 +495,7 @@ export default function SearchPage() {
       // shops to be incorrectly hidden.
       let shopsQuery = supabase
         .from('shops')
-        .select('id, shop_name, phone, whatsapp, google_maps_url')
+        .select('id, shop_name, phone, whatsapp, google_maps_url, logo_url')
         .eq('is_active', true);
 
       // Exclude the searcher's own shop
@@ -608,13 +611,26 @@ export default function SearchPage() {
   const filtered = useMemo(() => {
     const q = query.toLowerCase().trim();
     return products
-      .map(p => ({
-        ...p,
-        shop_name:      shopMap[p.shop_id]?.shop_name       ?? '—',
-        shop_phone:     shopMap[p.shop_id]?.phone           ?? '—',
-        shop_whatsapp:  shopMap[p.shop_id]?.whatsapp        ?? null,
-        shop_location:  shopMap[p.shop_id]?.google_maps_url ?? null,
-      }))
+      .map(p => {
+        const shop = shopMap[p.shop_id];
+        const enriched = {
+          ...p,
+          shop_name:      shop?.shop_name       ?? '—',
+          shop_phone:     shop?.phone           ?? '—',
+          shop_whatsapp:  shop?.whatsapp        ?? null,
+          shop_location:  shop?.google_maps_url ?? null,
+          shop_logo:      shop?.logo_url        ?? null,
+        };
+        // ── DIAGNOSTIC: log whatsapp value as it lands on each product card
+        console.log(
+          '[MIHWAR Product]',
+          enriched.shop_name,
+          '| whatsapp raw:', shop?.whatsapp,
+          '| mapped shop_whatsapp:', enriched.shop_whatsapp,
+          '| wa.me link:', enriched.shop_whatsapp ? toWaLink(enriched.shop_whatsapp) : 'n/a'
+        );
+        return enriched;
+      })
       .filter(p => {
         const matchesQuery = !q || p.part_name.toLowerCase().includes(q) || p.part_number.toLowerCase().includes(q) || p.model.toLowerCase().includes(q);
         const matchesBrand = brandFilter === 'all' || p.brand === brandFilter;

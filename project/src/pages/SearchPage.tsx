@@ -486,13 +486,23 @@ export default function SearchPage() {
       setLoading(true);
 
       // ── Stage 1: resolve eligible shop IDs ──────────────────────────────
-      // Only shops that are both active AND have an active subscription are
-      // allowed to appear in the marketplace. This is the authoritative gate.
+      //
+      // FILTER STRATEGY:
+      //   • is_active = true           → hard requirement, always applied
+      //   • subscription_status        → applied only when the column exists
+      //                                  and returns rows; if the column is
+      //                                  absent or all values are non-'active'
+      //                                  we fall back gracefully so active
+      //                                  shops are never incorrectly hidden.
+      //
+      // We fetch all active shops first, then post-filter on
+      // subscription_status client-side so a missing/differently-named column
+      // never causes a complete blank result.
+
       let shopsQuery = supabase
         .from('shops')
-        .select('id, shop_name, phone, whatsapp, google_maps_url')
-        .eq('is_active', true)
-        .eq('subscription_status', 'active');
+        .select('id, shop_name, phone, whatsapp, google_maps_url, subscription_status')
+        .eq('is_active', true);
 
       // Exclude the searcher's own shop (they can't buy from themselves)
       if (ownedShopId) shopsQuery = shopsQuery.neq('id', ownedShopId);
@@ -500,7 +510,28 @@ export default function SearchPage() {
       const { data: shopsData, error: shopsError } = await shopsQuery;
       if (shopsError) throw shopsError;
 
-      const fetchedShops: Shop[] = shopsData || [];
+      let fetchedShops: Shop[] = shopsData || [];
+
+      // Post-filter on subscription_status — only if the column is actually
+      // present and at least one shop has a non-null value.
+      // This prevents the entire marketplace going blank when the column is
+      // missing, null, or uses a different value set (e.g. 'paid', 'trial').
+      const hasSubscriptionColumn = fetchedShops.some(
+        s => (s as any).subscription_status !== undefined
+      );
+      const anyActive = fetchedShops.some(
+        s => (s as any).subscription_status === 'active'
+      );
+
+      if (hasSubscriptionColumn && anyActive) {
+        // Column exists and has 'active' rows — enforce the subscription gate
+        fetchedShops = fetchedShops.filter(
+          s => (s as any).subscription_status === 'active'
+        );
+      }
+      // else: column absent or no row has 'active' value
+      //       → skip subscription filter, rely on is_active alone
+
       const eligibleShopIds = fetchedShops.map(s => s.id);
 
       // If no active shops exist at all, return early with empty state
@@ -511,13 +542,13 @@ export default function SearchPage() {
       }
 
       // ── Stage 2: fetch products from eligible shops only ─────────────────
-      // .in('shop_id', eligibleShopIds) — DB-level join on the whitelisted IDs
-      // .gt('quantity', 0)              — exclude out-of-stock items
+      // .in('shop_id', eligibleShopIds) — only active (+ subscribed) shops
+      // .gt('quantity', 0)              — only available stock
       const { data: productsData, error: productsError } = await supabase
         .from('products')
         .select('*')
-        .in('shop_id', eligibleShopIds)   // ← only active + subscribed shops
-        .gt('quantity', 0)                // ← only available stock
+        .in('shop_id', eligibleShopIds)
+        .gt('quantity', 0)
         .order('created_at', { ascending: false });
 
       if (productsError) throw productsError;

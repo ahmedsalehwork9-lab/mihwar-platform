@@ -505,6 +505,20 @@ export default function SearchPage() {
       if (shopsError) throw shopsError;
 
       const fetchedShops: Shop[] = shopsData || [];
+
+      // ── DIAGNOSTIC: print the raw DB response for every shop ─────────────
+      // This reveals whether RLS is masking whatsapp/google_maps_url columns.
+      // If whatsapp shows null here but DB has a value → RLS column policy.
+      // If whatsapp shows the real value here → bug is downstream in mapping.
+      console.log('[MIHWAR Shops] Raw shopsData from DB:',
+        fetchedShops.map(s => ({
+          id:              s.id,
+          shop_name:       s.shop_name,
+          whatsapp:        s.whatsapp,
+          google_maps_url: s.google_maps_url,
+          logo_url:        s.logo_url,
+        }))
+      );
       const activeShopIds = fetchedShops.map(s => s.id);
 
       console.log('[MIHWAR Search]', 'Active shops:', activeShopIds.length);
@@ -617,7 +631,8 @@ export default function SearchPage() {
           ...p,
           shop_name:      shop?.shop_name       ?? '—',
           shop_phone:     shop?.phone           ?? '—',
-          shop_whatsapp:  shop?.whatsapp        ?? null,
+          // Use whatsapp if available, fall back to phone for the WA button
+          shop_whatsapp:  shop?.whatsapp || shop?.phone || null,
           shop_location:  shop?.google_maps_url ?? null,
           shop_logo:      shop?.logo_url        ?? null,
         };
@@ -625,8 +640,8 @@ export default function SearchPage() {
         console.log(
           '[MIHWAR Product]',
           enriched.shop_name,
-          '| whatsapp raw:', shop?.whatsapp,
-          '| mapped shop_whatsapp:', enriched.shop_whatsapp,
+          '| shop obj:', shop ? JSON.stringify({ whatsapp: shop.whatsapp, phone: shop.phone }) : 'NOT IN shopMap',
+          '| shop_whatsapp resolved:', enriched.shop_whatsapp,
           '| wa.me link:', enriched.shop_whatsapp ? toWaLink(enriched.shop_whatsapp) : 'n/a'
         );
         return enriched;

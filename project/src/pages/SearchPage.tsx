@@ -485,73 +485,45 @@ export default function SearchPage() {
     try {
       setLoading(true);
 
-      // ── Stage 1: resolve eligible shop IDs ──────────────────────────────
-      //
-      // FILTER STRATEGY:
-      //   • is_active = true           → hard requirement, always applied
-      //   • subscription_status        → applied only when the column exists
-      //                                  and returns rows; if the column is
-      //                                  absent or all values are non-'active'
-      //                                  we fall back gracefully so active
-      //                                  shops are never incorrectly hidden.
-      //
-      // We fetch all active shops first, then post-filter on
-      // subscription_status client-side so a missing/differently-named column
-      // never causes a complete blank result.
-
+      // ── Stage 1: fetch all active shops ───────────────────────────────────
+      // Visibility rule: shop.is_active = true — nothing else.
+      // subscription_status is NOT consulted here; that logic was removed
+      // because the column values vary per deployment and caused all active
+      // shops to be incorrectly hidden.
       let shopsQuery = supabase
         .from('shops')
-        .select('id, shop_name, phone, whatsapp, google_maps_url, subscription_status')
+        .select('id, shop_name, phone, whatsapp, google_maps_url')
         .eq('is_active', true);
 
-      // Exclude the searcher's own shop (they can't buy from themselves)
+      // Exclude the searcher's own shop
       if (ownedShopId) shopsQuery = shopsQuery.neq('id', ownedShopId);
 
       const { data: shopsData, error: shopsError } = await shopsQuery;
       if (shopsError) throw shopsError;
 
-      let fetchedShops: Shop[] = shopsData || [];
+      const fetchedShops: Shop[] = shopsData || [];
+      const activeShopIds = fetchedShops.map(s => s.id);
 
-      // Post-filter on subscription_status — only if the column is actually
-      // present and at least one shop has a non-null value.
-      // This prevents the entire marketplace going blank when the column is
-      // missing, null, or uses a different value set (e.g. 'paid', 'trial').
-      const hasSubscriptionColumn = fetchedShops.some(
-        s => (s as any).subscription_status !== undefined
-      );
-      const anyActive = fetchedShops.some(
-        s => (s as any).subscription_status === 'active'
-      );
+      console.log('[MIHWAR Search]', 'Active shops:', activeShopIds.length);
 
-      if (hasSubscriptionColumn && anyActive) {
-        // Column exists and has 'active' rows — enforce the subscription gate
-        fetchedShops = fetchedShops.filter(
-          s => (s as any).subscription_status === 'active'
-        );
-      }
-      // else: column absent or no row has 'active' value
-      //       → skip subscription filter, rely on is_active alone
-
-      const eligibleShopIds = fetchedShops.map(s => s.id);
-
-      // If no active shops exist at all, return early with empty state
-      if (eligibleShopIds.length === 0) {
+      if (activeShopIds.length === 0) {
         setProducts([]);
         setShops([]);
         return;
       }
 
-      // ── Stage 2: fetch products from eligible shops only ─────────────────
-      // .in('shop_id', eligibleShopIds) — only active (+ subscribed) shops
-      // .gt('quantity', 0)              — only available stock
+      // ── Stage 2: fetch products from active shops with stock ──────────────
+      // shop_id IN (activeShopIds) AND quantity > 0
       const { data: productsData, error: productsError } = await supabase
         .from('products')
         .select('*')
-        .in('shop_id', eligibleShopIds)
+        .in('shop_id', activeShopIds)
         .gt('quantity', 0)
         .order('created_at', { ascending: false });
 
       if (productsError) throw productsError;
+
+      console.log('[MIHWAR Search]', 'Products loaded:', productsData?.length || 0);
 
       setProducts(productsData || []);
       setShops(fetchedShops);

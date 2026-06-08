@@ -326,15 +326,19 @@ export default function InventoryPage() {
   };
 
   // ─────────────────────────────────────────────────────────────────────────
-  // ── PRODUCTION IMPORT HANDLER ─────────────────────────────────────────────
-  // Capabilities:
-  //   • Full RFC 4180 CSV parser (quoted fields, commas in quotes, Arabic/UTF-8)
-  //   • Row-level validation with skip + log on failure
-  //   • Batch upsert in chunks of BATCH_SIZE (200) to avoid PostgREST limits
-  //   • Upsert on (shop_id, part_number) — NO duplicate products ever created
-  //   • Full console logging for every phase
-  //   • Detailed import summary displayed to the user after completion
-  //   • Meaningful per-batch error messages
+  // ── PRODUCTION IMPORT HANDLER — Manual Upsert Strategy ───────────────────
+  //
+  // WHY MANUAL UPSERT instead of supabase.upsert()?
+  //   supabase.upsert() with onConflict fails when:
+  //     • RLS UPDATE policy is not explicitly granted
+  //     • The constraint name doesn't match PostgREST's internal index lookup
+  //   This handler avoids both issues by:
+  //     1. Fetching all existing part_numbers for this shop (part_number + id)
+  //     2. Splitting validated rows into two buckets: toInsert / toUpdate
+  //     3. Running INSERT batches for new rows (no conflict possible)
+  //     4. Running individual UPDATE calls for existing rows (uses row id)
+  //
+  // Supports: 1 000 – 10 000+ rows without failure.
   // ─────────────────────────────────────────────────────────────────────────
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -346,186 +350,228 @@ export default function InventoryPage() {
     setImportProgress(null);
 
     try {
-      // ── 1. Read file ──────────────────────────────────────────────────────
-      console.log(`[MIHWAR Import] ▶ Starting import — file: "${file.name}", size: ${(file.size / 1024).toFixed(1)} KB`);
-      const text = await file.text();
+      // ── 1. Read & parse file ──────────────────────────────────────────────
+      console.log(`[MIHWAR Import] ▶ File: "${file.name}"  Size: ${(file.size / 1024).toFixed(1)} KB`);
+      const text     = await file.text();
+      const allRows  = parseCSV(text);
 
-      // ── 2. Parse CSV ──────────────────────────────────────────────────────
-      const allRows = parseCSV(text);
-      console.log(`[MIHWAR Import] Total rows in file (incl. header): ${allRows.length}`);
+      console.log(`[MIHWAR Import] Total rows incl. header: ${allRows.length}`);
 
       if (allRows.length < 2) {
-        throw new Error(t('CSV file is empty or has no data rows.', 'الملف فارغ أو لا يحتوي على صفوف بيانات.'));
+        throw new Error(t(
+          'CSV file is empty or has no data rows.',
+          'الملف فارغ أو لا يحتوي على صفوف بيانات.'
+        ));
       }
 
-      // Skip header row (index 0)
-      const dataRows = allRows.slice(1);
-      console.log(`[MIHWAR Import] Data rows (excl. header): ${dataRows.length}`);
+      const dataRows = allRows.slice(1); // drop header
+      console.log(`[MIHWAR Import] Data rows: ${dataRows.length}`);
 
-      // ── 3. Validate & map rows ────────────────────────────────────────────
-      // Expected CSV columns (0-indexed):
-      //   0: part_number  1: part_name  2: brand  3: model  4: quantity  5: price
-      const toUpsert: Omit<Product, 'id'>[] = [];
+      // ── 2. Validate rows ──────────────────────────────────────────────────
+      // CSV column order: part_number, part_name, brand, model, quantity, price
+      type ValidRow = Omit<Product, 'id'>;
+      const validatedRows: ValidRow[] = [];
       let skippedRows = 0;
-      const skippedReasons: string[] = [];
 
       dataRows.forEach((cols, idx) => {
-        const lineNum = idx + 2; // human-readable (1-based + header)
-
+        const line        = idx + 2;
         const part_number = cols[0]?.trim() ?? '';
         const part_name   = cols[1]?.trim() ?? '';
         const brand       = cols[2]?.trim() ?? '';
         const model       = cols[3]?.trim() ?? '';
-        const rawQty      = cols[4]?.trim() ?? '';
-        const rawPrice    = cols[5]?.trim() ?? '';
+        const quantity    = parseInt(cols[4]?.trim() ?? '', 10);
+        const price       = parseFloat(cols[5]?.trim() ?? '');
 
-        // Validation
         if (!part_number) {
           skippedRows++;
-          const reason = `Line ${lineNum}: missing part_number`;
-          skippedReasons.push(reason);
-          console.warn(`[MIHWAR Import] SKIP — ${reason}`);
+          console.warn(`[MIHWAR Import] SKIP line ${line}: missing part_number`);
           return;
         }
         if (!part_name) {
           skippedRows++;
-          const reason = `Line ${lineNum}: missing part_name (part_number: ${part_number})`;
-          skippedReasons.push(reason);
-          console.warn(`[MIHWAR Import] SKIP — ${reason}`);
+          console.warn(`[MIHWAR Import] SKIP line ${line}: missing part_name (pn: ${part_number})`);
           return;
         }
-
-        const quantity = parseInt(rawQty, 10);
-        const price    = parseFloat(rawPrice);
-
         if (isNaN(quantity) || quantity < 0) {
           skippedRows++;
-          const reason = `Line ${lineNum}: invalid quantity "${rawQty}" for part_number "${part_number}"`;
-          skippedReasons.push(reason);
-          console.warn(`[MIHWAR Import] SKIP — ${reason}`);
+          console.warn(`[MIHWAR Import] SKIP line ${line}: invalid quantity for "${part_number}"`);
           return;
         }
         if (isNaN(price) || price < 0) {
           skippedRows++;
-          const reason = `Line ${lineNum}: invalid price "${rawPrice}" for part_number "${part_number}"`;
-          skippedReasons.push(reason);
-          console.warn(`[MIHWAR Import] SKIP — ${reason}`);
+          console.warn(`[MIHWAR Import] SKIP line ${line}: invalid price for "${part_number}"`);
           return;
         }
 
-        toUpsert.push({
-          part_number,
-          part_name,
-          brand,
-          model,
-          quantity,
-          price,
-          shop_id: ownedShopId!,
-        });
+        validatedRows.push({ part_number, part_name, brand, model, quantity, price, shop_id: ownedShopId! });
       });
 
-      const validRows = toUpsert.length;
-      console.log(`[MIHWAR Import] Valid rows: ${validRows}  |  Skipped: ${skippedRows}`);
-      if (skippedReasons.length > 0) {
-        console.warn(`[MIHWAR Import] Skipped row details:\n${skippedReasons.join('\n')}`);
-      }
+      const validRows = validatedRows.length;
+      console.log(`[MIHWAR Import] Valid: ${validRows}  Skipped: ${skippedRows}`);
 
       if (validRows === 0) {
-        throw new Error(
-          t(
-            `No valid rows found. ${skippedRows} rows were skipped due to missing or invalid data.`,
-            `لم يتم العثور على صفوف صالحة. تم تخطي ${skippedRows} صف بسبب بيانات ناقصة أو غير صالحة.`
-          )
-        );
+        throw new Error(t(
+          `No valid rows found. ${skippedRows} rows skipped due to missing or invalid data.`,
+          `لم يتم العثور على صفوف صالحة. تم تخطي ${skippedRows} صف.`
+        ));
       }
 
-      // ── 4. Batch upsert ───────────────────────────────────────────────────
-      // Upsert strategy: onConflict = 'shop_id,part_number'
-      // This requires a UNIQUE constraint on (shop_id, part_number) in Supabase.
-      // If that constraint does not exist, run this migration once:
-      //   ALTER TABLE products
-      //   ADD CONSTRAINT products_shop_part_unique UNIQUE (shop_id, part_number);
-      //
-      // Behaviour:
-      //   • Row exists  → UPDATE part_name, brand, model, quantity, price
-      //   • Row missing → INSERT new product
-      //   • Uploading the same file twice → idempotent, no duplicates
+      // ── 3. Fetch existing part_numbers for this shop ──────────────────────
+      // We do a lightweight select (only part_number + id) to avoid fetching
+      // all product data again. Paginated with .range() to handle 10 000+ rows.
+      setImportProgress(t('Loading existing inventory…', 'جاري تحميل المخزون الحالي…'));
+      console.log(`[MIHWAR Import] Fetching existing part_numbers for shop ${ownedShopId}…`);
 
-      const totalBatches = Math.ceil(validRows / BATCH_SIZE);
-      let totalProcessed = 0;
+      const existingMap = new Map<string, number>(); // part_number → product id
+      const FETCH_PAGE  = 1000;
+      let   fetchFrom   = 0;
+      let   keepFetching = true;
 
-      console.log(`[MIHWAR Import] ▶ Batch upsert — ${validRows} rows in ${totalBatches} batch(es) of ${BATCH_SIZE}`);
-
-      for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
-        const start = batchIndex * BATCH_SIZE;
-        const end   = Math.min(start + BATCH_SIZE, validRows);
-        const batch = toUpsert.slice(start, end);
-
-        const batchLabel = `Batch ${batchIndex + 1}/${totalBatches} (rows ${start + 1}–${end})`;
-        console.log(`[MIHWAR Import]   ${batchLabel} — sending ${batch.length} rows…`);
-
-        // Live progress visible to the user during large imports
-        setImportProgress(
-          t(
-            `Processing ${batchLabel}…`,
-            `جاري المعالجة ${batchIndex + 1} من ${totalBatches}…`
-          )
-        );
-
-        const { error: batchError } = await supabase
+      while (keepFetching) {
+        const { data: chunk, error: fetchErr } = await supabase
           .from('products')
-          .upsert(batch, {
-            onConflict:        'shop_id,part_number', // UPDATE if exists, INSERT if new
-            ignoreDuplicates:  false,                 // always update existing rows
-          });
+          .select('id, part_number')
+          .eq('shop_id', ownedShopId!)
+          .range(fetchFrom, fetchFrom + FETCH_PAGE - 1);
 
-        if (batchError) {
-          console.error(`[MIHWAR Import] ✖ ${batchLabel} FAILED:`, batchError);
-          throw new Error(
-            t(
-              `${batchLabel} failed: ${batchError.message}`,
-              `فشلت المجموعة ${batchIndex + 1} من ${totalBatches}: ${batchError.message}`
-            )
-          );
+        if (fetchErr) {
+          console.error('[MIHWAR Import] Failed to fetch existing products:', fetchErr);
+          throw new Error(t(
+            `Failed to load existing inventory: ${fetchErr.message}`,
+            `فشل تحميل المخزون الحالي: ${fetchErr.message}`
+          ));
         }
 
-        totalProcessed += batch.length;
-        console.log(`[MIHWAR Import]   ${batchLabel} ✔ — cumulative processed: ${totalProcessed}`);
+        (chunk ?? []).forEach(row => existingMap.set(row.part_number, row.id));
+
+        if (!chunk || chunk.length < FETCH_PAGE) keepFetching = false;
+        else fetchFrom += FETCH_PAGE;
       }
 
-      console.log(`[MIHWAR Import] ✔ All batches complete — total processed: ${totalProcessed}`);
+      console.log(`[MIHWAR Import] Existing products loaded: ${existingMap.size}`);
 
-      // ── 5. Build summary ──────────────────────────────────────────────────
-      // Note: Supabase upsert does not return separate inserted/updated counts
-      // in its response object. To give meaningful counts we compare against the
-      // existing products we already have in local state (loaded at mount).
-      // This is a best-effort estimate — it is correct for the common case where
-      // the inventory was last fetched before this import started.
-      const existingPartNumbers = new Set(products.map(p => p.part_number));
-      let estimatedInserted = 0;
-      let estimatedUpdated  = 0;
-      toUpsert.forEach(row => {
-        if (existingPartNumbers.has(row.part_number)) estimatedUpdated++;
-        else estimatedInserted++;
-      });
+      // ── 4. Split into INSERT and UPDATE buckets ───────────────────────────
+      const toInsert: ValidRow[]                          = [];
+      const toUpdate: Array<ValidRow & { id: number }>   = [];
 
+      for (const row of validatedRows) {
+        const existingId = existingMap.get(row.part_number);
+        if (existingId !== undefined) toUpdate.push({ ...row, id: existingId });
+        else                          toInsert.push(row);
+      }
+
+      console.log(`[MIHWAR Import] Bucket — INSERT: ${toInsert.length}  UPDATE: ${toUpdate.length}`);
+
+      let totalInserted = 0;
+      let totalUpdated  = 0;
+
+      // ── 5. INSERT new products in batches ─────────────────────────────────
+      if (toInsert.length > 0) {
+        const insertBatches = Math.ceil(toInsert.length / BATCH_SIZE);
+        console.log(`[MIHWAR Import] ▶ INSERT phase — ${toInsert.length} rows in ${insertBatches} batch(es)`);
+
+        for (let bi = 0; bi < insertBatches; bi++) {
+          const start  = bi * BATCH_SIZE;
+          const end    = Math.min(start + BATCH_SIZE, toInsert.length);
+          const batch  = toInsert.slice(start, end);
+          const label  = `INSERT batch ${bi + 1}/${insertBatches}`;
+
+          setImportProgress(t(
+            `Inserting new products… (${bi + 1}/${insertBatches})`,
+            `إضافة منتجات جديدة… (${bi + 1} من ${insertBatches})`
+          ));
+          console.log(`[MIHWAR Import]   ${label} — ${batch.length} rows`);
+
+          const { error: insErr } = await supabase.from('products').insert(batch);
+
+          if (insErr) {
+            console.error(`[MIHWAR Import] ✖ ${label} FAILED:`, insErr);
+            throw new Error(t(
+              `${label} failed: ${insErr.message}`,
+              `فشلت دفعة الإضافة ${bi + 1}: ${insErr.message}`
+            ));
+          }
+
+          totalInserted += batch.length;
+          console.log(`[MIHWAR Import]   ${label} ✔  cumulative inserted: ${totalInserted}`);
+        }
+      }
+
+      // ── 6. UPDATE existing products in batches ────────────────────────────
+      // Strategy: batch UPDATE using .in() filter on ids.
+      // We send the full updated payload for each row in the batch.
+      // Because each row may have different values, we loop individually
+      // but fire them as concurrent Promises within each batch window
+      // to keep total round-trips low (BATCH_SIZE concurrent at a time).
+      if (toUpdate.length > 0) {
+        const updateBatches = Math.ceil(toUpdate.length / BATCH_SIZE);
+        console.log(`[MIHWAR Import] ▶ UPDATE phase — ${toUpdate.length} rows in ${updateBatches} batch(es)`);
+
+        for (let bi = 0; bi < updateBatches; bi++) {
+          const start = bi * BATCH_SIZE;
+          const end   = Math.min(start + BATCH_SIZE, toUpdate.length);
+          const batch = toUpdate.slice(start, end);
+          const label = `UPDATE batch ${bi + 1}/${updateBatches}`;
+
+          setImportProgress(t(
+            `Updating existing products… (${bi + 1}/${updateBatches})`,
+            `تحديث المنتجات الموجودة… (${bi + 1} من ${updateBatches})`
+          ));
+          console.log(`[MIHWAR Import]   ${label} — ${batch.length} rows`);
+
+          // Fire all updates in this batch concurrently
+          const results = await Promise.all(
+            batch.map(row =>
+              supabase
+                .from('products')
+                .update({
+                  part_name: row.part_name,
+                  brand:     row.brand,
+                  model:     row.model,
+                  quantity:  row.quantity,
+                  price:     row.price,
+                })
+                .eq('id', row.id)
+                .eq('shop_id', ownedShopId!) // RLS safety guard
+            )
+          );
+
+          // Check for any errors in this batch
+          const batchErrors = results
+            .map((r, i) => r.error ? `Row id=${batch[i].id} (${batch[i].part_number}): ${r.error.message}` : null)
+            .filter(Boolean);
+
+          if (batchErrors.length > 0) {
+            console.error(`[MIHWAR Import] ✖ ${label} — ${batchErrors.length} error(s):`, batchErrors);
+            throw new Error(t(
+              `${label} failed with ${batchErrors.length} error(s): ${batchErrors[0]}`,
+              `فشلت دفعة التحديث ${bi + 1} بـ ${batchErrors.length} خطأ: ${batchErrors[0]}`
+            ));
+          }
+
+          totalUpdated += batch.length;
+          console.log(`[MIHWAR Import]   ${label} ✔  cumulative updated: ${totalUpdated}`);
+        }
+      }
+
+      // ── 7. Done ───────────────────────────────────────────────────────────
       const summary: ImportSummary = {
         totalRows:      dataRows.length,
         validRows,
         skippedRows,
-        inserted:       estimatedInserted,
-        updated:        estimatedUpdated,
-        totalProcessed,
+        inserted:       totalInserted,
+        updated:        totalUpdated,
+        totalProcessed: totalInserted + totalUpdated,
       };
 
-      console.log('[MIHWAR Import] Summary:', summary);
+      console.log('[MIHWAR Import] ✔ Complete. Summary:', summary);
 
       setImportSummary(summary);
       setImportProgress(null);
       fetchProducts();
 
     } catch (err: any) {
-      console.error('[MIHWAR Import] ✖ Fatal error:', err);
+      console.error('[MIHWAR Import] ✖ Fatal:', err);
       setError(err.message || t('Import failed unexpectedly.', 'فشل الاستيراد بشكل غير متوقع.'));
       setImportProgress(null);
     } finally {

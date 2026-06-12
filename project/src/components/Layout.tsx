@@ -22,11 +22,16 @@ import {
   HeadphonesIcon,
   Lock,
   X,
+  Building2,
 } from 'lucide-react';
 
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useLang } from '../context/LanguageContext';
+
+// ══════════════════════════════════════════════════════════════════════
+// PAGE TYPE — 'organizations' added, everything else unchanged
+// ══════════════════════════════════════════════════════════════════════
 
 export type Page =
   | 'dashboard'
@@ -42,7 +47,12 @@ export type Page =
   | 'permissions'
   | 'system-settings'
   | 'global-inventory'
-  | 'global-orders';
+  | 'global-orders'
+  | 'organizations';          // ← NEW
+
+// ══════════════════════════════════════════════════════════════════════
+// TYPES — unchanged
+// ══════════════════════════════════════════════════════════════════════
 
 type Notification = {
   id: string;
@@ -75,20 +85,33 @@ type NavSection = {
   items: NavItem[];
 };
 
+// ══════════════════════════════════════════════════════════════════════
+// NAV SECTIONS
+// Rule: sections with adminOnly:true  → visible to admin users only
+//       sections with adminOnly:false → visible to regular shop users only
+//
+// Change from original:
+//   • 'organizations' item added to the existing 'Platform Management'
+//     section, right after 'global-orders' and before 'system-settings'.
+//   • Everything else is identical to the original file.
+// ══════════════════════════════════════════════════════════════════════
+
 const navSections: NavSection[] = [
   {
     titleEn: 'Platform Management',
     titleAr: 'إدارة المنصة',
     adminOnly: true,
     items: [
-      { id: 'admin',            icon: <Shield size={17} />,       label: 'Admin Dashboard', labelAr: 'لوحة الأدمن',     adminOnly: true },
-      { id: 'shops',            icon: <Store size={17} />,        label: 'Shops',           labelAr: 'المحلات',         adminOnly: true },
-      { id: 'create-shop',      icon: <Store size={17} />,        label: 'Create Shop',     labelAr: 'إضافة محل',       adminOnly: true },
-      { id: 'users',            icon: <Users size={17} />,        label: 'Users',           labelAr: 'المستخدمون',      adminOnly: true },
-      { id: 'permissions',      icon: <KeyRound size={17} />,     label: 'Permissions',     labelAr: 'إدارة الصلاحيات', adminOnly: true },
-      { id: 'global-inventory', icon: <Package size={17} />,      label: 'Global Inventory',labelAr: 'المخزون العام',   adminOnly: true },
-      { id: 'global-orders',    icon: <ShoppingCart size={17} />, label: 'Global Orders',   labelAr: 'الطلبات العامة',  adminOnly: true },
-      { id: 'system-settings',  icon: <Settings size={17} />,     label: 'System Settings', labelAr: 'إعدادات النظام',  adminOnly: true },
+      { id: 'admin',            icon: <Shield size={17} />,       label: 'Admin Dashboard',  labelAr: 'لوحة الأدمن',     adminOnly: true },
+      { id: 'shops',            icon: <Store size={17} />,        label: 'Shops',            labelAr: 'المحلات',         adminOnly: true },
+      { id: 'create-shop',      icon: <Store size={17} />,        label: 'Create Shop',      labelAr: 'إضافة محل',       adminOnly: true },
+      { id: 'users',            icon: <Users size={17} />,        label: 'Users',            labelAr: 'المستخدمون',      adminOnly: true },
+      { id: 'permissions',      icon: <KeyRound size={17} />,     label: 'Permissions',      labelAr: 'إدارة الصلاحيات', adminOnly: true },
+      { id: 'global-inventory', icon: <Package size={17} />,      label: 'Global Inventory', labelAr: 'المخزون العام',   adminOnly: true },
+      { id: 'global-orders',    icon: <ShoppingCart size={17} />, label: 'Global Orders',    labelAr: 'الطلبات العامة',  adminOnly: true },
+      // ── NEW: Organizations — adminOnly, same visibility rules as the items above ──
+      { id: 'organizations',    icon: <Building2 size={17} />,    label: 'Organizations',    labelAr: 'المجموعات',       adminOnly: true },
+      { id: 'system-settings',  icon: <Settings size={17} />,     label: 'System Settings',  labelAr: 'إعدادات النظام',  adminOnly: true },
     ],
   },
   {
@@ -106,7 +129,10 @@ const navSections: NavSection[] = [
   },
 ];
 
-// ─── Bottom nav item definitions ─────────────────────────────
+// ══════════════════════════════════════════════════════════════════════
+// BOTTOM NAV — unchanged from original
+// ══════════════════════════════════════════════════════════════════════
+
 type BottomNavItem =
   | { type: 'page'; id: Page; icon: React.ReactNode; labelEn: string; labelAr: string }
   | { type: 'more'; icon: React.ReactNode; labelEn: string; labelAr: string };
@@ -120,13 +146,16 @@ const shopBottomItems: BottomNavItem[] = [
 ];
 
 const adminBottomItems: BottomNavItem[] = [
-  { type: 'page', id: 'admin',         icon: <Shield size={22} />,        labelEn: 'Admin',  labelAr: 'الأدمن'    },
-  { type: 'page', id: 'shops',         icon: <Store size={22} />,         labelEn: 'Shops',  labelAr: 'المحلات'   },
-  { type: 'page', id: 'global-orders', icon: <ShoppingCart size={22} />,  labelEn: 'Orders', labelAr: 'الطلبات'   },
-  { type: 'page', id: 'users',         icon: <Users size={22} />,         labelEn: 'Users',  labelAr: 'المستخدمون'},
-  { type: 'more',                       icon: <MoreHorizontal size={22} />,labelEn: 'More',   labelAr: 'المزيد'    },
+  { type: 'page', id: 'admin',         icon: <Shield size={22} />,        labelEn: 'Admin',  labelAr: 'الأدمن'     },
+  { type: 'page', id: 'shops',         icon: <Store size={22} />,         labelEn: 'Shops',  labelAr: 'المحلات'    },
+  { type: 'page', id: 'global-orders', icon: <ShoppingCart size={22} />,  labelEn: 'Orders', labelAr: 'الطلبات'    },
+  { type: 'page', id: 'users',         icon: <Users size={22} />,         labelEn: 'Users',  labelAr: 'المستخدمون' },
+  { type: 'more',                       icon: <MoreHorizontal size={22} />,labelEn: 'More',   labelAr: 'المزيد'     },
 ];
-// ─────────────────────────────────────────────────────────────
+
+// ══════════════════════════════════════════════════════════════════════
+// SMALL COMPONENTS — unchanged
+// ══════════════════════════════════════════════════════════════════════
 
 const SidebarDivider = () => (
   <div className="mx-3 my-2 border-t border-slate-700/40" />
@@ -163,6 +192,10 @@ const NavButton = ({
     )}
   </button>
 );
+
+// ══════════════════════════════════════════════════════════════════════
+// MAIN LAYOUT — body unchanged, only navSections & Page type updated
+// ══════════════════════════════════════════════════════════════════════
 
 export default function Layout({ page, setPage, children }: LayoutProps) {
   const { signOut, isAdmin, ownedShopId } = useAuth();

@@ -162,8 +162,34 @@ export function useOrderDetails({ t, lang, setGlobalError }: UseOrderDetailsArgs
   // timeout for the same reason as the image timeout — a slow/blocked
   // font request must never block printing indefinitely.
   // -----------------------------------------------------------
-  const handlePrint = useCallback(() => {
+  const handlePrint = useCallback(async () => {
     if (!detailOrder) return;
+
+    // ── Pre-fetch QR as base64 data URL ──────────────────────────
+    // Fetching the QR image in the React app (same origin context,
+    // full network stack) is far more reliable than loading it inside
+    // a document.write'd print window where script/image loading
+    // timing is unpredictable across browsers. The resulting data URL
+    // is embedded directly in the HTML string — the print window needs
+    // zero additional network requests to display the QR.
+    let qrDataUrl: string | null = null;
+    try {
+      const verifyUrl = `${window.location.origin}/verify/${detailOrder.id}`;
+      const qrApiUrl  = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&ecc=H&data=${encodeURIComponent(verifyUrl)}&color=1E3A5F&bgcolor=ffffff&qzone=3&margin=0`;
+      const res       = await fetch(qrApiUrl);
+      if (res.ok) {
+        const blob   = await res.blob();
+        qrDataUrl    = await new Promise<string>((resolve, reject) => {
+          const reader  = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      }
+    } catch {
+      // QR pre-fetch failed — print will continue without QR image
+      qrDataUrl = null;
+    }
 
     const win = window.open("", "_blank");
     if (!win) return;
@@ -177,7 +203,7 @@ export function useOrderDetails({ t, lang, setGlobalError }: UseOrderDetailsArgs
     }));
 
     win.document.write(
-      buildPrintHTML(detailOrder, itemsWithApproved, lang)
+      buildPrintHTML(detailOrder, itemsWithApproved, lang, qrDataUrl ?? undefined)
     );
 
     win.document.close();
@@ -242,44 +268,13 @@ export function useOrderDetails({ t, lang, setGlobalError }: UseOrderDetailsArgs
       setTimeout(proceed, 2000);
     };
 
-    // waitForQRThenProceed:
-    // qrcodejs generates the QR synchronously once its <script> loads.
-    // The script is loaded from cdnjs via a <script src="..."> tag in the
-    // print HTML. We poll for the QR canvas/img to appear inside #qr-verify
-    // (max 3s) before proceeding to the fonts+images wait, so the QR element
-    // is always present in win.document.images when that wait runs.
-    const waitForQRThenProceed = () => {
-      const maxWait  = 3000;
-      const interval = 80;
-      let   elapsed  = 0;
-      let   done     = false;
-
-      const proceed = () => {
-        if (done) return;
-        done = true;
-        waitForFontsThenImagesThenPrint();
-      };
-
-      const check = () => {
-        if (done) return;
-        const qrEl = win.document.getElementById("qr-verify");
-        // qrcodejs appends a <canvas> or <img> inside the target div
-        if (qrEl && (qrEl.querySelector("canvas") || qrEl.querySelector("img[src]"))) {
-          proceed();
-          return;
-        }
-        elapsed += interval;
-        if (elapsed >= maxWait) { proceed(); return; }
-        setTimeout(check, interval);
-      };
-
-      setTimeout(check, interval);
-    };
-
+    // QR is now a base64 data URL embedded directly in the HTML —
+    // no external requests needed in the print window. Proceed with
+    // the original fonts-then-images-then-print sequence directly.
     if (win.document.readyState === "complete") {
-      waitForQRThenProceed();
+      waitForFontsThenImagesThenPrint();
     } else {
-      win.addEventListener("load", waitForQRThenProceed, { once: true });
+      win.addEventListener("load", waitForFontsThenImagesThenPrint, { once: true });
     }
   }, [detailOrder, detailItems, approvedQtyMap, lang]);
 

@@ -167,7 +167,7 @@ function buildItemRows(items: OrderItem[], hasAnyApproved: boolean, hasAnyRemain
   }).join("");
 }
 
-export function buildTransferOrderPrintHTML(order: Order, items: OrderItem[], printLang: "ar" | "en" = "ar"): string {
+export function buildTransferOrderPrintHTML(order: Order, items: OrderItem[], printLang: "ar" | "en" = "ar", qrDataUrl?: string): string {
   const now        = new Date();
   const dateLocale = printLang === "en" ? "en-SA" : "ar-SA";
   const date       = new Date(order.created_at).toLocaleDateString(dateLocale, { year: "numeric", month: "long", day: "numeric" });
@@ -593,9 +593,10 @@ body{font-family:'IBM Plex Sans Arabic',Tahoma,Arial,sans-serif;font-size:12px;c
     </div>
     <div style="background:#FFF7ED;padding:11px 10px;display:flex;flex-direction:column;align-items:center;flex:1;">
       <div style="background:#fff;border:2px solid #FED7AA;border-radius:10px;padding:7px;">
-        <div id="qr-verify" style="width:108px;height:108px;display:flex;align-items:center;justify-content:center;">
-          <span style="font-size:9px;color:#D97706;">loading...</span>
-        </div>
+        ${qrDataUrl
+          ? `<img src="${qrDataUrl}" alt="QR Code" style="width:108px;height:108px;display:block;"/>`
+          : `<div style="width:108px;height:108px;display:flex;align-items:center;justify-content:center;background:#FFF7ED;"><span style="font-size:8px;color:#D97706;text-align:center;">امسح الرابط<br/>للتحقق</span></div>`
+        }
       </div>
       <span style="display:inline-flex;align-items:center;gap:3px;margin-top:7px;padding:2px 8px;border-radius:20px;background:#DCFCE7;color:#166534;font-size:7.5px;font-weight:700;">${L.verifyBadge}</span>
       <div style="width:100%;margin-top:8px;border-top:1px solid #FED7AA;padding-top:7px;">
@@ -648,26 +649,5 @@ body{font-family:'IBM Plex Sans Arabic',Tahoma,Arial,sans-serif;font-size:12px;c
   </div>
 </div>
 
-</div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script>
-(function() {
-  var el = document.getElementById("qr-verify");
-  if (!el) return;
-  el.innerHTML = "";
-  try {
-    new QRCode(el, {
-      text: "${verifyUrl}",
-      width: 108,
-      height: 108,
-      colorDark: "#1E3A5F",
-      colorLight: "#ffffff",
-      correctLevel: QRCode.CorrectLevel.H
-    });
-  } catch(e) {
-    el.innerHTML = "<span style=\"font-size:9px;color:#DC2626;\">QR Error</span>";
-  }
-})();
-</script>
-</body></html>`;
+</div></body></html>`;
 }

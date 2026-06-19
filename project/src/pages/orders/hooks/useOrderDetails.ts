@@ -165,29 +165,43 @@ export function useOrderDetails({ t, lang, setGlobalError }: UseOrderDetailsArgs
   const handlePrint = useCallback(async () => {
     if (!detailOrder) return;
 
-    // ── Pre-fetch QR as base64 data URL ──────────────────────────
-    // Fetching the QR image in the React app (same origin context,
-    // full network stack) is far more reliable than loading it inside
-    // a document.write'd print window where script/image loading
-    // timing is unpredictable across browsers. The resulting data URL
-    // is embedded directly in the HTML string — the print window needs
-    // zero additional network requests to display the QR.
+    // ── Pre-render QR as base64 data URL via Image + Canvas ─────
+    // Using Image() + drawImage on a Canvas avoids CORS issues that
+    // plague fetch() for cross-origin image resources. The canvas
+    // .toDataURL() call extracts the pixel data as a base64 PNG that
+    // can be embedded directly in the print HTML — zero additional
+    // network requests needed inside the print window.
+    //
+    // crossOrigin="anonymous" tells the browser to request CORS headers;
+    // api.qrserver.com returns Access-Control-Allow-Origin: * so this
+    // works reliably. If the image fails to load (network issue), we
+    // fall back to null and the print continues without the QR.
     let qrDataUrl: string | null = null;
     try {
       const verifyUrl = `${window.location.origin}/verify/${detailOrder.id}`;
       const qrApiUrl  = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&ecc=H&data=${encodeURIComponent(verifyUrl)}&color=1E3A5F&bgcolor=ffffff&qzone=3&margin=0`;
-      const res       = await fetch(qrApiUrl);
-      if (res.ok) {
-        const blob   = await res.blob();
-        qrDataUrl    = await new Promise<string>((resolve, reject) => {
-          const reader  = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsDataURL(blob);
-        });
-      }
+      qrDataUrl = await new Promise<string | null>((resolve) => {
+        const img    = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          try {
+            const canvas  = document.createElement("canvas");
+            canvas.width  = img.naturalWidth  || 300;
+            canvas.height = img.naturalHeight || 300;
+            const ctx = canvas.getContext("2d");
+            if (!ctx) { resolve(null); return; }
+            ctx.drawImage(img, 0, 0);
+            resolve(canvas.toDataURL("image/png"));
+          } catch {
+            resolve(null);
+          }
+        };
+        img.onerror = () => resolve(null);
+        // 5s timeout — if image hasn't loaded, continue without QR
+        setTimeout(() => resolve(null), 5000);
+        img.src = qrApiUrl;
+      });
     } catch {
-      // QR pre-fetch failed — print will continue without QR image
       qrDataUrl = null;
     }
 

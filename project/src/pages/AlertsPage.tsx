@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useLang } from "../context/LanguageContext";
 import { useNotifications } from "../context/NotificationContext";
@@ -13,6 +13,7 @@ import {
   Info,
   Package,
   ShieldAlert,
+  type LucideIcon,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -32,6 +33,13 @@ type PendingOrder = {
   to_shop?: { shop_name: string };
 };
 
+type AlertCounts = {
+  critical: number;
+  warning: number;
+  action: number;
+  total: number;
+};
+
 type AlertsPageProps = {
   setPage: (p: Page) => void;
 };
@@ -48,13 +56,15 @@ const AlertSummaryCard = ({
 }: {
   label: string;
   count: number;
-  icon: any;
+  icon: LucideIcon;
   colorClass: string;
   onClick: () => void;
   isRTL: boolean;
 }) => (
   <button
+    type="button"
     onClick={onClick}
+    aria-label={label}
     className={`bg-slate-900 border border-slate-800 p-6 rounded-2xl flex flex-col items-start gap-4 active:scale-[0.98] transition-all w-full hover:border-slate-700 hover:bg-slate-800/50 ${
       isRTL ? "text-right" : "text-left"
     }`}
@@ -76,11 +86,28 @@ const EmptyState = ({
   icon: Icon,
 }: {
   message: string;
-  icon: any;
+  icon: LucideIcon;
 }) => (
   <div className="flex flex-col items-center justify-center py-12 px-4 bg-slate-900/20 border border-dashed border-slate-800 rounded-3xl opacity-60 w-full">
     <Icon size={40} className="text-slate-700 mb-3" />
     <p className="text-slate-500 text-sm font-medium tracking-wide">{message}</p>
+  </div>
+);
+
+const SectionTitle = ({
+  label,
+  colorClass,
+  pulse = false,
+}: {
+  label: string;
+  colorClass: string;
+  pulse?: boolean;
+}) => (
+  <div className="flex items-center gap-3 mb-5 px-1">
+    <span className={`w-2 h-2 rounded-full ${colorClass} ${pulse ? "animate-pulse" : ""}`} />
+    <h3 className={`text-sm font-black ${colorClass.replace("bg-", "text-")} uppercase tracking-[0.2em]`}>
+      {label}
+    </h3>
   </div>
 );
 
@@ -89,8 +116,8 @@ const EmptyState = ({
 export default function AlertsPage({ setPage }: AlertsPageProps) {
   const { ownedShopId, loading: authLoading } = useAuth();
   const { t, isRTL } = useLang();
+  const locale = isRTL ? "ar-SA" : "en-US";
 
-  // ── Single source of truth ──────────────────────────────────────────────────
   const {
     lowStockItems,
     outOfStockItems,
@@ -100,7 +127,11 @@ export default function AlertsPage({ setPage }: AlertsPageProps) {
     refresh,
   } = useNotifications();
 
-  const alertCounts = useMemo(
+  const handleKpiAction = useCallback(() => {
+    // KPI Cards serve as summary indicators
+  }, []);
+
+  const alertCounts = useMemo<AlertCounts>(
     () => ({
       critical: outOfStockItems.length,
       warning: lowStockItems.length,
@@ -109,6 +140,21 @@ export default function AlertsPage({ setPage }: AlertsPageProps) {
     }),
     [outOfStockItems, lowStockItems, pendingOrders, totalCount]
   );
+
+  const emptyStates = useMemo(() => ({
+    stockout: {
+      message: t("No stockout items", "لا توجد قطع نافدة"),
+      icon: Package,
+    },
+    lowStock: {
+      message: t("All items well stocked", "جميع القطع متوفرة"),
+      icon: Package,
+    },
+    orders: {
+      message: t("No pending orders", "لا توجد طلبات معلقة"),
+      icon: ShoppingCart,
+    },
+  }), [t]);
 
   if (loading || authLoading) {
     return (
@@ -154,6 +200,7 @@ export default function AlertsPage({ setPage }: AlertsPageProps) {
           </p>
         </div>
         <button
+          type="button"
           onClick={refresh}
           className="self-start sm:self-center flex items-center gap-2 px-5 py-2.5 rounded-xl border border-slate-800 bg-slate-900 text-slate-400 hover:text-white hover:border-slate-700 transition-all active:scale-95 font-bold text-sm"
         >
@@ -169,7 +216,7 @@ export default function AlertsPage({ setPage }: AlertsPageProps) {
           count={alertCounts.critical}
           icon={PackageX}
           colorClass="bg-red-500"
-          onClick={() => {}}
+          onClick={handleKpiAction}
           isRTL={isRTL}
         />
         <AlertSummaryCard
@@ -177,7 +224,7 @@ export default function AlertsPage({ setPage }: AlertsPageProps) {
           count={alertCounts.warning}
           icon={AlertTriangle}
           colorClass="bg-amber-500"
-          onClick={() => {}}
+          onClick={handleKpiAction}
           isRTL={isRTL}
         />
         <AlertSummaryCard
@@ -185,7 +232,7 @@ export default function AlertsPage({ setPage }: AlertsPageProps) {
           count={alertCounts.action}
           icon={ShoppingCart}
           colorClass="bg-blue-500"
-          onClick={() => {}}
+          onClick={handleKpiAction}
           isRTL={isRTL}
         />
       </div>
@@ -197,20 +244,19 @@ export default function AlertsPage({ setPage }: AlertsPageProps) {
         <div className="space-y-8">
           {/* Priority 1: Critical (Out of Stock) */}
           <section>
-            <div className="flex items-center gap-3 mb-5 px-1">
-              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-              <h3 className="text-sm font-black text-red-500 uppercase tracking-[0.2em]">
-                {t("Critical: Stockout", "حرج: نفد المخزون")}
-              </h3>
-            </div>
+            <SectionTitle 
+              label={t("Critical: Stockout", "حرج: نفد المخزون")} 
+              colorClass="bg-red-500" 
+              pulse 
+            />
             <div className="grid grid-cols-1 gap-3">
               {outOfStockItems.length === 0 ? (
                 <EmptyState
-                  message={t("No stockout items", "لا توجد قطع نافدة")}
-                  icon={Package}
+                  message={emptyStates.stockout.message}
+                  icon={emptyStates.stockout.icon}
                 />
               ) : (
-                (outOfStockItems as ProductAlert[]).map((item) => (
+                outOfStockItems.map((item: ProductAlert) => (
                   <div
                     key={item.id}
                     onClick={() => setPage("inventory")}
@@ -243,20 +289,18 @@ export default function AlertsPage({ setPage }: AlertsPageProps) {
 
           {/* Priority 2: Warning (Low Stock) */}
           <section>
-            <div className="flex items-center gap-3 mb-5 px-1">
-              <span className="w-2 h-2 rounded-full bg-amber-500" />
-              <h3 className="text-sm font-black text-amber-500 uppercase tracking-[0.2em]">
-                {t("Warning: Low Levels", "تحذير: مستويات منخفضة")}
-              </h3>
-            </div>
+            <SectionTitle 
+              label={t("Warning: Low Levels", "تحذير: مستويات منخفضة")} 
+              colorClass="bg-amber-500" 
+            />
             <div className="grid grid-cols-1 gap-3">
               {lowStockItems.length === 0 ? (
                 <EmptyState
-                  message={t("All items well stocked", "جميع القطع متوفرة")}
-                  icon={Package}
+                  message={emptyStates.lowStock.message}
+                  icon={emptyStates.lowStock.icon}
                 />
               ) : (
-                (lowStockItems as ProductAlert[]).map((item) => (
+                lowStockItems.map((item: ProductAlert) => (
                   <div
                     key={item.id}
                     onClick={() => setPage("inventory")}
@@ -288,20 +332,18 @@ export default function AlertsPage({ setPage }: AlertsPageProps) {
         {/* Right Column: Order Alerts */}
         <div className="space-y-8">
           <section>
-            <div className="flex items-center gap-3 mb-5 px-1">
-              <span className="w-2 h-2 rounded-full bg-blue-500" />
-              <h3 className="text-sm font-black text-blue-500 uppercase tracking-[0.2em]">
-                {t("Action: Pending Orders", "إجراء: طلبات معلقة")}
-              </h3>
-            </div>
+            <SectionTitle 
+              label={t("Action: Pending Orders", "إجراء: طلبات معلقة")} 
+              colorClass="bg-blue-500" 
+            />
             <div className="grid grid-cols-1 gap-3">
               {pendingOrders.length === 0 ? (
                 <EmptyState
-                  message={t("No pending orders", "لا توجد طلبات معلقة")}
-                  icon={ShoppingCart}
+                  message={emptyStates.orders.message}
+                  icon={emptyStates.orders.icon}
                 />
               ) : (
-                (pendingOrders as PendingOrder[]).map((order) => (
+                pendingOrders.map((order: PendingOrder) => (
                   <div
                     key={order.id}
                     onClick={() => setPage("orders")}
@@ -321,7 +363,7 @@ export default function AlertsPage({ setPage }: AlertsPageProps) {
                           </span>
                           <span className="text-slate-700 text-xs">•</span>
                           <span className="text-slate-500 text-xs font-mono font-bold">
-                            {new Date(order.created_at).toLocaleDateString(isRTL ? 'ar-SA' : 'en-US')}
+                            {new Date(order.created_at).toLocaleDateString(locale)}
                           </span>
                         </div>
                       </div>
@@ -362,6 +404,7 @@ export default function AlertsPage({ setPage }: AlertsPageProps) {
                 </p>
                 <div className="mt-6 flex gap-3">
                   <button 
+                    type="button"
                     onClick={() => setPage("inventory")}
                     className="px-6 py-2.5 bg-emerald-500 text-slate-950 rounded-xl font-black text-sm hover:bg-emerald-400 transition-colors"
                   >

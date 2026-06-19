@@ -23,14 +23,15 @@ import {
   Lock,
   X,
   Building2,
+  QrCode,
 } from 'lucide-react';
 
-import { supabase } from '../lib/supabase';
+import { supabase } from '../pages/lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useLang } from '../context/LanguageContext';
 
 // ══════════════════════════════════════════════════════════════════════
-// PAGE TYPE — 'organizations' added, everything else unchanged
+// PAGE TYPE
 // ══════════════════════════════════════════════════════════════════════
 
 export type Page =
@@ -40,6 +41,7 @@ export type Page =
   | 'orders'
   | 'reports'
   | 'alerts'
+  | 'shop-settings'       // ← إعدادات المحل + QR
   | 'admin'
   | 'shops'
   | 'create-shop'
@@ -48,10 +50,33 @@ export type Page =
   | 'system-settings'
   | 'global-inventory'
   | 'global-orders'
-  | 'organizations';          // ← NEW
+  | 'organizations';
 
 // ══════════════════════════════════════════════════════════════════════
-// TYPES — unchanged
+// PAGE TITLES — عناوين الصفحات بالعربي والإنجليزي
+// ══════════════════════════════════════════════════════════════════════
+
+const pageTitles: Record<Page, { en: string; ar: string }> = {
+  'dashboard':       { en: 'Dashboard',       ar: 'الرئيسية'        },
+  'search':          { en: 'Products',         ar: 'المنتجات'        },
+  'inventory':       { en: 'Inventory',        ar: 'المخزون'         },
+  'orders':          { en: 'Orders',           ar: 'الطلبات'         },
+  'reports':         { en: 'Reports',          ar: 'التقارير'        },
+  'alerts':          { en: 'Alerts',           ar: 'التنبيهات'       },
+  'shop-settings':   { en: 'Shop Settings',    ar: 'إعدادات المحل'   },
+  'admin':           { en: 'Admin Dashboard',  ar: 'لوحة الأدمن'     },
+  'shops':           { en: 'Shops',            ar: 'المحلات'         },
+  'create-shop':     { en: 'Create Shop',      ar: 'إضافة محل'       },
+  'users':           { en: 'Users',            ar: 'المستخدمون'      },
+  'permissions':     { en: 'Permissions',      ar: 'إدارة الصلاحيات' },
+  'system-settings': { en: 'System Settings',  ar: 'إعدادات النظام'  },
+  'global-inventory':{ en: 'Global Inventory', ar: 'المخزون العام'   },
+  'global-orders':   { en: 'Global Orders',    ar: 'الطلبات العامة'  },
+  'organizations':   { en: 'Organizations',    ar: 'المجموعات'       },
+};
+
+// ══════════════════════════════════════════════════════════════════════
+// TYPES
 // ══════════════════════════════════════════════════════════════════════
 
 type Notification = {
@@ -87,13 +112,6 @@ type NavSection = {
 
 // ══════════════════════════════════════════════════════════════════════
 // NAV SECTIONS
-// Rule: sections with adminOnly:true  → visible to admin users only
-//       sections with adminOnly:false → visible to regular shop users only
-//
-// Change from original:
-//   • 'organizations' item added to the existing 'Platform Management'
-//     section, right after 'global-orders' and before 'system-settings'.
-//   • Everything else is identical to the original file.
 // ══════════════════════════════════════════════════════════════════════
 
 const navSections: NavSection[] = [
@@ -102,16 +120,15 @@ const navSections: NavSection[] = [
     titleAr: 'إدارة المنصة',
     adminOnly: true,
     items: [
-      { id: 'admin',            icon: <Shield size={17} />,       label: 'Admin Dashboard',  labelAr: 'لوحة الأدمن',     adminOnly: true },
-      { id: 'shops',            icon: <Store size={17} />,        label: 'Shops',            labelAr: 'المحلات',         adminOnly: true },
-      { id: 'create-shop',      icon: <Store size={17} />,        label: 'Create Shop',      labelAr: 'إضافة محل',       adminOnly: true },
-      { id: 'users',            icon: <Users size={17} />,        label: 'Users',            labelAr: 'المستخدمون',      adminOnly: true },
-      { id: 'permissions',      icon: <KeyRound size={17} />,     label: 'Permissions',      labelAr: 'إدارة الصلاحيات', adminOnly: true },
-      { id: 'global-inventory', icon: <Package size={17} />,      label: 'Global Inventory', labelAr: 'المخزون العام',   adminOnly: true },
-      { id: 'global-orders',    icon: <ShoppingCart size={17} />, label: 'Global Orders',    labelAr: 'الطلبات العامة',  adminOnly: true },
-      // ── NEW: Organizations — adminOnly, same visibility rules as the items above ──
-      { id: 'organizations',    icon: <Building2 size={17} />,    label: 'Organizations',    labelAr: 'المجموعات',       adminOnly: true },
-      { id: 'system-settings',  icon: <Settings size={17} />,     label: 'System Settings',  labelAr: 'إعدادات النظام',  adminOnly: true },
+      { id: 'admin',             icon: <Shield size={17} />,       label: 'Admin Dashboard',  labelAr: 'لوحة الأدمن',     adminOnly: true },
+      { id: 'shops',             icon: <Store size={17} />,        label: 'Shops',            labelAr: 'المحلات',         adminOnly: true },
+      { id: 'create-shop',       icon: <Store size={17} />,        label: 'Create Shop',      labelAr: 'إضافة محل',       adminOnly: true },
+      { id: 'users',             icon: <Users size={17} />,        label: 'Users',            labelAr: 'المستخدمون',      adminOnly: true },
+      { id: 'permissions',       icon: <KeyRound size={17} />,     label: 'Permissions',      labelAr: 'إدارة الصلاحيات', adminOnly: true },
+      { id: 'global-inventory',  icon: <Package size={17} />,      label: 'Global Inventory', labelAr: 'المخزون العام',   adminOnly: true },
+      { id: 'global-orders',     icon: <ShoppingCart size={17} />, label: 'Global Orders',    labelAr: 'الطلبات العامة',  adminOnly: true },
+      { id: 'organizations',     icon: <Building2 size={17} />,    label: 'Organizations',    labelAr: 'المجموعات',       adminOnly: true },
+      { id: 'system-settings',   icon: <Settings size={17} />,     label: 'System Settings',  labelAr: 'إعدادات النظام',  adminOnly: true },
     ],
   },
   {
@@ -119,18 +136,19 @@ const navSections: NavSection[] = [
     titleAr: 'العمليات',
     adminOnly: false,
     items: [
-      { id: 'dashboard', icon: <LayoutDashboard size={17} />, label: 'Dashboard', labelAr: 'الرئيسية',  adminOnly: false },
-      { id: 'search',    icon: <Search size={17} />,          label: 'Products',  labelAr: 'المنتجات',  adminOnly: false },
-      { id: 'inventory', icon: <Package size={17} />,         label: 'Inventory', labelAr: 'المخزون',   adminOnly: false },
-      { id: 'orders',    icon: <ShoppingCart size={17} />,    label: 'Orders',    labelAr: 'الطلبات',   adminOnly: false },
-      { id: 'reports',   icon: <TrendingUp size={17} />,      label: 'Reports',   labelAr: 'التقارير',  adminOnly: false },
-      { id: 'alerts',    icon: <Bell size={17} />,            label: 'Alerts',    labelAr: 'التنبيهات', adminOnly: false },
+      { id: 'dashboard',     icon: <LayoutDashboard size={17} />, label: 'Dashboard',      labelAr: 'الرئيسية',       adminOnly: false },
+      { id: 'search',        icon: <Search size={17} />,          label: 'Products',       labelAr: 'المنتجات',       adminOnly: false },
+      { id: 'inventory',     icon: <Package size={17} />,         label: 'Inventory',      labelAr: 'المخزون',        adminOnly: false },
+      { id: 'orders',        icon: <ShoppingCart size={17} />,    label: 'Orders',         labelAr: 'الطلبات',        adminOnly: false },
+      { id: 'reports',       icon: <TrendingUp size={17} />,      label: 'Reports',        labelAr: 'التقارير',       adminOnly: false },
+      { id: 'alerts',        icon: <Bell size={17} />,            label: 'Alerts',         labelAr: 'التنبيهات',      adminOnly: false },
+      { id: 'shop-settings', icon: <QrCode size={17} />,          label: 'Shop Settings',  labelAr: 'إعدادات المحل',  adminOnly: false },
     ],
   },
 ];
 
 // ══════════════════════════════════════════════════════════════════════
-// BOTTOM NAV — unchanged from original
+// BOTTOM NAV
 // ══════════════════════════════════════════════════════════════════════
 
 type BottomNavItem =
@@ -154,7 +172,7 @@ const adminBottomItems: BottomNavItem[] = [
 ];
 
 // ══════════════════════════════════════════════════════════════════════
-// SMALL COMPONENTS — unchanged
+// SMALL COMPONENTS
 // ══════════════════════════════════════════════════════════════════════
 
 const SidebarDivider = () => (
@@ -194,14 +212,14 @@ const NavButton = ({
 );
 
 // ══════════════════════════════════════════════════════════════════════
-// MAIN LAYOUT — body unchanged, only navSections & Page type updated
+// MAIN LAYOUT
 // ══════════════════════════════════════════════════════════════════════
 
 export default function Layout({ page, setPage, children }: LayoutProps) {
   const { signOut, isAdmin, ownedShopId } = useAuth();
-  const { lang, setLang, t, isRTL } = useLang();
-  const [sidebarOpen, setSidebarOpen]   = useState(false);
-  const [showMore,    setShowMore]       = useState(false);
+  const { lang, setLang, t, isRTL }       = useLang();
+  const [sidebarOpen, setSidebarOpen]     = useState(false);
+  const [showMore,    setShowMore]         = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
   useEffect(() => {
@@ -218,8 +236,13 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
     fetchNotifications();
   }, [ownedShopId]);
 
-  const unreadCount  = notifications.filter((n) => !n.is_read).length;
-  const bottomItems  = isAdmin ? adminBottomItems : shopBottomItems;
+  const unreadCount = notifications.filter((n) => !n.is_read).length;
+  const bottomItems = isAdmin ? adminBottomItems : shopBottomItems;
+
+  // عنوان الصفحة الحالية بحسب اللغة
+  const currentPageTitle = pageTitles[page]
+    ? (lang === 'ar' ? pageTitles[page].ar : pageTitles[page].en)
+    : page;
 
   // ─── Sidebar ──────────────────────────────────────────────
   const Sidebar = () => {
@@ -230,7 +253,7 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
     return (
       <div className="flex flex-col h-full overflow-hidden">
 
-        {/* Logo — never shrinks */}
+        {/* Logo */}
         <div className="flex-shrink-0 px-5 py-5 border-b border-slate-700/50">
           <div className="flex items-center gap-3">
             <div className="bg-blue-600 p-2 rounded-xl shadow-lg shadow-blue-500/20">
@@ -243,7 +266,7 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
           </div>
         </div>
 
-        {/* Nav — scrollable, min-h-0 is critical */}
+        {/* Nav */}
         <nav className="flex-1 min-h-0 px-2 py-3 overflow-y-auto space-y-0.5">
           {visibleSections.map((section, idx) => {
             const visibleItems = isAdmin
@@ -270,7 +293,7 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
           })}
         </nav>
 
-        {/* Footer — never shrinks, safe-area aware */}
+        {/* Footer */}
         <div
           className="flex-shrink-0 px-3 py-4 border-t border-slate-700/50 space-y-2"
           style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
@@ -299,15 +322,26 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
   const MoreSheet = () => {
     if (!showMore) return null;
 
-    const moreItems = [
-      { icon: <User size={18} />,           labelEn: 'Profile',          labelAr: 'الملف الشخصي'   },
-      { icon: <Store size={18} />,          labelEn: 'Shop Information', labelAr: 'معلومات المحل'  },
-      { icon: <Bell size={18} />,           labelEn: 'Notifications',    labelAr: 'الإشعارات',
+    // العناصر الثابتة غير القابلة للتنقل
+    const infoItems = [
+      { icon: <User size={18} />,           labelEn: 'Profile',          labelAr: 'الملف الشخصي',   onPress: null },
+      { icon: <Bell size={18} />,           labelEn: 'Notifications',    labelAr: 'الإشعارات',      onPress: null,
         badge: unreadCount > 0 ? unreadCount : null },
-      { icon: <HeadphonesIcon size={18} />, labelEn: 'Support Center',   labelAr: 'مركز الدعم'     },
-      { icon: <Lock size={18} />,           labelEn: 'Privacy Policy',   labelAr: 'سياسة الخصوصية' },
-      { icon: <Info size={18} />,           labelEn: 'About MIHWAR',     labelAr: 'عن محور'         },
+      { icon: <HeadphonesIcon size={18} />, labelEn: 'Support Center',   labelAr: 'مركز الدعم',     onPress: null },
+      { icon: <Lock size={18} />,           labelEn: 'Privacy Policy',   labelAr: 'سياسة الخصوصية', onPress: null },
+      { icon: <Info size={18} />,           labelEn: 'About MIHWAR',     labelAr: 'عن محور',         onPress: null },
     ];
+
+    const navigableItems = !isAdmin ? [
+      {
+        icon: <QrCode size={18} />,
+        labelEn: 'Shop Settings & QR',
+        labelAr: 'إعدادات المحل والـ QR',
+        onPress: () => { setShowMore(false); setPage('shop-settings'); },
+      },
+    ] : [];
+
+    const label = (en: string, ar: string) => lang === 'ar' ? ar : en;
 
     return (
       <>
@@ -320,6 +354,7 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
         <div
           className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-slate-900 border-t border-slate-700/60 rounded-t-2xl"
           style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+          dir={isRTL ? 'rtl' : 'ltr'}
         >
           {/* Handle */}
           <div className="flex justify-center pt-3 pb-1">
@@ -329,32 +364,49 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
           {/* Header */}
           <div className="flex items-center justify-between px-5 py-3 border-b border-slate-700/50">
             <span className="text-white font-semibold text-base">
-              {t('More', 'المزيد')}
+              {label('More', 'المزيد')}
             </span>
             <button
               onClick={() => setShowMore(false)}
-              className="text-slate-400 hover:text-white p-1"
+              className="text-slate-400 hover:text-white p-1 active:scale-90 transition-transform"
             >
               <X size={18} />
             </button>
           </div>
 
-          {/* Items */}
-          <div className="px-4 py-3 space-y-1">
-            {moreItems.map((item) => (
+          {/* Navigable items (مثل إعدادات المحل) */}
+          {navigableItems.length > 0 && (
+            <div className="px-4 pt-3 pb-1 space-y-1">
+              {navigableItems.map((item) => (
+                <button
+                  key={item.labelEn}
+                  onClick={item.onPress ?? undefined}
+                  className="w-full flex items-center gap-3 px-3 py-3 rounded-xl bg-blue-600/10 border border-blue-500/20 text-blue-400 hover:bg-blue-600/20 active:bg-blue-600/30 transition-colors text-sm font-bold"
+                >
+                  <span>{item.icon}</span>
+                  <span className="flex-1 text-start">{label(item.labelEn, item.labelAr)}</span>
+                  <ChevronRight size={14} className={isRTL ? 'rotate-180' : ''} />
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Info items */}
+          <div className="px-4 py-2 space-y-1">
+            {infoItems.map((item) => (
               <button
                 key={item.labelEn}
                 className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-slate-300 hover:bg-slate-800 active:bg-slate-700 transition-colors text-sm font-medium relative"
                 onClick={() => setShowMore(false)}
               >
                 <span className="text-slate-500">{item.icon}</span>
-                <span className="flex-1 text-right">{t(item.labelEn, item.labelAr)}</span>
+                <span className="flex-1 text-start">{label(item.labelEn, item.labelAr)}</span>
                 {'badge' in item && item.badge && (
                   <span className="w-5 h-5 bg-red-500 rounded-full text-[10px] text-white flex items-center justify-center font-bold">
                     {item.badge > 9 ? '9+' : item.badge}
                   </span>
                 )}
-                <ChevronRight size={14} className="text-slate-600" />
+                <ChevronRight size={14} className={`text-slate-600 ${isRTL ? 'rotate-180' : ''}`} />
               </button>
             ))}
           </div>
@@ -369,15 +421,15 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
               className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-slate-300 hover:bg-slate-800 active:bg-slate-700 transition-colors text-sm font-medium"
             >
               <Globe size={18} className="text-slate-500" />
-              <span className="flex-1 text-right">{lang === 'en' ? 'العربية' : 'English'}</span>
-              <ChevronRight size={14} className="text-slate-600" />
+              <span className="flex-1 text-start">{lang === 'en' ? 'العربية' : 'English'}</span>
+              <ChevronRight size={14} className={`text-slate-600 ${isRTL ? 'rotate-180' : ''}`} />
             </button>
             <button
               onClick={() => { setShowMore(false); signOut(); }}
               className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-red-400 hover:bg-red-500/10 active:bg-red-500/20 transition-colors text-sm font-medium"
             >
               <LogOut size={18} />
-              <span className="flex-1 text-right">{t('Logout', 'تسجيل الخروج')}</span>
+              <span className="flex-1 text-start">{label('Logout', 'تسجيل الخروج')}</span>
             </button>
           </div>
 
@@ -388,7 +440,6 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
 
   // ─── Mobile Bottom Navigation Bar ────────────────────────
   const BottomNav = () => {
-    // Hide completely when sidebar or more sheet is open
     if (sidebarOpen || showMore) return null;
 
     return (
@@ -426,7 +477,6 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
                   isActive ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'
                 }`}
               >
-                {/* Active top pill */}
                 {isActive && (
                   <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-[3px] bg-blue-500 rounded-b-full" />
                 )}
@@ -443,6 +493,7 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
       </nav>
     );
   };
+
   // ─────────────────────────────────────────────────────────
 
   return (
@@ -475,22 +526,27 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
         <header className="h-16 border-b border-slate-800 bg-slate-950/90 backdrop-blur-xl flex items-center justify-between px-4 lg:px-6">
           <button
             onClick={() => setSidebarOpen(true)}
-            className="lg:hidden text-slate-400"
+            className="lg:hidden text-slate-400 active:scale-90 transition-transform"
           >
             <Menu size={22} />
           </button>
-          <h1 className="text-white font-bold text-lg capitalize">
-            {t(page, page)}
+
+          {/* عنوان الصفحة الحالية — عربي أو إنجليزي بحسب اللغة المختارة */}
+          <h1 className="text-white font-bold text-lg">
+            {currentPageTitle}
           </h1>
+
           <div className="flex items-center gap-3">
             <div className="hidden md:flex items-center gap-2 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-xl text-xs text-slate-300">
               <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              {isAdmin ? 'System Admin' : 'Shop User'}
+              {isAdmin
+                ? t('System Admin', 'مدير النظام')
+                : t('Shop User', 'مستخدم المحل')}
             </div>
           </div>
         </header>
 
-        {/* Main — pb-20 on mobile clears the bottom nav */}
+        {/* Main content */}
         <main className="flex-1 overflow-y-auto p-4 lg:p-6 pb-20 lg:pb-6">
           {children}
         </main>

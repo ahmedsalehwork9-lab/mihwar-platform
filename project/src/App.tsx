@@ -11,9 +11,10 @@ import Layout, { Page } from './components/Layout';
 import DashboardPage      from './pages/DashboardPage';
 import SearchPage         from './pages/SearchPage';
 import InventoryPage      from './pages/InventoryPage';
-import OrdersPage         from './pages/OrdersPage';
+import OrdersPage         from './pages/orders/OrdersPage';
 import ReportsPage        from './pages/ReportsPage';
 import AlertsPage         from './pages/AlertsPage';
+import ShopSettingsPage   from './pages/ShopSettingsPage';   // ← جديد
 
 // ── Admin Pages ───────────────────────────────────────────────────────
 import AdminDashboardPage  from './pages/AdminDashboardPage';
@@ -23,10 +24,11 @@ import UsersPage           from './pages/UsersPage';
 import PermissionsPage     from './pages/PermissionsPage';
 import GlobalInventoryPage from './pages/GlobalInventoryPage';
 import GlobalOrdersPage    from './pages/GlobalOrdersPage';
-import OrganizationsPage   from './pages/OrganizationsPage';   // ← إضافة جديدة
+import OrganizationsPage   from './pages/OrganizationsPage';
 
 // ── Public Pages (لا تحتاج تسجيل دخول) ──────────────────────────────
-import VerifyInvoicePage from './pages/VerifyInvoicePage';
+import VerifyInvoicePage  from './pages/VerifyInvoicePage';
+import ShopPublicPage     from './pages/ShopPublicPage';    // ← جديد
 
 // ══════════════════════════════════════════════════════════════════════
 // ACCESS DENIED
@@ -44,7 +46,7 @@ function AccessDenied() {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// APP CONTENT — state-based routing (no React Router for internal pages)
+// APP CONTENT
 // ══════════════════════════════════════════════════════════════════════
 
 function AppContent() {
@@ -52,7 +54,6 @@ function AppContent() {
   const [page, setPage]               = useState<Page>('dashboard');
   const [showLanding, setShowLanding] = useState(true);
 
-  // ── Loading splash ─────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
@@ -61,7 +62,6 @@ function AppContent() {
     );
   }
 
-  // ── Unauthenticated ────────────────────────────────────────────────
   if (!session) {
     if (showLanding) {
       return <LandingPage onLogin={() => setShowLanding(false)} />;
@@ -69,7 +69,6 @@ function AppContent() {
     return <LoginPage />;
   }
 
-  // ── Placeholder for pages still under development ─────────────────
   const renderAdminPlaceholder = (title: string) => (
     <div className="flex items-center justify-center h-[70vh]">
       <div className="bg-blue-500/10 border border-blue-500/20 rounded-3xl p-10 text-center">
@@ -83,19 +82,16 @@ function AppContent() {
     <NotificationProvider>
       <Layout page={page} setPage={setPage}>
 
-        {/* ══════════════════════════════════════════════════════════
-            USER PAGES
-        ══════════════════════════════════════════════════════════ */}
-        {page === 'dashboard' && <DashboardPage />}
-        {page === 'search'    && <SearchPage />}
-        {page === 'inventory' && <InventoryPage />}
-        {page === 'orders'    && <OrdersPage />}
-        {page === 'reports'   && <ReportsPage />}
-        {page === 'alerts'    && <AlertsPage />}
+        {/* ══ USER PAGES ═══════════════════════════════════════════════ */}
+        {page === 'dashboard'     && <DashboardPage />}
+        {page === 'search'        && <SearchPage />}
+        {page === 'inventory'     && <InventoryPage />}
+        {page === 'orders'        && <OrdersPage />}
+        {page === 'reports'       && <ReportsPage />}
+        {page === 'alerts'        && <AlertsPage />}
+        {page === 'shop-settings' && <ShopSettingsPage />}   {/* ← جديد */}
 
-        {/* ══════════════════════════════════════════════════════════
-            ADMIN — Platform Management
-        ══════════════════════════════════════════════════════════ */}
+        {/* ══ ADMIN ════════════════════════════════════════════════════ */}
         {page === 'admin' &&
           (isAdmin ? <AdminDashboardPage /> : <AccessDenied />)}
 
@@ -122,12 +118,6 @@ function AppContent() {
             ? renderAdminPlaceholder('إعدادات النظام')
             : <AccessDenied />)}
 
-        {/* ══════════════════════════════════════════════════════════
-            ADMIN — Enterprise
-            المجموعات: تعرض OrganizationsPage للأدمن فقط.
-            التنقل يتم عبر setPage('organizations') من القائمة الجانبية
-            في Layout.tsx — بدون React Router أو أي path إضافي.
-        ══════════════════════════════════════════════════════════ */}
         {page === 'organizations' &&
           (isAdmin ? <OrganizationsPage /> : <AccessDenied />)}
 
@@ -144,10 +134,20 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* ── Public route — no auth required ───────────────────── */}
+        {/* ── Public routes — no auth required ──────────────────────── */}
         <Route path="/verify/:orderId" element={<VerifyInvoicePage />} />
 
-        {/* ── Main app — state-based routing, unchanged behaviour ── */}
+        {/* ── Shop public page — scanned QR lands here ──────────────── */}
+        <Route
+          path="/shop/:shopId"
+          element={
+            <LanguageProvider>
+              <ShopPublicPage />
+            </LanguageProvider>
+          }
+        />
+
+        {/* ── Main app — state-based routing ────────────────────────── */}
         <Route
           path="*"
           element={

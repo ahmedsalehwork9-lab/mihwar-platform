@@ -1,11 +1,11 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase } from './lib/supabase';
 import {
   Package, Boxes, DollarSign, RefreshCw,
   Store, TrendingUp, AlertTriangle,
   Activity, ShieldAlert, XCircle,
   Search, BarChart3, FileText, ChevronRight,
-  ArrowUpRight
+  ArrowUpRight, QrCode, Smartphone, Monitor, Star,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLang } from '../context/LanguageContext';
@@ -20,7 +20,21 @@ type Product = {
   price: number;
 };
 
-// Mihwar brand accent + neutral palette
+type TopProduct = {
+  product_id: number;
+  product_name: string;
+  product_code: string;
+  total_ordered: number;
+};
+
+type QRStats = {
+  total: number;
+  thisMonth: number;
+  today: number;
+  mobileCount: number;
+  desktopCount: number;
+};
+
 const BRAND_COLORS = ['#00A86B', '#0A4D68', '#f59e0b', '#8b5cf6', '#ef4444'] as const;
 
 export default function DashboardPage() {
@@ -33,9 +47,13 @@ export default function DashboardPage() {
     totalCount,
   } = useNotifications();
 
-  const [loading, setLoading] = useState(true);
-  const [shop, setShop] = useState<any>(null);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [shop, setShop]             = useState<any>(null);
+  const [products, setProducts]     = useState<Product[]>([]);
+  const [topProducts, setTopProducts] = useState<TopProduct[]>([]);
+  const [qrStats, setQrStats]       = useState<QRStats>({
+    total: 0, thisMonth: 0, today: 0, mobileCount: 0, desktopCount: 0,
+  });
   const [stats, setStats] = useState({
     totalProducts: 0,
     totalInventory: 0,
@@ -52,60 +70,116 @@ export default function DashboardPage() {
       setShop(shopData);
       if (!shopData) return;
 
-      // ── FIX: run count query and data query in parallel ──────────────────
-      //
-      // ROOT CAUSE: the original code did:
-      //   const { data } = await supabase.from('products').select('*')…
-      //   setStats({ totalProducts: items.length, … })
-      //
-      // PostgREST enforces a server-side max_rows limit (default: 1000).
-      // With 1500+ products the query silently returns only 1000 rows, so
-      // items.length === 1000 no matter how many products actually exist.
-      //
-      // FIX: a dedicated HEAD query with { count: 'exact' } asks Postgres for
-      // COUNT(*) directly — it bypasses the row-limit entirely and returns the
-      // real number in the `count` field without transferring any row data.
-      // The data query still fetches the latest 5 rows needed for the Recent
-      // Activity widget and brand distribution chart (limit: 200 is enough;
-      // we never need all rows here for display purposes, only for stats).
-      //
-      const [countResult, productsResult] = await Promise.all([
-        // Exact COUNT(*) — not affected by max_rows
+      const now       = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+
+      // ── جلب كل البيانات بالتوازي ──────────────────────────────────
+      const [
+        countResult,
+        productsResult,
+        qrTotalResult,
+        qrMonthResult,
+        qrTodayResult,
+        qrDevicesResult,
+        topProductsResult,
+      ] = await Promise.all([
+
+        // COUNT(*) حقيقي من قاعدة البيانات
         supabase
           .from('products')
           .select('*', { count: 'exact', head: true })
           .eq('shop_id', shopData.id),
 
-        // Lightweight data fetch: only what the UI widgets actually render.
-        // We need quantity+price for all rows to compute totalInventory and
-        // totalValue accurately, but we only need part_name/brand for the
-        // top-5 recent list and brand chart. Fetching all columns with a
-        // higher limit is fine; we just no longer use .length for the count.
+        // بيانات المنتجات للعرض
         supabase
           .from('products')
           .select('id, part_name, part_number, brand, quantity, price')
           .eq('shop_id', shopData.id)
           .order('created_at', { ascending: false })
-          .limit(1000),   // enough for value/inventory aggregation display
+          .limit(1000),
+
+        // إجمالي المسحات
+        supabase
+          .from('shop_qr_scans')
+          .select('*', { count: 'exact', head: true })
+          .eq('shop_id', shopData.id),
+
+        // مسحات هذا الشهر
+        supabase
+          .from('shop_qr_scans')
+          .select('*', { count: 'exact', head: true })
+          .eq('shop_id', shopData.id)
+          .gte('scanned_at', monthStart),
+
+        // مسحات اليوم
+        supabase
+          .from('shop_qr_scans')
+          .select('*', { count: 'exact', head: true })
+          .eq('shop_id', shopData.id)
+          .gte('scanned_at', todayStart),
+
+        // أجهزة الزوار
+        supabase
+          .from('shop_qr_scans')
+          .select('device_type')
+          .eq('shop_id', shopData.id),
+
+        // المنتجات الأكثر طلباً
+        supabase
+          .from('order_items')
+          .select(`
+            product_id,
+            quantity,
+            products!inner(product_name, product_code, shop_id)
+          `)
+          .eq('products.shop_id', shopData.id)
+          .limit(200),
       ]);
 
       const exactCount = countResult.count ?? 0;
       const items: Product[] = productsResult.data || [];
-
       setProducts(items);
 
-      // totalInventory and totalValue are computed from the fetched rows.
-      // Note: if the shop has >1000 products these aggregates will still be
-      // slightly under-counted. To fix that fully, move them to a DB function
-      // or RPC. For now the count card at least shows the correct total.
       const totalInventory = items.reduce((a, i) => a + (i.quantity || 0), 0);
       const totalValue     = items.reduce((a, i) => a + (i.quantity || 0) * (i.price || 0), 0);
+      setStats({ totalProducts: exactCount, totalInventory, totalValue });
 
-      setStats({
-        totalProducts: exactCount,   // ← real COUNT(*) from database
-        totalInventory,
-        totalValue,
+      // ── إحصائيات QR ───────────────────────────────────────────────
+      const devices: { device_type: string }[] = qrDevicesResult.data || [];
+      const mobileCount  = devices.filter(d => d.device_type === 'mobile').length;
+      const desktopCount = devices.filter(d => d.device_type === 'desktop').length;
+
+      setQrStats({
+        total:        qrTotalResult.count  ?? 0,
+        thisMonth:    qrMonthResult.count  ?? 0,
+        today:        qrTodayResult.count  ?? 0,
+        mobileCount,
+        desktopCount,
       });
+
+      // ── المنتجات الأكثر طلباً ──────────────────────────────────────
+      const rawItems: any[] = topProductsResult.data || [];
+      const productTotals: Record<number, { name: string; code: string; total: number }> = {};
+      rawItems.forEach(item => {
+        const pid  = item.product_id;
+        const prod = item.products;
+        if (!pid || !prod) return;
+        if (!productTotals[pid]) {
+          productTotals[pid] = {
+            name:  prod.product_name ?? prod.part_name ?? '—',
+            code:  prod.product_code ?? prod.part_number ?? '—',
+            total: 0,
+          };
+        }
+        productTotals[pid].total += item.quantity ?? 0;
+      });
+      const sorted = Object.entries(productTotals)
+        .map(([id, v]) => ({ product_id: Number(id), product_name: v.name, product_code: v.code, total_ordered: v.total }))
+        .sort((a, b) => b.total_ordered - a.total_ordered)
+        .slice(0, 5);
+      setTopProducts(sorted);
+
     } catch (err) {
       console.error(err);
     } finally {
@@ -115,13 +189,11 @@ export default function DashboardPage() {
 
   useEffect(() => { loadDashboard(); }, [loadDashboard]);
 
-  // ── Preserve all notification context values ──
   const lowStockCount      = lowStockItems.length;
   const outOfStockCount    = outOfStockItems.length;
   const pendingOrdersCount = pendingOrders.length;
   const criticalAlerts     = outOfStockCount + pendingOrdersCount;
 
-  // ── Preserve all brand calculations ──
   const brandCounts = useMemo(() =>
     products.reduce((acc, p) => {
       if (p.brand) acc[p.brand] = (acc[p.brand] || 0) + 1;
@@ -130,17 +202,14 @@ export default function DashboardPage() {
     [products]
   );
 
-  const topBrands = useMemo(() =>
-    Object.entries(brandCounts).sort((a, b) => b[1] - a[1]).slice(0, 5),
-    [brandCounts]
-  );
-
-  const totalBrands = useMemo(() =>
-    topBrands.reduce((a, b) => a + b[1], 0),
-    [topBrands]
-  );
-
+  const topBrands    = useMemo(() => Object.entries(brandCounts).sort((a, b) => b[1] - a[1]).slice(0, 5), [brandCounts]);
+  const totalBrands  = useMemo(() => topBrands.reduce((a, b) => a + b[1], 0), [topBrands]);
   const recentProducts = useMemo(() => products.slice(0, 5), [products]);
+
+  // نسبة الجوال
+  const totalDevices   = qrStats.mobileCount + qrStats.desktopCount;
+  const mobilePct      = totalDevices > 0 ? Math.round((qrStats.mobileCount / totalDevices) * 100) : 0;
+  const desktopPct     = totalDevices > 0 ? 100 - mobilePct : 0;
 
   if (loading) {
     return (
@@ -192,40 +261,40 @@ export default function DashboardPage() {
             {
               label: t('Total Products', 'إجمالي المنتجات'),
               value: stats.totalProducts,
-              sub: t('Active SKUs', 'الأصناف النشطة'),
-              icon: Package,
+              sub:   t('Active SKUs', 'الأصناف النشطة'),
+              icon:  Package,
               color: 'text-[#00A86B]',
-              bg: 'bg-[#00A86B]/8',
-              border: 'border-[#00A86B]/20',
+              bg:    'bg-[#00A86B]/8',
+              border:'border-[#00A86B]/20',
             },
             {
               label: t('Inventory Units', 'وحدات المخزون'),
               value: stats.totalInventory.toLocaleString(),
-              sub: t('In Stock', 'متوفر بالمخزن'),
-              icon: Boxes,
+              sub:   t('In Stock', 'متوفر بالمخزن'),
+              icon:  Boxes,
               color: 'text-[#0A4D68]',
-              bg: 'bg-[#0A4D68]/20',
-              border: 'border-[#0A4D68]/30',
+              bg:    'bg-[#0A4D68]/20',
+              border:'border-[#0A4D68]/30',
             },
             {
               label: t('Total Value', 'إجمالي القيمة'),
               value: stats.totalValue >= 100000
                 ? `${(stats.totalValue / 1000).toFixed(1)}k`
                 : stats.totalValue.toLocaleString(),
-              sub: t('Currency: SAR', 'العملة: ر.س'),
-              icon: DollarSign,
+              sub:   t('Currency: SAR', 'العملة: ر.س'),
+              icon:  DollarSign,
               color: 'text-amber-400',
-              bg: 'bg-amber-500/8',
-              border: 'border-amber-500/20',
+              bg:    'bg-amber-500/8',
+              border:'border-amber-500/20',
             },
             {
               label: t('System Alerts', 'تنبيهات النظام'),
               value: totalCount,
-              sub: t('Needs Attention', 'تحتاج إجراء'),
-              icon: ShieldAlert,
+              sub:   t('Needs Attention', 'تحتاج إجراء'),
+              icon:  ShieldAlert,
               color: 'text-red-400',
-              bg: 'bg-red-500/8',
-              border: 'border-red-500/20',
+              bg:    'bg-red-500/8',
+              border:'border-red-500/20',
             },
           ].map((card, i) => (
             <div
@@ -249,6 +318,122 @@ export default function DashboardPage() {
           ))}
         </div>
 
+        {/* ══════════════════════════════════════════════════════════════
+            QR ANALYTICS — إحصائيات مسح الباركود
+        ══════════════════════════════════════════════════════════════ */}
+        <div className="bg-slate-900/40 border border-slate-800/50 rounded-2xl p-5 lg:p-6">
+
+          {/* Header */}
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                <QrCode size={16} className="text-emerald-400" />
+              </div>
+              <div>
+                <span className="font-black text-white text-base">
+                  {t('QR Code Analytics', 'إحصائيات باركود المحل')}
+                </span>
+                <p className="text-slate-500 text-[11px] mt-0.5">
+                  {t('Visitors who scanned your shop QR code', 'الزوار الذين مسحوا باركود محلك')}
+                </p>
+              </div>
+            </div>
+            {qrStats.total > 0 && (
+              <div className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-[10px] font-black text-emerald-400 uppercase tracking-widest">
+                {t('Live', 'مباشر')}
+              </div>
+            )}
+          </div>
+
+          {/* Stats grid */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+            {[
+              {
+                label: t('Total Scans', 'إجمالي المسحات'),
+                value: qrStats.total,
+                icon:  <QrCode size={16} />,
+                color: 'text-emerald-400',
+                bg:    'bg-emerald-500/10 border-emerald-500/20',
+              },
+              {
+                label: t('This Month', 'هذا الشهر'),
+                value: qrStats.thisMonth,
+                icon:  <TrendingUp size={16} />,
+                color: 'text-blue-400',
+                bg:    'bg-blue-500/10 border-blue-500/20',
+              },
+              {
+                label: t('Today', 'اليوم'),
+                value: qrStats.today,
+                icon:  <Activity size={16} />,
+                color: 'text-amber-400',
+                bg:    'bg-amber-500/10 border-amber-500/20',
+              },
+              {
+                label: t('Mobile Visitors', 'زوار الجوال'),
+                value: totalDevices > 0 ? `${mobilePct}%` : '—',
+                icon:  <Smartphone size={16} />,
+                color: 'text-purple-400',
+                bg:    'bg-purple-500/10 border-purple-500/20',
+              },
+            ].map((s, i) => (
+              <div key={i} className={`rounded-2xl p-4 border ${s.bg} flex flex-col gap-2`}>
+                <div className={`${s.color}`}>{s.icon}</div>
+                <div className={`text-2xl font-black tabular-nums ${s.color}`}>{s.value}</div>
+                <div className="text-slate-500 text-[10px] font-bold uppercase tracking-wider leading-tight">{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Device breakdown */}
+          {totalDevices > 0 && (
+            <div className="bg-slate-800/40 rounded-2xl p-4 border border-slate-700/40">
+              <p className="text-slate-400 text-[11px] font-bold uppercase tracking-widest mb-3">
+                {t('Device Distribution', 'توزيع الأجهزة')}
+              </p>
+              <div className="flex items-center gap-4">
+                {/* Bar */}
+                <div className="flex-1 h-3 rounded-full bg-slate-700 overflow-hidden flex">
+                  <div
+                    className="h-full bg-purple-500 rounded-full transition-all duration-1000"
+                    style={{ width: `${mobilePct}%` }}
+                  />
+                  <div
+                    className="h-full bg-blue-500 transition-all duration-1000"
+                    style={{ width: `${desktopPct}%` }}
+                  />
+                </div>
+                {/* Labels */}
+                <div className="flex items-center gap-4 shrink-0">
+                  <div className="flex items-center gap-1.5">
+                    <Smartphone size={12} className="text-purple-400" />
+                    <span className="text-purple-400 text-xs font-black tabular-nums">{mobilePct}%</span>
+                    <span className="text-slate-600 text-[10px]">{t('Mobile', 'جوال')}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Monitor size={12} className="text-blue-400" />
+                    <span className="text-blue-400 text-xs font-black tabular-nums">{desktopPct}%</span>
+                    <span className="text-slate-600 text-[10px]">{t('Desktop', 'دسكتوب')}</span>
+                  </div>
+                </div>
+              </div>
+              <p className="text-slate-600 text-[10px] mt-2 font-mono">
+                {qrStats.mobileCount} {t('mobile', 'جوال')} · {qrStats.desktopCount} {t('desktop', 'دسكتوب')} · {totalDevices} {t('total', 'إجمالي')}
+              </p>
+            </div>
+          )}
+
+          {/* Empty state */}
+          {qrStats.total === 0 && (
+            <div className="h-24 flex flex-col items-center justify-center gap-2 border border-dashed border-slate-800 rounded-2xl">
+              <QrCode size={20} className="text-slate-700" />
+              <p className="text-slate-600 text-xs text-center">
+                {t('No scans yet — share your QR code to start tracking', 'لا توجد مسحات بعد — شارك باركود محلك لتبدأ التتبع')}
+              </p>
+            </div>
+          )}
+        </div>
+
         {/* ── ALERT CENTER ── */}
         <div className="bg-slate-900/40 border border-slate-800/50 rounded-2xl p-5 lg:p-6">
           <div className="flex items-center justify-between mb-5">
@@ -268,34 +453,34 @@ export default function DashboardPage() {
               {
                 label: t('Critical Action', 'إجراء حرج'),
                 value: criticalAlerts,
-                icon: <XCircle size={18} />,
-                bg: 'bg-red-500/10 hover:bg-red-500/15',
-                border: 'border-red-500/20',
-                text: 'text-red-400',
+                icon:  <XCircle size={18} />,
+                bg:    'bg-red-500/10 hover:bg-red-500/15',
+                border:'border-red-500/20',
+                text:  'text-red-400',
               },
               {
                 label: t('Low Stock', 'مخزون منخفض'),
                 value: lowStockCount,
-                icon: <AlertTriangle size={18} />,
-                bg: 'bg-amber-500/10 hover:bg-amber-500/15',
-                border: 'border-amber-500/20',
-                text: 'text-amber-400',
+                icon:  <AlertTriangle size={18} />,
+                bg:    'bg-amber-500/10 hover:bg-amber-500/15',
+                border:'border-amber-500/20',
+                text:  'text-amber-400',
               },
               {
                 label: t('Out of Stock', 'نفد المخزون'),
                 value: outOfStockCount,
-                icon: <ShieldAlert size={18} />,
-                bg: 'bg-red-500/10 hover:bg-red-500/15',
-                border: 'border-red-500/20',
-                text: 'text-red-400',
+                icon:  <ShieldAlert size={18} />,
+                bg:    'bg-red-500/10 hover:bg-red-500/15',
+                border:'border-red-500/20',
+                text:  'text-red-400',
               },
               {
                 label: t('Pending Orders', 'طلبات معلقة'),
                 value: pendingOrdersCount,
-                icon: <Package size={18} />,
-                bg: 'bg-[#002B5B]/30 hover:bg-[#002B5B]/40',
-                border: 'border-[#002B5B]/50',
-                text: 'text-[#00A86B]',
+                icon:  <Package size={18} />,
+                bg:    'bg-[#002B5B]/30 hover:bg-[#002B5B]/40',
+                border:'border-[#002B5B]/50',
+                text:  'text-[#00A86B]',
               },
             ].map((card, i) => (
               <button
@@ -316,34 +501,10 @@ export default function DashboardPage() {
         {/* ── QUICK ACTIONS ── */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            {
-              icon: <Search size={20} />,
-              label: t('Search', 'بحث'),
-              color: 'text-[#00A86B]',
-              bg: 'bg-[#00A86B]/5 hover:bg-[#00A86B]/10',
-              border: 'border-[#00A86B]/15',
-            },
-            {
-              icon: <Boxes size={20} />,
-              label: t('Inventory', 'المخزون'),
-              color: 'text-[#0A4D68]',
-              bg: 'bg-[#0A4D68]/15 hover:bg-[#0A4D68]/25',
-              border: 'border-[#0A4D68]/30',
-            },
-            {
-              icon: <Package size={20} />,
-              label: t('Orders', 'الطلبات'),
-              color: 'text-amber-400',
-              bg: 'bg-amber-500/5 hover:bg-amber-500/10',
-              border: 'border-amber-500/10',
-            },
-            {
-              icon: <FileText size={20} />,
-              label: t('Reports', 'التقارير'),
-              color: 'text-purple-400',
-              bg: 'bg-purple-500/5 hover:bg-purple-500/10',
-              border: 'border-purple-500/10',
-            },
+            { icon: <Search size={20} />,   label: t('Search', 'بحث'),       color: 'text-[#00A86B]', bg: 'bg-[#00A86B]/5 hover:bg-[#00A86B]/10',   border: 'border-[#00A86B]/15'   },
+            { icon: <Boxes size={20} />,    label: t('Inventory', 'المخزون'), color: 'text-[#0A4D68]', bg: 'bg-[#0A4D68]/15 hover:bg-[#0A4D68]/25',  border: 'border-[#0A4D68]/30'   },
+            { icon: <Package size={20} />,  label: t('Orders', 'الطلبات'),    color: 'text-amber-400', bg: 'bg-amber-500/5 hover:bg-amber-500/10',     border: 'border-amber-500/10'   },
+            { icon: <FileText size={20} />, label: t('Reports', 'التقارير'),  color: 'text-purple-400',bg: 'bg-purple-500/5 hover:bg-purple-500/10',   border: 'border-purple-500/10'  },
           ].map((action, i) => (
             <button
               key={i}
@@ -371,7 +532,6 @@ export default function DashboardPage() {
                 {lowStockCount} {t('items', 'صنف')}
               </span>
             </div>
-
             <div className="space-y-3">
               {lowStockItems.length === 0 ? (
                 <div className="h-32 flex items-center justify-center text-slate-600 text-xs italic border border-dashed border-slate-800 rounded-xl">
@@ -404,7 +564,6 @@ export default function DashboardPage() {
               </div>
               <BarChart3 size={16} className="text-slate-700" />
             </div>
-
             <div className="space-y-4">
               {recentProducts.length === 0 ? (
                 <div className="h-32 flex items-center justify-center text-slate-600 text-xs italic border border-dashed border-slate-800 rounded-xl">
@@ -417,8 +576,8 @@ export default function DashboardPage() {
                       className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black shrink-0 transition-transform group-hover:scale-110"
                       style={{
                         background: BRAND_COLORS[i % 5] + '1a',
-                        color: BRAND_COLORS[i % 5],
-                        border: `1px solid ${BRAND_COLORS[i % 5]}33`,
+                        color:      BRAND_COLORS[i % 5],
+                        border:     `1px solid ${BRAND_COLORS[i % 5]}33`,
                       }}
                     >
                       {p.brand?.charAt(0) || 'P'}
@@ -442,6 +601,71 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* ══════════════════════════════════════════════════════════════
+            TOP ORDERED PRODUCTS — المنتجات الأكثر طلباً
+        ══════════════════════════════════════════════════════════════ */}
+        <div className="bg-slate-900/50 border border-slate-800/50 rounded-2xl p-5 lg:p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2">
+              <Star size={18} className="text-amber-400" />
+              <h3 className="font-bold text-white text-sm uppercase tracking-wider">
+                {t('Most Ordered Products', 'المنتجات الأكثر طلباً')}
+              </h3>
+            </div>
+            <span className="text-[10px] font-mono text-slate-500 uppercase border border-slate-800 px-2 py-0.5 rounded-full">
+              {t('Top 5', 'أفضل 5')}
+            </span>
+          </div>
+
+          {topProducts.length === 0 ? (
+            <div className="h-32 flex items-center justify-center text-slate-600 text-xs italic border border-dashed border-slate-800 rounded-xl">
+              {t('No orders received yet', 'لم تصلك أي طلبات بعد')}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {topProducts.map((p, i) => {
+                const maxTotal = topProducts[0]?.total_ordered || 1;
+                const pct = Math.round((p.total_ordered / maxTotal) * 100);
+                return (
+                  <div key={p.product_id} className="flex items-center gap-4 p-3 rounded-xl bg-slate-800/30 border border-slate-800/50 hover:border-slate-700/50 transition-colors group">
+                    {/* Rank badge */}
+                    <div
+                      className="w-8 h-8 rounded-xl flex items-center justify-center text-sm font-black shrink-0"
+                      style={{
+                        background: BRAND_COLORS[i % 5] + '1a',
+                        color:      BRAND_COLORS[i % 5],
+                        border:     `1px solid ${BRAND_COLORS[i % 5]}33`,
+                      }}
+                    >
+                      {i + 1}
+                    </div>
+
+                    {/* Name + bar */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-white text-xs font-bold truncate">{p.product_name}</span>
+                        <span
+                          className="text-xs font-black tabular-nums ms-2 shrink-0"
+                          style={{ color: BRAND_COLORS[i % 5] }}
+                        >
+                          {p.total_ordered} {t('units', 'وحدة')}
+                        </span>
+                      </div>
+                      <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-1000"
+                          style={{ width: `${pct}%`, backgroundColor: BRAND_COLORS[i % 5] }}
+                        />
+                      </div>
+                      <span className="text-slate-600 text-[10px] font-mono mt-1 block truncate">{p.product_code}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         {/* ── BRAND DISTRIBUTION CHART ── */}
         <div className="bg-slate-900/50 border border-slate-800/50 rounded-2xl p-6 lg:p-8">
           <div className="flex items-center gap-2 mb-8">
@@ -452,7 +676,7 @@ export default function DashboardPage() {
           </div>
 
           <div className="flex flex-col md:flex-row items-center gap-10 lg:gap-16">
-            {/* Donut chart — preserve all math */}
+            {/* Donut chart */}
             <div className="relative shrink-0">
               <svg width="180" height="180" viewBox="0 0 120 120">
                 {topBrands.length > 0 ? (
@@ -461,10 +685,10 @@ export default function DashboardPage() {
                     const r = 48, cx = 60, cy = 60;
                     const circ = 2 * Math.PI * r;
                     return topBrands.map(([brand, count], i) => {
-                      const pct = count / totalBrands;
+                      const pct  = count / totalBrands;
                       const dash = pct * circ;
-                      const gap = circ - dash;
-                      const el = (
+                      const gap  = circ - dash;
+                      const el   = (
                         <circle
                           key={brand}
                           cx={cx} cy={cy} r={r}
@@ -512,10 +736,7 @@ export default function DashboardPage() {
                     <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
                       <div
                         className="h-full rounded-full transition-all duration-1000"
-                        style={{
-                          width: `${(count / totalBrands) * 100}%`,
-                          backgroundColor: BRAND_COLORS[i % 5],
-                        }}
+                        style={{ width: `${(count / totalBrands) * 100}%`, backgroundColor: BRAND_COLORS[i % 5] }}
                       />
                     </div>
                     <span className="text-slate-600 text-[10px] font-mono">

@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
-import { supabase } from "../lib/supabase";
+import { supabase } from "./lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { useLang } from "../context/LanguageContext";
 import {
@@ -7,31 +7,46 @@ import {
   Edit2, X, Save, AlertCircle, ChevronLeft,
   ChevronRight, Download, Upload, Copy, Check,
   TrendingDown, Boxes, DollarSign,
-  PackageX, PackageCheck, Filter
+  PackageX, PackageCheck, Filter, Globe, Users, Lock,
+  ImagePlus, ImageOff, ScanLine, Percent,
 } from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
+type VisibilityScope = 'public' | 'group' | 'private';
+
 type Product = {
   id: number;
-  part_number: string;
-  part_name: string;
+  product_code: string;
+  product_name: string;
   brand: string;
   model: string;
   quantity: number;
   price: number;
   shop_id: number;
+  visibility_scope?: VisibilityScope;
+  product_image_url?: string | null;
+  barcode?: string | null;
+  // Optional per-product margin override (%). When null/undefined, the
+  // shop's default_margin_percent applies instead. Cost price (this
+  // page) is never affected by margin — margin only changes the price
+  // shown to a different-shop ("purchase") viewer in the marketplace.
+  margin_percent?: number | null;
 };
 
 type FilterStatus = 'all' | 'in_stock' | 'low_stock' | 'out_of_stock';
 
 type FormState = {
-  part_number: string;
-  part_name: string;
+  product_code: string;
+  product_name: string;
   brand: string;
   model: string;
   quantity: string;
   price: string;
+  visibility_scope: VisibilityScope;
+  product_image_url: string;
+  // Empty string = "use shop default margin" (maps to null in the DB).
+  margin_percent: string;
 };
 
 // ── Import summary returned after a completed sync ──────────────────────────
@@ -45,17 +60,22 @@ type ImportSummary = {
 };
 
 const EMPTY_FORM: FormState = {
-  part_number: '', part_name: '', brand: '', model: '', quantity: '', price: ''
+  product_code: '', product_name: '', brand: '', model: '', quantity: '', price: '',
+  visibility_scope: 'public',
+  product_image_url: '',
+  margin_percent: '',
 };
 
 const PAGE_SIZE   = 12;
 const BATCH_SIZE  = 200;
 
 // ─── FETCH PAGE SIZE ──────────────────────────────────────────────────────────
-// PostgREST default max_rows is 1000. We paginate in 1000-row chunks when
-// loading all products so the full dataset is always in memory, regardless
-// of how large the inventory grows.
 const FETCH_CHUNK = 1000;
+
+// ─── Product image upload constraints ────────────────────────────────────────
+const PRODUCT_IMAGES_BUCKET = 'product-images';
+const ALLOWED_IMAGE_TYPES   = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_IMAGE_BYTES       = 5 * 1024 * 1024; // 5 MB
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -63,6 +83,60 @@ function getStatus(qty: number): FilterStatus {
   if (qty > 5) return "in_stock";
   if (qty > 0) return "low_stock";
   return "out_of_stock";
+}
+
+function safeVisibilityScope(val: string | undefined | null): VisibilityScope {
+  if (val === 'public' || val === 'group' || val === 'private') return val;
+  return 'public';
+}
+
+/**
+ * Deterministic, unique-enough barcode derived from shop + product code.
+ * Used only as a fallback when a product has no stored `barcode` value
+ * (e.g. legacy rows, or rows imported from a CSV without a barcode
+ * column). Does not write to the DB by itself — callers decide whether
+ * to persist it.
+ */
+function generateBarcode(shopId: number, productCode: string): string {
+  const cleanedCode = (productCode || '').replace(/\s+/g, '').toUpperCase();
+  return `${shopId}-${cleanedCode}`;
+}
+
+function effectiveBarcode(p: Pick<Product, 'shop_id' | 'product_code' | 'barcode'>): string {
+  return p.barcode && p.barcode.trim() !== '' ? p.barcode : generateBarcode(p.shop_id, p.product_code);
+}
+
+function getFileExtension(file: File): string {
+  const fromName = file.name.includes('.') ? file.name.split('.').pop() : '';
+  if (fromName) return fromName.toLowerCase();
+  if (file.type === 'image/jpeg') return 'jpg';
+  if (file.type === 'image/png') return 'png';
+  if (file.type === 'image/webp') return 'webp';
+  return 'jpg';
+}
+
+type ImageValidationResult = { ok: true } | { ok: false; message: string };
+
+function validateImageFile(file: File, t: (en: string, ar: string) => string): ImageValidationResult {
+  if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+    return {
+      ok: false,
+      message: t(
+        'Only JPEG, PNG, or WEBP images are allowed.',
+        'يُسمح فقط بصور JPEG أو PNG أو WEBP.'
+      ),
+    };
+  }
+  if (file.size > MAX_IMAGE_BYTES) {
+    return {
+      ok: false,
+      message: t(
+        'Image size must not exceed 5 MB.',
+        'يجب ألا يتجاوز حجم الصورة 5 ميجابايت.'
+      ),
+    };
+  }
+  return { ok: true };
 }
 
 // ─── Production-grade CSV parser ─────────────────────────────────────────────
@@ -154,6 +228,198 @@ function StockBadge({ quantity, t }: StockBadgeProps) {
   );
 }
 
+// ─── Visibility Badge ─────────────────────────────────────────────────────────
+
+interface VisibilityBadgeProps {
+  scope: VisibilityScope | undefined;
+  t: (en: string, ar: string) => string;
+}
+
+function VisibilityBadge({ scope, t }: VisibilityBadgeProps) {
+  const safe = safeVisibilityScope(scope);
+  const cfg =
+    safe === 'public'
+      ? { cls: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400', label: t('Public Marketplace', 'السوق العام'), Icon: Globe }
+      : safe === 'group'
+      ? { cls: 'bg-amber-500/10 border-amber-500/20 text-amber-400', label: t('Group Only', 'داخل المجموعة'), Icon: Users }
+      : { cls: 'bg-blue-500/10 border-blue-500/20 text-blue-400', label: t('Shop Only', 'داخل الفرع'), Icon: Lock };
+
+  return (
+    <span className={`inline-flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full border font-bold uppercase tracking-tighter ${cfg.cls}`}>
+      <cfg.Icon size={8} />
+      {cfg.label}
+    </span>
+  );
+}
+
+// ─── Product Image Thumbnail (shared placeholder logic) ──────────────────────
+
+interface ProductThumbProps {
+  src?: string | null;
+  alt: string;
+  sizeCls: string;
+  iconSize: number;
+  roundedCls?: string;
+  t: (en: string, ar: string) => string;
+}
+
+function ProductThumb({ src, alt, sizeCls, iconSize, roundedCls = 'rounded-lg', t }: ProductThumbProps) {
+  const [errored, setErrored] = useState(false);
+  const showPlaceholder = !src || errored;
+
+  if (showPlaceholder) {
+    return (
+      <div
+        className={`${sizeCls} ${roundedCls} bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0`}
+        aria-label={t('No image', 'لا توجد صورة')}
+        title={t('No image', 'لا توجد صورة')}
+      >
+        <ImageOff size={iconSize} className="text-slate-600" />
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      onError={() => setErrored(true)}
+      className={`${sizeCls} ${roundedCls} object-cover border border-slate-700 shrink-0`}
+    />
+  );
+}
+
+// ─── Image Picker (select / drag&drop / preview / replace / remove) ──────────
+
+interface ImagePickerProps {
+  value: string;
+  onFileSelected: (file: File) => void;
+  onRemove: () => void;
+  uploading: boolean;
+  error: string | null;
+  t: (en: string, ar: string) => string;
+}
+
+function ImagePicker({ value, onFileSelected, onRemove, uploading, error, t }: ImagePickerProps) {
+  const [dragActive, setDragActive] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const openPicker = useCallback(() => {
+    if (uploading) return;
+    fileInputRef.current?.click();
+  }, [uploading]);
+
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) onFileSelected(file);
+    e.target.value = '';
+  }, [onFileSelected]);
+
+  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (uploading) return;
+    const file = e.dataTransfer.files?.[0];
+    if (file) onFileSelected(file);
+  }, [onFileSelected, uploading]);
+
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!uploading) setDragActive(true);
+  }, [uploading]);
+
+  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+  }, []);
+
+  return (
+    <div className="col-span-2">
+      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">
+        {t('Product Image', 'صورة المنتج')}
+      </label>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        onChange={handleFileChange}
+        className="hidden"
+        aria-hidden="true"
+      />
+
+      <div
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        className={`relative flex items-center gap-4 p-4 rounded-2xl border-2 transition-colors ${
+          dragActive
+            ? 'border-emerald-500 bg-emerald-500/5'
+            : 'border-dashed border-slate-700 bg-slate-800/40'
+        }`}
+      >
+        <ProductThumb
+          src={value || null}
+          alt={t('Product image preview', 'معاينة صورة المنتج')}
+          sizeCls="w-20 h-20"
+          iconSize={28}
+          roundedCls="rounded-xl"
+          t={t}
+        />
+
+        <div className="flex-1 min-w-0">
+          <p className="text-xs text-slate-400 mb-2 leading-snug">
+            {t(
+              'Drag & drop an image here, or click to select.',
+              'اسحب وأسقط صورة هنا، أو اضغط للاختيار.'
+            )}
+          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={openPicker}
+              disabled={uploading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-700 text-white text-xs font-bold hover:bg-slate-600 transition-colors disabled:opacity-50"
+            >
+              <ImagePlus size={13} />
+              {uploading
+                ? t('Uploading…', 'جاري الرفع…')
+                : value
+                ? t('Replace Image', 'استبدال الصورة')
+                : t('Select Image', 'اختيار صورة')}
+            </button>
+            {value && !uploading && (
+              <button
+                type="button"
+                onClick={onRemove}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 text-xs font-bold hover:bg-red-500/20 transition-colors"
+              >
+                <Trash2 size={13} />
+                {t('Remove Image', 'إزالة الصورة')}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {uploading && (
+          <div className="absolute inset-0 rounded-2xl bg-slate-950/50 flex items-center justify-center">
+            <RefreshCw size={20} className="animate-spin text-emerald-400" />
+          </div>
+        )}
+      </div>
+
+      {error && (
+        <p className="mt-2 text-[11px] text-red-400 flex items-center gap-1.5" role="alert">
+          <AlertCircle size={12} className="shrink-0" /> {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ─── Mobile Product Card ──────────────────────────────────────────────────────
 
 interface MobileProductCardProps {
@@ -170,24 +436,33 @@ function MobileProductCard({ p, selected, onToggle, onEdit, onDelete, t }: Mobil
   const qtyColor = status === 'in_stock' ? 'text-emerald-400' : status === 'low_stock' ? 'text-amber-400' : 'text-red-400';
 
   return (
-    <div className={`bg-slate-900 rounded-xl border transition-colors ${selected ? 'border-emerald-500/50' : 'border-slate-800'}`}>
-      <div className="flex items-start gap-3 p-3 pb-2">
+    <div className={`bg-slate-900 rounded-xl border transition-colors overflow-hidden ${selected ? 'border-emerald-500/50' : 'border-slate-800'}`}>
+      <div className="relative w-full aspect-square">
+        <ProductThumb
+          src={p.product_image_url}
+          alt={p.product_name}
+          sizeCls="w-full h-full"
+          iconSize={36}
+          roundedCls="rounded-none"
+          t={t}
+        />
         <input
           type="checkbox"
-          className="accent-emerald-500 cursor-pointer mt-0.5 shrink-0"
+          className="absolute top-2 left-2 accent-emerald-500 cursor-pointer w-4 h-4 shrink-0"
           checked={selected}
           onChange={() => onToggle(p.id)}
-          aria-label={t(`Select ${p.part_name}`, `تحديد ${p.part_name}`)}
+          aria-label={t(`Select ${p.product_name}`, `تحديد ${p.product_name}`)}
         />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <span className="text-white font-bold text-sm leading-tight">{p.part_name}</span>
-            <StockBadge quantity={p.quantity} t={t} />
-          </div>
-          <div className="flex items-center gap-1.5 mt-1">
-            <span className="font-mono text-[10px] text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded leading-none">{p.part_number}</span>
-            <CopyButton text={p.part_number} />
-          </div>
+        <div className="absolute top-2 right-2">
+          <StockBadge quantity={p.quantity} t={t} />
+        </div>
+      </div>
+
+      <div className="p-3 pb-2">
+        <span className="text-white font-bold text-sm leading-tight block">{p.product_name}</span>
+        <div className="flex items-center gap-1.5 mt-1">
+          <span className="font-mono text-[10px] text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded leading-none">{p.product_code}</span>
+          <CopyButton text={p.product_code} />
         </div>
       </div>
 
@@ -211,20 +486,24 @@ function MobileProductCard({ p, selected, onToggle, onEdit, onDelete, t }: Mobil
             <span className="text-[9px] text-slate-500 font-normal">ر.س</span>
           </div>
         </div>
+        <div className="col-span-2">
+          <div className="text-[9px] text-slate-600 uppercase tracking-wider mb-0.5">{t('Visibility', 'نطاق الظهور')}</div>
+          <VisibilityBadge scope={p.visibility_scope} t={t} />
+        </div>
       </div>
 
       <div className="flex items-center justify-end gap-1 px-3 py-2 border-t border-slate-800/60">
         <button
           onClick={() => onEdit(p)}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 transition-all text-xs font-bold"
-          aria-label={t(`Edit ${p.part_name}`, `تعديل ${p.part_name}`)}
+          aria-label={t(`Edit ${p.product_name}`, `تعديل ${p.product_name}`)}
         >
           <Edit2 size={13} /> {t('Edit', 'تعديل')}
         </button>
         <button
           onClick={() => onDelete(p.id)}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-all text-xs font-bold"
-          aria-label={t(`Delete ${p.part_name}`, `حذف ${p.part_name}`)}
+          aria-label={t(`Delete ${p.product_name}`, `حذف ${p.product_name}`)}
         >
           <Trash2 size={13} /> {t('Delete', 'حذف')}
         </button>
@@ -259,24 +538,29 @@ export default function InventoryPage() {
   const [form, setForm]                 = useState<FormState>(EMPTY_FORM);
   const [formError, setFormError]       = useState<string | null>(null);
 
+  const [imageUploading, setImageUploading] = useState(false);
+  const [imageError, setImageError]         = useState<string | null>(null);
+  const [pendingImageFile, setPendingImageFile] = useState<File | null>(null);
+  const [imageRemoved, setImageRemoved]     = useState(false);
+
+  // ── Shop-level default profit margin ──────────────────────────────────────
+  // Applied automatically to this shop's products when shown to a
+  // different-shop ("purchase") viewer in the public marketplace.
+  // Cost prices here in the inventory page are NEVER affected by this —
+  // it only changes what a buyer from another shop sees.
+  const [showMarginModal, setShowMarginModal] = useState(false);
+  const [defaultMarginPercent, setDefaultMarginPercent] = useState<number>(0);
+  const [marginInput, setMarginInput]         = useState('');
+  const [marginSaving, setMarginSaving]       = useState(false);
+  const [marginError, setMarginError]         = useState<string | null>(null);
+
   const importRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
   const isSearching = search.trim().length > 0;
 
   // ── Database Actions ───────────────────────────────────────────────────────
-  //
-  // FIX: fetchProducts now loads ALL rows by paginating in FETCH_CHUNK-sized
-  // windows until Supabase returns fewer rows than the chunk size.
-  //
-  // Root cause of the original bug:
-  //   PostgREST enforces a server-side max_rows limit (default: 1000).
-  //   The original query had no pagination, so it silently capped results at
-  //   1000 rows. With 1519 products, 519 rows were never fetched, causing every
-  //   stat derived from the `products` array (counts, totals) to be wrong.
-  //
   const fetchProducts = useCallback(async () => {
-    // ── DIAGNOSTIC LOG 1: entry point ────────────────────────────────────────
     console.log(`[MIHWAR fetchProducts] ▶ called — ownedShopId=${ownedShopId}`);
     if (!ownedShopId) {
       console.warn('[MIHWAR fetchProducts] ✖ aborted — ownedShopId is null/undefined');
@@ -287,10 +571,6 @@ export default function InventoryPage() {
     setError(null);
 
     try {
-      // ── DIAGNOSTIC LOG 2: exact DB count (SELECT COUNT(*) equivalent) ──────
-      // This is the ground truth. If this number differs from allProducts.length
-      // at the end, the pagination loop is at fault. If this number is wrong,
-      // the issue is in the database or RLS policy.
       const { count: dbCount, error: countErr } = await supabase
         .from('products')
         .select('*', { count: 'exact', head: true })
@@ -302,7 +582,6 @@ export default function InventoryPage() {
         console.log(`[MIHWAR fetchProducts] ── DB COUNT (ground truth): ${dbCount} ──`);
       }
 
-      // ── Chunked fetch loop ────────────────────────────────────────────────
       const allProducts: Product[] = [];
       let from = 0;
       let keepFetching = true;
@@ -314,7 +593,7 @@ export default function InventoryPage() {
 
         const { data: chunk, error: fetchErr } = await supabase
           .from("products")
-          .select("*")
+          .select("id, product_code, product_name, brand, model, quantity, price, shop_id, visibility_scope, product_image_url, barcode, margin_percent")
           .eq("shop_id", ownedShopId)
           .order("created_at", { ascending: false })
           .range(from, to);
@@ -328,7 +607,6 @@ export default function InventoryPage() {
         const chunkLen = chunk?.length ?? 0;
         allProducts.push(...(chunk ?? []));
 
-        // ── DIAGNOSTIC LOG 3: per-chunk progress ──────────────────────────
         console.log(
           `[MIHWAR fetchProducts] chunk ${chunkIndex} received ${chunkLen} rows` +
           ` — running total: ${allProducts.length}` +
@@ -343,7 +621,6 @@ export default function InventoryPage() {
         }
       }
 
-      // ── DIAGNOSTIC LOG 4: final comparison ───────────────────────────────
       console.log(
         `[MIHWAR fetchProducts] ── FINAL LOADED: ${allProducts.length} rows` +
         ` | DB COUNT was: ${dbCount ?? 'n/a (count query failed)'}` +
@@ -355,9 +632,6 @@ export default function InventoryPage() {
       setProducts(allProducts);
       setPage(1);
 
-      // ── DIAGNOSTIC LOG 5: confirm React state will reflect new value ──────
-      // Note: products state won't update synchronously here; the log below
-      // records what we are SETTING, not what useState currently holds.
       console.log(`[MIHWAR fetchProducts] setProducts(${allProducts.length} items) called`);
 
     } finally {
@@ -367,33 +641,165 @@ export default function InventoryPage() {
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
-  // ── DIAGNOSTIC: log products.length after every state update ─────────────
-  // This confirms whether setProducts() actually committed the full array to
-  // React state, or whether something is truncating/overwriting it.
   useEffect(() => {
     console.log(`[MIHWAR STATE] products.length updated → ${products.length}`);
   }, [products]);
 
+  // ── Fetch the shop's current default margin percentage ────────────────────
+  const fetchDefaultMargin = useCallback(async () => {
+    if (!ownedShopId) return;
+    const { data, error: fetchErr } = await supabase
+      .from('shops')
+      .select('default_margin_percent')
+      .eq('id', ownedShopId)
+      .single();
+    if (fetchErr) {
+      console.error('[MIHWAR fetchDefaultMargin] error:', fetchErr.message);
+      return;
+    }
+    const val = Number(data?.default_margin_percent ?? 0);
+    setDefaultMarginPercent(Number.isFinite(val) ? val : 0);
+  }, [ownedShopId]);
+
+  useEffect(() => { fetchDefaultMargin(); }, [fetchDefaultMargin]);
+
+  const openMarginModal = useCallback(() => {
+    setMarginInput(String(defaultMarginPercent));
+    setMarginError(null);
+    setShowMarginModal(true);
+  }, [defaultMarginPercent]);
+
+  const closeMarginModal = useCallback(() => setShowMarginModal(false), []);
+
+  const handleSaveMargin = useCallback(async () => {
+    const parsed = Number(marginInput);
+    if (marginInput.trim() === '' || !Number.isFinite(parsed) || parsed < 0) {
+      setMarginError(t(
+        'Enter a valid margin percentage (0 or greater).',
+        'أدخل نسبة هامش صحيحة (0 أو أكبر).'
+      ));
+      return;
+    }
+    if (!ownedShopId) return;
+
+    setMarginSaving(true);
+    setMarginError(null);
+    try {
+      const { error: updateErr } = await supabase
+        .from('shops')
+        .update({ default_margin_percent: parsed })
+        .eq('id', ownedShopId);
+      if (updateErr) throw updateErr;
+
+      setDefaultMarginPercent(parsed);
+      setShowMarginModal(false);
+      showSuccess(t('Margin updated ✓', 'تم تحديث الهامش ✓'));
+    } catch (e: any) {
+      setMarginError(e?.message ?? t('Failed to update margin', 'فشل تحديث الهامش'));
+    } finally {
+      setMarginSaving(false);
+    }
+  }, [marginInput, ownedShopId, t]);
+
+  // ── Product image upload ──────────────────────────────────────────────────
+  // Filename pattern required: shopId-productId-timestamp.ext
+  // Because `productId` does not exist yet for a brand-new product until
+  // after the initial insert, the upload step always runs AFTER the
+  // products-table write that obtains a real id (see handleSave below),
+  // then a second lightweight update persists product_image_url onto
+  // that same row. This keeps the row write and the image upload as two
+  // separate, individually-retriable steps without changing the shape
+  // of the existing insert/update payload contract.
+  const uploadProductImage = useCallback(async (file: File, shopId: number, productId: number): Promise<string> => {
+    const ext      = getFileExtension(file);
+    const fileName = `${shopId}-${productId}-${Date.now()}.${ext}`;
+
+    const { error: uploadErr } = await supabase.storage
+      .from(PRODUCT_IMAGES_BUCKET)
+      .upload(fileName, file, { cacheControl: '3600', upsert: true });
+
+    if (uploadErr) throw uploadErr;
+
+    const { data: publicUrlData } = supabase.storage
+      .from(PRODUCT_IMAGES_BUCKET)
+      .getPublicUrl(fileName);
+
+    return publicUrlData.publicUrl;
+  }, []);
+
   const handleSave = async () => {
-    if (!form.part_number || !form.part_name || !form.quantity) {
+    if (!form.product_code || !form.product_name || !form.quantity) {
       setFormError(t('Required fields missing', 'الحقول المطلوبة ناقصة'));
       return;
     }
+
+    let parsedMargin: number | null = null;
+    if (form.margin_percent.trim() !== '') {
+      const m = Number(form.margin_percent);
+      if (!Number.isFinite(m) || m < 0) {
+        setFormError(t(
+          'Product margin must be a valid percentage (0 or greater).',
+          'هامش المنتج يجب أن يكون نسبة صحيحة (0 أو أكبر).'
+        ));
+        return;
+      }
+      parsedMargin = m;
+    }
+
     setSaving(true);
     try {
-      const payload = {
-        part_number: form.part_number,
-        part_name:   form.part_name,
-        brand:       form.brand,
-        model:       form.model,
-        quantity:    Number(form.quantity),
-        price:       Number(form.price),
-        shop_id:     ownedShopId,
+      const basePayload = {
+        product_code:      form.product_code,
+        product_name:        form.product_name,
+        brand:            form.brand,
+        model:            form.model,
+        quantity:         Number(form.quantity),
+        price:            Number(form.price),
+        shop_id:          ownedShopId,
+        visibility_scope: safeVisibilityScope(form.visibility_scope),
+        margin_percent:   parsedMargin,
       };
-      const { error } = editItem
-        ? await supabase.from('products').update(payload).eq('id', editItem.id)
-        : await supabase.from('products').insert(payload);
-      if (error) throw error;
+
+      let productId: number;
+
+      if (editItem) {
+        const { error: updateErr } = await supabase.from('products').update(basePayload).eq('id', editItem.id);
+        if (updateErr) throw updateErr;
+        productId = editItem.id;
+      } else {
+        const { data: inserted, error: insertErr } = await supabase
+          .from('products')
+          .insert(basePayload)
+          .select('id')
+          .single();
+        if (insertErr) throw insertErr;
+        productId = inserted.id;
+      }
+
+      // Resolve final image URL for this product, independent of the
+      // row write above: upload a newly-picked file, clear it if the
+      // user removed the image, or keep the existing URL untouched.
+      let finalImageUrl: string | null = editItem?.product_image_url ?? null;
+
+      if (pendingImageFile && ownedShopId != null) {
+        setImageUploading(true);
+        try {
+          finalImageUrl = await uploadProductImage(pendingImageFile, ownedShopId, productId);
+        } finally {
+          setImageUploading(false);
+        }
+      } else if (imageRemoved) {
+        finalImageUrl = null;
+      }
+
+      if (finalImageUrl !== (editItem?.product_image_url ?? null) || pendingImageFile || imageRemoved) {
+        const { error: imgUpdateErr } = await supabase
+          .from('products')
+          .update({ product_image_url: finalImageUrl })
+          .eq('id', productId);
+        if (imgUpdateErr) throw imgUpdateErr;
+      }
+
       showSuccess(editItem ? t('Updated ✓', 'تم التعديل ✓') : t('Added ✓', 'تمت الإضافة ✓'));
       closeModal();
       fetchProducts();
@@ -405,13 +811,33 @@ export default function InventoryPage() {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm(t('Delete item?', 'حذف القطعة؟'))) return;
+    if (!confirm(t('Delete item?', 'حذف المنتج؟'))) return;
     const { error } = await supabase.from('products').delete().eq('id', id);
     if (!error) { fetchProducts(); showSuccess(t('Deleted', 'تم الحذف')); }
   };
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // ── PRODUCTION IMPORT HANDLER — Manual Upsert Strategy ───────────────────
+  // ── Image picker handlers (modal-scoped, applied on Save) ─────────────────
+  const handleImageFileSelected = useCallback((file: File) => {
+    const result = validateImageFile(file, t);
+    if (!result.ok) {
+      setImageError(result.message);
+      return;
+    }
+    setImageError(null);
+    setPendingImageFile(file);
+    setImageRemoved(false);
+    const previewUrl = URL.createObjectURL(file);
+    setForm(f => ({ ...f, product_image_url: previewUrl }));
+  }, [t]);
+
+  const handleImageRemove = useCallback(() => {
+    setPendingImageFile(null);
+    setImageRemoved(true);
+    setImageError(null);
+    setForm(f => ({ ...f, product_image_url: '' }));
+  }, []);
+
+  // ─── PRODUCTION IMPORT HANDLER ────────────────────────────────────────────
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -435,44 +861,72 @@ export default function InventoryPage() {
         ));
       }
 
+      // Detect header to find optional column indices (visibility_scope,
+      // barcode, product_image_url). All three are optional: if absent
+      // from the header, import proceeds unaffected (no errors), and
+      // those fields are simply left unset for every imported row.
+      const headerRow = allRows[0].map(h => h.toLowerCase().trim());
+      const visibilityColIndex = headerRow.findIndex(h => h === 'visibility_scope' || h === 'visibility');
+      const barcodeColIndex    = headerRow.findIndex(h => h === 'barcode');
+      const imageUrlColIndex   = headerRow.findIndex(h => h === 'product_image_url' || h === 'image_url');
+
       const dataRows = allRows.slice(1);
-      console.log(`[MIHWAR Import] Data rows: ${dataRows.length}`);
+      console.log(
+        `[MIHWAR Import] Data rows: ${dataRows.length}, visibility col index: ${visibilityColIndex}, ` +
+        `barcode col index: ${barcodeColIndex}, image col index: ${imageUrlColIndex}`
+      );
 
       type ValidRow = Omit<Product, 'id'>;
       const validatedRows: ValidRow[] = [];
       let skippedRows = 0;
 
       dataRows.forEach((cols, idx) => {
-        const line        = idx + 2;
-        const part_number = cols[0]?.trim() ?? '';
-        const part_name   = cols[1]?.trim() ?? '';
-        const brand       = cols[2]?.trim() ?? '';
-        const model       = cols[3]?.trim() ?? '';
-        const quantity    = parseInt(cols[4]?.trim() ?? '', 10);
-        const price       = parseFloat(cols[5]?.trim() ?? '');
+        const line         = idx + 2;
+        const product_code = cols[0]?.trim() ?? '';
+        const product_name = cols[1]?.trim() ?? '';
+        const brand         = cols[2]?.trim() ?? '';
+        const model          = cols[3]?.trim() ?? '';
+        const quantity        = parseInt(cols[4]?.trim() ?? '', 10);
+        const price            = parseFloat(cols[5]?.trim() ?? '');
 
-        if (!part_number) {
+        // visibility_scope from column index if present, else default 'public'
+        const rawScope = visibilityColIndex >= 0 ? (cols[visibilityColIndex]?.trim() ?? '') : '';
+        const visibility_scope = safeVisibilityScope(rawScope || undefined);
+
+        // barcode / product_image_url are optional pass-through columns.
+        // Absent column index (-1) or empty cell both resolve to
+        // `undefined`, which the DB stores as null — no error either way.
+        const rawBarcode  = barcodeColIndex >= 0 ? (cols[barcodeColIndex]?.trim() ?? '') : '';
+        const rawImageUrl = imageUrlColIndex >= 0 ? (cols[imageUrlColIndex]?.trim() ?? '') : '';
+        const barcode           = rawBarcode || undefined;
+        const product_image_url = rawImageUrl || undefined;
+
+        if (!product_code) {
           skippedRows++;
-          console.warn(`[MIHWAR Import] SKIP line ${line}: missing part_number`);
+          console.warn(`[MIHWAR Import] SKIP line ${line}: missing product_code`);
           return;
         }
-        if (!part_name) {
+        if (!product_name) {
           skippedRows++;
-          console.warn(`[MIHWAR Import] SKIP line ${line}: missing part_name (pn: ${part_number})`);
+          console.warn(`[MIHWAR Import] SKIP line ${line}: missing product_name (pn: ${product_code})`);
           return;
         }
         if (isNaN(quantity) || quantity < 0) {
           skippedRows++;
-          console.warn(`[MIHWAR Import] SKIP line ${line}: invalid quantity for "${part_number}"`);
+          console.warn(`[MIHWAR Import] SKIP line ${line}: invalid quantity for "${product_code}"`);
           return;
         }
         if (isNaN(price) || price < 0) {
           skippedRows++;
-          console.warn(`[MIHWAR Import] SKIP line ${line}: invalid price for "${part_number}"`);
+          console.warn(`[MIHWAR Import] SKIP line ${line}: invalid price for "${product_code}"`);
           return;
         }
 
-        validatedRows.push({ part_number, part_name, brand, model, quantity, price, shop_id: ownedShopId! });
+        validatedRows.push({
+          product_code, product_name, brand, model, quantity, price,
+          shop_id: ownedShopId!, visibility_scope,
+          barcode, product_image_url,
+        });
       });
 
       const validRows = validatedRows.length;
@@ -486,7 +940,7 @@ export default function InventoryPage() {
       }
 
       setImportProgress(t('Loading existing inventory…', 'جاري تحميل المخزون الحالي…'));
-      console.log(`[MIHWAR Import] Fetching existing part_numbers for shop ${ownedShopId}…`);
+      console.log(`[MIHWAR Import] Fetching existing product_codes for shop ${ownedShopId}…`);
 
       const existingMap = new Map<string, number>();
       const FETCH_PAGE  = 1000;
@@ -496,7 +950,7 @@ export default function InventoryPage() {
       while (keepFetching) {
         const { data: chunk, error: fetchErr } = await supabase
           .from('products')
-          .select('id, part_number')
+          .select('id, product_code')
           .eq('shop_id', ownedShopId!)
           .range(fetchFrom, fetchFrom + FETCH_PAGE - 1);
 
@@ -508,7 +962,7 @@ export default function InventoryPage() {
           ));
         }
 
-        (chunk ?? []).forEach(row => existingMap.set(row.part_number, row.id));
+        (chunk ?? []).forEach(row => existingMap.set(row.product_code, row.id));
 
         if (!chunk || chunk.length < FETCH_PAGE) keepFetching = false;
         else fetchFrom += FETCH_PAGE;
@@ -520,7 +974,7 @@ export default function InventoryPage() {
       const toUpdate: Array<ValidRow & { id: number }>   = [];
 
       for (const row of validatedRows) {
-        const existingId = existingMap.get(row.part_number);
+        const existingId = existingMap.get(row.product_code);
         if (existingId !== undefined) toUpdate.push({ ...row, id: existingId });
         else                          toInsert.push(row);
       }
@@ -582,11 +1036,14 @@ export default function InventoryPage() {
               supabase
                 .from('products')
                 .update({
-                  part_name: row.part_name,
-                  brand:     row.brand,
-                  model:     row.model,
-                  quantity:  row.quantity,
-                  price:     row.price,
+                  product_name:         row.product_name,
+                  brand:             row.brand,
+                  model:             row.model,
+                  quantity:          row.quantity,
+                  price:             row.price,
+                  visibility_scope:  row.visibility_scope,
+                  ...(row.barcode !== undefined ? { barcode: row.barcode } : {}),
+                  ...(row.product_image_url !== undefined ? { product_image_url: row.product_image_url } : {}),
                 })
                 .eq('id', row.id)
                 .eq('shop_id', ownedShopId!)
@@ -594,7 +1051,7 @@ export default function InventoryPage() {
           );
 
           const batchErrors = results
-            .map((r, i) => r.error ? `Row id=${batch[i].id} (${batch[i].part_number}): ${r.error.message}` : null)
+            .map((r, i) => r.error ? `Row id=${batch[i].id} (${batch[i].product_code}): ${r.error.message}` : null)
             .filter(Boolean);
 
           if (batchErrors.length > 0) {
@@ -621,10 +1078,6 @@ export default function InventoryPage() {
 
       console.log('[MIHWAR Import] ✔ Complete. Summary:', summary);
 
-      // ── DIAGNOSTIC: independent COUNT query immediately after import ──────
-      // Compare this number against what fetchProducts loads.
-      // If count = 1519 but dashboard shows 1000 → pagination bug in fetchProducts.
-      // If count = 1000 → data never made it to DB, or RLS blocks SELECT.
       const { count: postImportCount, error: postCountErr } = await supabase
         .from('products')
         .select('*', { count: 'exact', head: true })
@@ -663,10 +1116,7 @@ export default function InventoryPage() {
     }
   };
 
-  // ── Derived Data (single-pass for performance) ────────────────────────────
-  // All stats (counts, totals) are now computed from the FULL `products` array
-  // which is guaranteed to contain every row for this shop (loaded via chunked
-  // pagination above). Filtering/searching for the visible table is separate.
+  // ── Derived Data ──────────────────────────────────────────────────────────
   const { filtered, counts, totals } = useMemo(() => {
     const q = search.toLowerCase().trim();
     let inStock = 0, lowStock = 0, outOfStock = 0;
@@ -684,8 +1134,8 @@ export default function InventoryPage() {
 
       const matchesFilter = filter === 'all' || s === filter;
       const matchesSearch = !q
-        || p.part_number?.toLowerCase().includes(q)
-        || p.part_name?.toLowerCase().includes(q)
+        || p.product_code?.toLowerCase().includes(q)
+        || p.product_name?.toLowerCase().includes(q)
         || p.brand?.toLowerCase().includes(q);
 
       if (matchesFilter && matchesSearch) allFiltered.push(p);
@@ -711,13 +1161,32 @@ export default function InventoryPage() {
   }, []);
 
   const openAdd = useCallback(() => {
-    setEditItem(null); setForm(EMPTY_FORM); setFormError(null); setShowModal(true);
+    setEditItem(null);
+    setForm(EMPTY_FORM);
+    setFormError(null);
+    setImageError(null);
+    setPendingImageFile(null);
+    setImageRemoved(false);
+    setShowModal(true);
   }, []);
 
   const openEdit = useCallback((p: Product) => {
     setEditItem(p);
-    setForm({ part_number: p.part_number, part_name: p.part_name, brand: p.brand, model: p.model, quantity: String(p.quantity), price: String(p.price) });
+    setForm({
+      product_code:        p.product_code,
+      product_name:          p.product_name,
+      brand:              p.brand,
+      model:              p.model,
+      quantity:           String(p.quantity),
+      price:              String(p.price),
+      visibility_scope:   safeVisibilityScope(p.visibility_scope),
+      product_image_url:  p.product_image_url ?? '',
+      margin_percent:     p.margin_percent != null ? String(p.margin_percent) : '',
+    });
     setFormError(null);
+    setImageError(null);
+    setPendingImageFile(null);
+    setImageRemoved(false);
     setShowModal(true);
   }, []);
 
@@ -735,8 +1204,13 @@ export default function InventoryPage() {
 
   const handleExport = useCallback(() => {
     const csv = [
-      ['Part Number', 'Name', 'Brand', 'Model', 'Quantity', 'Price'].join(','),
-      ...filtered.map(p => [p.part_number, p.part_name, p.brand, p.model, p.quantity, p.price].join(','))
+      ['Product Code', 'Name', 'Brand', 'Model', 'Quantity', 'Price', 'Visibility Scope', 'Barcode', 'Product Image Url'].join(','),
+      ...filtered.map(p => [
+        p.product_code, p.product_name, p.brand, p.model, p.quantity, p.price,
+        safeVisibilityScope(p.visibility_scope),
+        effectiveBarcode(p),
+        p.product_image_url ?? '',
+      ].join(','))
     ].join('\n');
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
@@ -756,6 +1230,13 @@ export default function InventoryPage() {
       return next;
     });
   }, []);
+
+  // ── Visibility scope options ───────────────────────────────────────────────
+  const visibilityOptions: { value: VisibilityScope; labelEn: string; labelAr: string; Icon: React.ElementType; cls: string }[] = [
+    { value: 'public',  labelEn: 'Public Marketplace', labelAr: 'السوق العام',     Icon: Globe, cls: 'text-emerald-400 border-emerald-500/30 bg-emerald-500/5' },
+    { value: 'group',   labelEn: 'Group Only',          labelAr: 'داخل المجموعة',  Icon: Users, cls: 'text-amber-400 border-amber-500/30 bg-amber-500/5' },
+    { value: 'private', labelEn: 'Shop Only',           labelAr: 'داخل الفرع',     Icon: Lock,  cls: 'text-blue-400 border-blue-500/30 bg-blue-500/5' },
+  ];
 
   // ── Shared pagination UI ──────────────────────────────────────────────────
   const PaginationControls = () => totalPages > 1 ? (
@@ -836,7 +1317,7 @@ export default function InventoryPage() {
           type="text"
           value={search}
           onChange={handleSearchChange}
-          placeholder={t('Search by part number, name or brand...', 'ابحث برقم القطعة، الاسم أو الماركة...')}
+          placeholder={t('Search by product code, name or brand...', 'ابحث بكود المنتج، الاسم أو الماركة...')}
           className={`w-full bg-slate-900 border border-slate-800 rounded-2xl py-3.5 ${isRTL ? 'pr-11 pl-11' : 'pl-11 pr-11'} text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition-all placeholder:text-slate-600 shadow-sm text-sm sm:text-base`}
         />
         {search && (
@@ -961,12 +1442,19 @@ export default function InventoryPage() {
           >
             <Download size={14} /> {t('Export', 'تصدير')}
           </button>
+          <button
+            onClick={openMarginModal}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-400 text-xs font-bold hover:bg-amber-500/20 transition-colors"
+            title={t('Set the profit margin applied to your products in the public marketplace', 'ضبط هامش الربح المُطبَّق على منتجاتك في السوق العام')}
+          >
+            <Percent size={14} /> {t('Profit Margin', 'هامش الربح')}
+          </button>
         </div>
         <button
           onClick={openAdd}
           className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-emerald-600 text-white text-sm font-black hover:bg-emerald-500 shadow-lg active:scale-95 transition-all"
         >
-          <Plus size={18} /> {t('Add Part', 'إضافة قطعة')}
+          <Plus size={18} /> {t('Add Product', 'إضافة منتج')}
         </button>
       </section>
 
@@ -1065,7 +1553,7 @@ export default function InventoryPage() {
       {/* ── DESKTOP: original table ── */}
       <div className="hidden md:block bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm text-right border-collapse min-w-[800px]" role="grid">
+          <table className="w-full text-sm text-right border-collapse min-w-[980px]" role="grid">
             <thead>
               <tr className="bg-slate-950/50 border-b border-slate-800">
                 <th className="p-4 w-12 text-center" scope="col">
@@ -1077,24 +1565,26 @@ export default function InventoryPage() {
                     aria-label={t('Select all', 'تحديد الكل')}
                   />
                 </th>
-                <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Part Details', 'تفاصيل القطعة')}</th>
+                <th scope="col" className="p-4 w-[64px] text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Image', 'الصورة')}</th>
+                <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Product Details', 'تفاصيل المنتج')}</th>
                 <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Vehicle / Brand', 'المركبة / الماركة')}</th>
                 <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Stock Level', 'المخزون')}</th>
                 <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Unit Price', 'سعر الوحدة')}</th>
+                <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Visibility', 'نطاق الظهور')}</th>
                 <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest text-center">{t('Actions', 'إجراء')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/50">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="p-20 text-center text-slate-500">
+                  <td colSpan={8} className="p-20 text-center text-slate-500">
                     <RefreshCw className="animate-spin mx-auto mb-4" />
                     {t('Loading...', 'جاري التحميل...')}
                   </td>
                 </tr>
               ) : pageItems.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-20 text-center text-slate-600 italic">
+                  <td colSpan={8} className="p-20 text-center text-slate-600 italic">
                     {t('No inventory records found.', 'لا توجد سجلات مخزون.')}
                   </td>
                 </tr>
@@ -1109,15 +1599,25 @@ export default function InventoryPage() {
                         className="accent-emerald-500 cursor-pointer"
                         checked={selected.has(p.id)}
                         onChange={() => toggleSelectOne(p.id)}
-                        aria-label={t(`Select ${p.part_name}`, `تحديد ${p.part_name}`)}
+                        aria-label={t(`Select ${p.product_name}`, `تحديد ${p.product_name}`)}
+                      />
+                    </td>
+                    <td className="p-4">
+                      <ProductThumb
+                        src={p.product_image_url}
+                        alt={p.product_name}
+                        sizeCls="w-12 h-12"
+                        iconSize={18}
+                        roundedCls="rounded-lg"
+                        t={t}
                       />
                     </td>
                     <td className="p-4">
                       <div className="flex flex-col">
-                        <span className="text-white font-bold text-sm mb-1">{p.part_name}</span>
+                        <span className="text-white font-bold text-sm mb-1">{p.product_name}</span>
                         <div className="flex items-center gap-2">
-                          <span className="font-mono text-[10px] text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded leading-none">{p.part_number}</span>
-                          <CopyButton text={p.part_number} />
+                          <span className="font-mono text-[10px] text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded leading-none">{p.product_code}</span>
+                          <CopyButton text={p.product_code} />
                         </div>
                       </div>
                     </td>
@@ -1137,12 +1637,15 @@ export default function InventoryPage() {
                       {p.price.toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-[10px] text-slate-500 font-normal">ر.س</span>
                     </td>
                     <td className="p-4">
+                      <VisibilityBadge scope={p.visibility_scope} t={t} />
+                    </td>
+                    <td className="p-4">
                       <div className="flex items-center justify-center gap-2">
                         <button
                           onClick={() => openEdit(p)}
                           className="p-2 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-all"
                           title={t('Edit', 'تعديل')}
-                          aria-label={t(`Edit ${p.part_name}`, `تعديل ${p.part_name}`)}
+                          aria-label={t(`Edit ${p.product_name}`, `تعديل ${p.product_name}`)}
                         >
                           <Edit2 size={16} />
                         </button>
@@ -1150,7 +1653,7 @@ export default function InventoryPage() {
                           onClick={() => handleDelete(p.id)}
                           className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
                           title={t('Delete', 'حذف')}
-                          aria-label={t(`Delete ${p.part_name}`, `حذف ${p.part_name}`)}
+                          aria-label={t(`Delete ${p.product_name}`, `حذف ${p.product_name}`)}
                         >
                           <Trash2 size={16} />
                         </button>
@@ -1171,12 +1674,12 @@ export default function InventoryPage() {
           className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200"
           role="dialog"
           aria-modal="true"
-          aria-label={editItem ? t('Edit Part', 'تعديل قطعة') : t('New Inventory Item', 'إضافة قطعة جديدة')}
+          aria-label={editItem ? t('Edit Product', 'تعديل منتج') : t('New Inventory Item', 'إضافة منتج جديد')}
         >
           <div className="bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in slide-in-from-bottom-10 sm:slide-in-from-bottom-0">
             <div className="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
               <h2 className="text-lg font-black text-white">
-                {editItem ? t('Edit Part', 'تعديل قطعة') : t('New Inventory Item', 'إضافة قطعة جديدة')}
+                {editItem ? t('Edit Product', 'تعديل منتج') : t('New Inventory Item', 'إضافة منتج جديد')}
               </h2>
               <button onClick={closeModal} className="p-2 text-slate-500 hover:text-white transition-colors" aria-label={t('Close', 'إغلاق')}>
                 <X size={20} />
@@ -1185,20 +1688,31 @@ export default function InventoryPage() {
 
             <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto no-scrollbar">
               <div className="grid grid-cols-2 gap-4">
+
+                {/* ── Product Image Picker ── */}
+                <ImagePicker
+                  value={form.product_image_url}
+                  onFileSelected={handleImageFileSelected}
+                  onRemove={handleImageRemove}
+                  uploading={imageUploading}
+                  error={imageError}
+                  t={t}
+                />
+
                 <div className="col-span-2">
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Part Name', 'اسم القطعة')}</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Product Name', 'اسم المنتج')}</label>
                   <input
                     className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-emerald-500 focus:outline-none transition-colors text-sm"
-                    value={form.part_name}
-                    onChange={e => setForm(f => ({ ...f, part_name: e.target.value }))}
+                    value={form.product_name}
+                    onChange={e => setForm(f => ({ ...f, product_name: e.target.value }))}
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Part Number', 'رقم القطعة')}</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Product Code', 'كود المنتج')}</label>
                   <input
                     className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-emerald-500 focus:outline-none transition-colors font-mono text-sm"
-                    value={form.part_number}
-                    onChange={e => setForm(f => ({ ...f, part_number: e.target.value }))}
+                    value={form.product_code}
+                    onChange={e => setForm(f => ({ ...f, product_code: e.target.value }))}
                   />
                 </div>
                 <div>
@@ -1235,7 +1749,83 @@ export default function InventoryPage() {
                     onChange={e => setForm(f => ({ ...f, price: e.target.value }))}
                   />
                 </div>
+
+                {/* ── Barcode (auto-generated when missing, read-only + copy) ── */}
+                <div className="col-span-2">
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                    {t('Barcode', 'الباركود')}
+                  </label>
+                  <div className="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3">
+                    <ScanLine size={15} className="text-slate-500 shrink-0" />
+                    <span className="flex-1 font-mono text-sm text-slate-200 truncate">
+                      {editItem
+                        ? effectiveBarcode(editItem)
+                        : (form.product_code
+                          ? generateBarcode(ownedShopId ?? 0, form.product_code)
+                          : t('Will be generated after saving', 'سيتم إنشاؤه بعد الحفظ'))}
+                    </span>
+                    {editItem && (
+                      <CopyButton text={effectiveBarcode(editItem)} />
+                    )}
+                  </div>
+                </div>
+
+                {/* ── Per-product margin override (optional) ──
+                     Empty = use the shop's default margin. A value here
+                     overrides the shop default for THIS product only —
+                     for products whose profit margin differs from the
+                     rest of the catalog. Never affects the cost price
+                     shown on this page; only affects the marketplace
+                     price shown to buyers from a different shop. ── */}
+                <div className="col-span-2">
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                    {t('Product Margin Override (%)', 'هامش ربح خاص بالمنتج (%)')}
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.1"
+                    placeholder={t(
+                      `Leave empty to use shop default (${defaultMarginPercent}%)`,
+                      `اتركه فاضياً لاستخدام هامش المحل العام (${defaultMarginPercent}%)`
+                    )}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-emerald-500 focus:outline-none transition-colors text-sm placeholder:text-slate-600"
+                    value={form.margin_percent}
+                    onChange={e => setForm(f => ({ ...f, margin_percent: e.target.value }))}
+                  />
+                </div>
+
+                {/* ── Visibility Scope Selector ── */}
+                <div className="col-span-2">
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">
+                    {t('Visibility Scope', 'نطاق الظهور')}
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {visibilityOptions.map(opt => {
+                      const isActive = form.visibility_scope === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setForm(f => ({ ...f, visibility_scope: opt.value }))}
+                          className={`flex flex-col items-center gap-1.5 px-2 py-3 rounded-xl border text-center transition-all ${
+                            isActive
+                              ? `${opt.cls} border-current shadow-md`
+                              : 'border-slate-700 bg-slate-800 text-slate-500 hover:border-slate-600 hover:text-slate-300'
+                          }`}
+                          aria-pressed={isActive}
+                        >
+                          <opt.Icon size={16} className={isActive ? '' : 'opacity-50'} />
+                          <span className="text-[10px] font-bold leading-tight">
+                            {t(opt.labelEn, opt.labelAr)}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
+
               {formError && (
                 <div className="text-red-400 text-xs bg-red-500/10 p-3 rounded-xl border border-red-500/20 flex items-center gap-2" role="alert">
                   <AlertCircle size={14} /> {formError}
@@ -1254,6 +1844,81 @@ export default function InventoryPage() {
               >
                 {saving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
                 {t('Save Details', 'حفظ التفاصيل')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Shop-level Profit Margin Modal ──
+           Sets shops.default_margin_percent. This value is applied to
+           this shop's products only when shown to a buyer from a
+           DIFFERENT shop in the public marketplace ("purchase"
+           relationship). Same-group/org transfer requests, and this
+           inventory page itself, always show the raw cost price —
+           never the marked-up price. ── */}
+      {showMarginModal && (
+        <div
+          className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200"
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('Profit Margin', 'هامش الربح')}
+        >
+          <div className="bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in slide-in-from-bottom-10 sm:slide-in-from-bottom-0">
+            <div className="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
+              <h2 className="text-lg font-black text-white flex items-center gap-2">
+                <Percent size={18} className="text-amber-400" />
+                {t('Profit Margin', 'هامش الربح')}
+              </h2>
+              <button onClick={closeMarginModal} className="p-2 text-slate-500 hover:text-white transition-colors" aria-label={t('Close', 'إغلاق')}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <p className="text-xs text-slate-400 leading-relaxed">
+                {t(
+                  'This percentage is added on top of your cost price when your products appear to buyers from other shops in the public marketplace. Your own inventory price always stays the cost price, and transfers between branches of the same group are never marked up.',
+                  'تُضاف هذي النسبة على سعر التكلفة عندما تظهر منتجاتك للمشترين من محلات أخرى في السوق العام. سعر منتجاتك في المخزون يبقى دائماً سعر التكلفة، والتحويلات بين فروع نفس المجموعة لا تُضاف عليها أي نسبة.'
+                )}
+              </p>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                  {t('Default Margin (%)', 'الهامش العام (%)')}
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.1"
+                    autoFocus
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-emerald-500 focus:outline-none transition-colors text-sm"
+                    value={marginInput}
+                    onChange={e => setMarginInput(e.target.value)}
+                  />
+                  <Percent size={14} className="absolute top-1/2 -translate-y-1/2 right-4 text-slate-500" />
+                </div>
+              </div>
+
+              {marginError && (
+                <div className="text-red-400 text-xs bg-red-500/10 p-3 rounded-xl border border-red-500/20 flex items-center gap-2" role="alert">
+                  <AlertCircle size={14} /> {marginError}
+                </div>
+              )}
+            </div>
+
+            <div className="p-5 bg-slate-950/30 flex items-center justify-end gap-3 border-t border-slate-800">
+              <button onClick={closeMarginModal} className="px-5 py-2.5 rounded-xl text-slate-400 text-sm font-bold hover:text-white transition-colors">
+                {t('Cancel', 'إلغاء')}
+              </button>
+              <button
+                onClick={handleSaveMargin}
+                disabled={marginSaving}
+                className="px-8 py-2.5 rounded-xl bg-amber-600 text-white text-sm font-black hover:bg-amber-500 transition-all disabled:opacity-50 flex items-center gap-2 active:scale-95 shadow-lg"
+              >
+                {marginSaving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
+                {t('Save', 'حفظ')}
               </button>
             </div>
           </div>

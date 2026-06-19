@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Eye, EyeOff, Truck } from "lucide-react";
 
-import { supabase } from "../lib/supabase";
+import { supabase } from "./lib/supabase";
 import { useLang } from "../context/LanguageContext";
 
 export default function LoginPage() {

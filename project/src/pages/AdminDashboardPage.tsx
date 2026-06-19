@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { useEffect, useState, useMemo, useCallback } from 'react';
+import { supabase } from './lib/supabase';
 import { useLang } from '../context/LanguageContext';
 import {
   Store,
@@ -20,6 +20,14 @@ import {
   ChevronRight,
   Zap,
   MessageCircle,
+  Building2,
+  Layers,
+  Warehouse,
+  GitBranch,
+  ArrowRightLeft,
+  Eye,
+  EyeOff,
+  Lock,
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────
@@ -54,10 +62,29 @@ type Stats = {
   completed: number;
   rejected: number;
   totalAmount: number;
+  organizations: number;
+  groups: number;
+  warehouses: number;
+  branches: number;
+  inventoryTransfers: number;
+};
+
+type GroupAnalytics = {
+  totalGroups: number;
+  shopsWithGroup: number;
+  shopsWithoutGroup: number;
+  coveragePct: number;
+};
+
+type VisibilityAnalytics = {
+  publicCount: number;
+  groupCount: number;
+  privateCount: number;
+  total: number;
 };
 
 // ─────────────────────────────────────────────────────────────
-// CONSTANTS — status colors (language-agnostic)
+// CONSTANTS
 // ─────────────────────────────────────────────────────────────
 
 const STATUS_COLOR: Record<OrderStatus, string> = {
@@ -74,37 +101,36 @@ const STATUS_DOT: Record<OrderStatus, string> = {
   rejected:  'bg-red-400',
 };
 
+const EMPTY_STATS: Stats = {
+  shops: 0, active: 0, products: 0, orders: 0, users: 0,
+  pending: 0, approved: 0, completed: 0, rejected: 0, totalAmount: 0,
+  organizations: 0, groups: 0, warehouses: 0, branches: 0, inventoryTransfers: 0,
+};
+
 // ─────────────────────────────────────────────────────────────
 // COMPONENT
 // ─────────────────────────────────────────────────────────────
 
 export default function AdminDashboardPage() {
-
-  // Task 1: connect LanguageContext
   const { t, isRTL } = useLang();
 
-  const [stats, setStats] = useState<Stats>({
-    shops: 0, active: 0, products: 0, orders: 0, users: 0,
-    pending: 0, approved: 0, completed: 0, rejected: 0, totalAmount: 0,
-  });
+  const [stats, setStats]                     = useState<Stats>(EMPTY_STATS);
+  const [recentOrders, setRecentOrders]       = useState<RichOrder[]>([]);
+  const [recentShops,  setRecentShops]        = useState<{ id: number; shop_name: string; is_active: boolean }[]>([]);
+  const [topShops,     setTopShops]           = useState<TopShop[]>([]);
+  const [groupAnalytics, setGroupAnalytics]   = useState<GroupAnalytics>({ totalGroups: 0, shopsWithGroup: 0, shopsWithoutGroup: 0, coveragePct: 0 });
+  const [visibilityAnalytics, setVisibilityAnalytics] = useState<VisibilityAnalytics>({ publicCount: 0, groupCount: 0, privateCount: 0, total: 0 });
 
-  const [recentOrders, setRecentOrders] = useState<RichOrder[]>([]);
-  const [recentShops,  setRecentShops]  = useState<{ id: number; shop_name: string; is_active: boolean }[]>([]);
-  const [topShops,     setTopShops]     = useState<TopShop[]>([]);
-
-  // Task 3: added whatsapp to newShop state
-  const [newShop, setNewShop] = useState({
-    shop_name: '',
-    phone: '',
-    city: '',
-    whatsapp: '',
-  });
-
+  const [newShop, setNewShop] = useState({ shop_name: '', phone: '', city: '', whatsapp: '' });
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => { loadDashboard(); }, []);
+  const currentDate = useMemo(() =>
+    new Date().toLocaleDateString(isRTL ? 'ar-SA' : 'en-US', {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    }),
+  [isRTL]);
 
-  const loadDashboard = async () => {
+  const loadDashboard = useCallback(async () => {
     try {
       const [
         { count: shopsCount },
@@ -112,71 +138,110 @@ export default function AdminDashboardPage() {
         { count: productsCount },
         { count: ordersCount },
         { count: usersCount },
+        { count: orgsCount },
+        { count: groupsCount },
+        { count: warehousesCount },
+        { count: branchesCount },
+        { count: transfersCount },
         { data: ordersData,   error: ordersError },
         { data: latestOrders, error: recentOrdersError },
         { data: latestShops },
         { data: allShops },
+        { data: allShopsGroupData },
+        { data: visibilityData },
       ] = await Promise.all([
         supabase.from('shops').select('*',    { count: 'exact', head: true }),
         supabase.from('shops').select('*',    { count: 'exact', head: true }).eq('is_active', true),
         supabase.from('products').select('*', { count: 'exact', head: true }),
         supabase.from('orders').select('*',   { count: 'exact', head: true }),
         supabase.from('profiles').select('*', { count: 'exact', head: true }),
-        supabase.from('orders').select('*'),
+        supabase.from('organizations').select('*', { count: 'exact', head: true }),
+        supabase.from('organization_groups').select('*', { count: 'exact', head: true }),
+        supabase.from('shops').select('*', { count: 'exact', head: true }).eq('type', 'warehouse'),
+        supabase.from('shops').select('*', { count: 'exact', head: true }).eq('type', 'branch'),
+        supabase.from('inventory_transfers').select('*', { count: 'exact', head: true }),
+        supabase.from('orders').select('status, total_amount, from_shop_id, to_shop_id'),
         supabase
           .from('orders')
-          .select(`
-            id, status, total_amount, created_at,
+          .select(`id, status, total_amount, created_at,
             from_shop:shops!orders_from_shop_id_fkey(shop_name),
-            to_shop:shops!orders_to_shop_id_fkey(shop_name)
-          `)
+            to_shop:shops!orders_to_shop_id_fkey(shop_name)`)
           .order('created_at', { ascending: false })
           .limit(10),
-        supabase.from('shops').select('*').order('created_at', { ascending: false }).limit(10),
+        supabase.from('shops').select('id, shop_name, is_active').order('created_at', { ascending: false }).limit(10),
         supabase.from('shops').select('id, shop_name'),
+        supabase.from('shops').select('id, group_id'),
+        supabase.from('products').select('visibility_scope'),
       ]);
 
-      console.log('ORDERS DATA:', ordersData);
-      console.log('ORDERS ERROR:', ordersError);
-      console.log('RECENT ORDERS ERROR:', recentOrdersError);
+      if (ordersError)       console.error('ordersError',       ordersError);
+      if (recentOrdersError) console.error('recentOrdersError', recentOrdersError);
 
-      const pending     = ordersData?.filter(o => o.status === 'pending').length   || 0;
-      const approved    = ordersData?.filter(o => o.status === 'approved').length  || 0;
-      const completed   = ordersData?.filter(o => o.status === 'completed').length || 0;
-      const rejected    = ordersData?.filter(o => o.status === 'rejected').length  || 0;
-      const totalAmount = ordersData?.reduce((sum, o) => sum + Number(o.total_amount || 0), 0) || 0;
+      const pending     = ordersData?.filter(o => o.status === 'pending').length   ?? 0;
+      const approved    = ordersData?.filter(o => o.status === 'approved').length  ?? 0;
+      const completed   = ordersData?.filter(o => o.status === 'completed').length ?? 0;
+      const rejected    = ordersData?.filter(o => o.status === 'rejected').length  ?? 0;
+      const totalAmount = ordersData?.reduce((sum, o) => sum + Number(o.total_amount ?? 0), 0) ?? 0;
 
       setStats({
-        shops: shopsCount || 0, active: activeCount || 0, products: productsCount || 0,
-        orders: ordersCount || 0, users: usersCount || 0,
+        shops:              shopsCount      ?? 0,
+        active:             activeCount     ?? 0,
+        products:           productsCount   ?? 0,
+        orders:             ordersCount     ?? 0,
+        users:              usersCount      ?? 0,
+        organizations:      orgsCount       ?? 0,
+        groups:             groupsCount     ?? 0,
+        warehouses:         warehousesCount ?? 0,
+        branches:           branchesCount   ?? 0,
+        inventoryTransfers: transfersCount  ?? 0,
         pending, approved, completed, rejected, totalAmount,
       });
 
-      setRecentOrders((latestOrders as RichOrder[]) || []);
-      setRecentShops(latestShops || []);
+      setRecentOrders((latestOrders as RichOrder[]) ?? []);
+      setRecentShops(latestShops ?? []);
 
+      // Top shops
       if (ordersData && allShops) {
         const shopMap = new Map<number, string>(
           (allShops as { id: number; shop_name: string }[]).map(s => [s.id, s.shop_name])
         );
         const countMap = new Map<number, number>();
         for (const order of ordersData) {
-          if (order.from_shop_id) countMap.set(order.from_shop_id, (countMap.get(order.from_shop_id) || 0) + 1);
-          if (order.to_shop_id)   countMap.set(order.to_shop_id,   (countMap.get(order.to_shop_id)   || 0) + 1);
+          if (order.from_shop_id) countMap.set(order.from_shop_id, (countMap.get(order.from_shop_id) ?? 0) + 1);
+          if (order.to_shop_id)   countMap.set(order.to_shop_id,   (countMap.get(order.to_shop_id)   ?? 0) + 1);
         }
         const ranked: TopShop[] = Array.from(countMap.entries())
-          .map(([id, order_count]) => ({ id, shop_name: shopMap.get(id) || `#${id}`, order_count }))
+          .map(([id, order_count]) => ({ id, shop_name: shopMap.get(id) ?? `#${id}`, order_count }))
           .sort((a, b) => b.order_count - a.order_count)
           .slice(0, 5);
         setTopShops(ranked);
       }
-    } catch (error) {
-      console.error(error);
-    }
-  };
 
-  // Task 3: createShop now saves whatsapp
-  const createShop = async () => {
+      // Group analytics
+      if (allShopsGroupData) {
+        const total          = allShopsGroupData.length;
+        const withGroup      = allShopsGroupData.filter(s => s.group_id != null).length;
+        const withoutGroup   = total - withGroup;
+        const coveragePct    = total > 0 ? Math.round((withGroup / total) * 100) : 0;
+        setGroupAnalytics({ totalGroups: groupsCount ?? 0, shopsWithGroup: withGroup, shopsWithoutGroup: withoutGroup, coveragePct });
+      }
+
+      // Visibility analytics
+      if (visibilityData) {
+        const publicCount  = visibilityData.filter(p => p.visibility_scope === 'public').length;
+        const groupCount   = visibilityData.filter(p => p.visibility_scope === 'group').length;
+        const privateCount = visibilityData.filter(p => p.visibility_scope === 'private').length;
+        setVisibilityAnalytics({ publicCount, groupCount, privateCount, total: visibilityData.length });
+      }
+
+    } catch (error) {
+      console.error('loadDashboard error:', error);
+    }
+  }, []);
+
+  useEffect(() => { loadDashboard(); }, [loadDashboard]);
+
+  const createShop = useCallback(async () => {
     if (!newShop.shop_name || !newShop.phone) {
       alert(t('Please enter the required data', 'أدخل البيانات'));
       return;
@@ -188,12 +253,12 @@ export default function AdminDashboardPage() {
         .insert({
           shop_name: newShop.shop_name,
           phone:     newShop.phone,
-          city:      newShop.city,
+          city:      newShop.city || null,
           whatsapp:  newShop.whatsapp || null,
           is_active: true,
         });
       if (error) {
-        console.error(error);
+        console.error('createShop error:', error);
         alert(t('An error occurred', 'حدث خطأ'));
         return;
       }
@@ -201,21 +266,17 @@ export default function AdminDashboardPage() {
       setNewShop({ shop_name: '', phone: '', city: '', whatsapp: '' });
       loadDashboard();
     } catch (error) {
-      console.error(error);
+      console.error('createShop exception:', error);
     } finally {
       setLoading(false);
     }
-  };
-
-  const currentDate = new Date().toLocaleDateString(isRTL ? 'ar-SA' : 'en-US', {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-  });
+  }, [newShop, t, loadDashboard]);
 
   // ─────────────────────────────────────────────────────────────
-  // SUB-COMPONENTS (defined inside to access t())
+  // SUB-COMPONENTS
   // ─────────────────────────────────────────────────────────────
 
-  const StatCard = ({
+  const StatCard = useCallback(({
     title, value, icon, accent, sub,
   }: {
     title: string; value: number | string;
@@ -236,7 +297,7 @@ export default function AdminDashboardPage() {
         <div className="text-sm text-slate-400 mt-1">{title}</div>
       </div>
     </div>
-  );
+  ), [isRTL]);
 
   const StatusPill = ({
     label, value, color, icon,
@@ -252,13 +313,14 @@ export default function AdminDashboardPage() {
     </div>
   );
 
-  const QuickAction = ({
+  const QuickAction = useCallback(({
     label, desc, icon, accent, onClick,
   }: {
     label: string; desc: string; icon: React.ReactNode; accent: string; onClick?: () => void;
   }) => (
     <button
       onClick={onClick}
+      aria-label={label}
       className="group text-start w-full bg-slate-900 border border-slate-800 rounded-3xl p-5 hover:border-slate-600 hover:scale-[1.03] hover:bg-slate-800/70 transition-all duration-300"
     >
       <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${accent} bg-opacity-15 border border-white/5 mb-3`}>
@@ -270,7 +332,7 @@ export default function AdminDashboardPage() {
         <ChevronRight size={14} className={`text-slate-600 group-hover:text-slate-400 transition-colors ${isRTL ? 'rotate-180' : ''}`} />
       </div>
     </button>
-  );
+  ), [isRTL]);
 
   // ─────────────────────────────────────────────────────────────
   // RENDER
@@ -291,7 +353,6 @@ export default function AdminDashboardPage() {
         }}
       />
 
-      {/* Task 2: max-w-[1800px] instead of max-w-screen-xl */}
       <div className="relative z-10 max-w-[1800px] mx-auto p-6 lg:p-8 space-y-8">
 
         {/* ══════ SECTION 1 — HEADER ══════ */}
@@ -369,6 +430,49 @@ export default function AdminDashboardPage() {
           </div>
         </section>
 
+        {/* ══════ SECTION 2B — EXTENDED KPI CARDS ══════ */}
+        <section>
+          <div className="flex items-center gap-2 mb-5">
+            <Layers size={16} className="text-violet-400" />
+            <h2 className="text-sm font-semibold text-slate-400 tracking-wide uppercase">
+              {t('Platform Structure', 'هيكل المنصة')}
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+            <StatCard
+              title={t('Organizations', 'المنظمات')}
+              value={stats.organizations}
+              accent="bg-cyan-500"
+              icon={<Building2 size={18} className="text-cyan-400" />}
+            />
+            <StatCard
+              title={t('Groups', 'المجموعات')}
+              value={stats.groups}
+              accent="bg-indigo-500"
+              icon={<Layers size={18} className="text-indigo-400" />}
+            />
+            <StatCard
+              title={t('Warehouses', 'المستودعات')}
+              value={stats.warehouses}
+              accent="bg-orange-500"
+              icon={<Warehouse size={18} className="text-orange-400" />}
+            />
+            <StatCard
+              title={t('Branches', 'الفروع')}
+              value={stats.branches}
+              accent="bg-teal-500"
+              icon={<GitBranch size={18} className="text-teal-400" />}
+            />
+            <StatCard
+              title={t('Inventory Transfers', 'تحويلات المخزون')}
+              value={stats.inventoryTransfers}
+              accent="bg-fuchsia-500"
+              icon={<ArrowRightLeft size={18} className="text-fuchsia-400" />}
+            />
+          </div>
+        </section>
+
         {/* ══════ ORDER STATUS BREAKDOWN + REVENUE ══════ */}
         <section className="grid md:grid-cols-2 gap-4">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6">
@@ -436,6 +540,169 @@ export default function AdminDashboardPage() {
                 <div className="text-lg font-bold text-white">
                   {stats.orders > 0 ? `${Math.round((stats.rejected / stats.orders) * 100)}%` : '—'}
                 </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ══════ SECTION — GROUP OVERVIEW ══════ */}
+        <section className="bg-slate-900 border border-slate-800 rounded-3xl p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2">
+              <Layers size={16} className="text-indigo-400" />
+              <h3 className="font-bold text-base">{t('Group Overview', 'نظرة عامة على المجموعات')}</h3>
+            </div>
+            <span className="text-xs text-slate-500 border border-slate-700 rounded-full px-2.5 py-1">
+              {t('Organization Groups', 'مجموعات المنظمات')}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Total Groups */}
+            <div className="bg-slate-950/60 border border-slate-800/60 rounded-2xl p-4 hover:border-slate-700/60 transition-colors">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-8 h-8 rounded-xl bg-indigo-500/15 border border-indigo-500/20 flex items-center justify-center">
+                  <Layers size={14} className="text-indigo-400" />
+                </div>
+                <span className="text-xs text-slate-400 font-medium">{t('Total Groups', 'إجمالي المجموعات')}</span>
+              </div>
+              <div className="text-2xl font-bold text-white tabular-nums">
+                {groupAnalytics.totalGroups.toLocaleString(isRTL ? 'ar-SA' : 'en-US')}
+              </div>
+            </div>
+
+            {/* Shops with group */}
+            <div className="bg-slate-950/60 border border-slate-800/60 rounded-2xl p-4 hover:border-slate-700/60 transition-colors">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/20 flex items-center justify-center">
+                  <Store size={14} className="text-emerald-400" />
+                </div>
+                <span className="text-xs text-slate-400 font-medium">{t('Shops in Groups', 'محلات في مجموعات')}</span>
+              </div>
+              <div className="text-2xl font-bold text-emerald-400 tabular-nums">
+                {groupAnalytics.shopsWithGroup.toLocaleString(isRTL ? 'ar-SA' : 'en-US')}
+              </div>
+            </div>
+
+            {/* Shops without group */}
+            <div className="bg-slate-950/60 border border-slate-800/60 rounded-2xl p-4 hover:border-slate-700/60 transition-colors">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/15 border border-amber-500/20 flex items-center justify-center">
+                  <Store size={14} className="text-amber-400" />
+                </div>
+                <span className="text-xs text-slate-400 font-medium">{t('Shops Without Group', 'محلات بدون مجموعة')}</span>
+              </div>
+              <div className="text-2xl font-bold text-amber-400 tabular-nums">
+                {groupAnalytics.shopsWithoutGroup.toLocaleString(isRTL ? 'ar-SA' : 'en-US')}
+              </div>
+            </div>
+
+            {/* Coverage */}
+            <div className="bg-slate-950/60 border border-slate-800/60 rounded-2xl p-4 hover:border-slate-700/60 transition-colors">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-8 h-8 rounded-xl bg-blue-500/15 border border-blue-500/20 flex items-center justify-center">
+                  <TrendingUp size={14} className="text-blue-400" />
+                </div>
+                <span className="text-xs text-slate-400 font-medium">{t('Group Coverage', 'تغطية المجموعات')}</span>
+              </div>
+              <div className="text-2xl font-bold text-blue-400 tabular-nums">
+                {groupAnalytics.coveragePct}%
+              </div>
+              <div className="mt-2 w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-blue-400/70 transition-all duration-700"
+                  style={{ width: `${groupAnalytics.coveragePct}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ══════ SECTION — PRODUCT VISIBILITY ANALYTICS ══════ */}
+        <section className="bg-slate-900 border border-slate-800 rounded-3xl p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2">
+              <Eye size={16} className="text-violet-400" />
+              <h3 className="font-bold text-base">{t('Product Visibility Overview', 'نظرة عامة على رؤية المنتجات')}</h3>
+            </div>
+            <span className="text-xs text-slate-500 border border-slate-700 rounded-full px-2.5 py-1">
+              {t('Visibility Scope', 'نطاق الرؤية')}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* Public */}
+            <div className="relative bg-slate-950/60 border border-slate-800/60 rounded-2xl p-5 overflow-hidden hover:border-emerald-500/30 transition-colors group">
+              <div className="absolute -top-4 -right-4 w-16 h-16 rounded-full bg-emerald-500 opacity-5 blur-xl" />
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/20 flex items-center justify-center">
+                  <Eye size={15} className="text-emerald-400" />
+                </div>
+                <span className="text-sm font-semibold text-slate-300">{t('Public Products', 'منتجات عامة')}</span>
+              </div>
+              <div className="text-3xl font-black text-emerald-400 tabular-nums">
+                {visibilityAnalytics.publicCount.toLocaleString(isRTL ? 'ar-SA' : 'en-US')}
+              </div>
+              <div className="mt-2 text-xs text-slate-500">
+                {visibilityAnalytics.total > 0
+                  ? `${Math.round((visibilityAnalytics.publicCount / visibilityAnalytics.total) * 100)}% ${t('of total', 'من الإجمالي')}`
+                  : '—'}
+              </div>
+              <div className="mt-3 w-full h-1 bg-slate-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-emerald-400/60 transition-all duration-700"
+                  style={{ width: visibilityAnalytics.total > 0 ? `${Math.round((visibilityAnalytics.publicCount / visibilityAnalytics.total) * 100)}%` : '0%' }}
+                />
+              </div>
+            </div>
+
+            {/* Group */}
+            <div className="relative bg-slate-950/60 border border-slate-800/60 rounded-2xl p-5 overflow-hidden hover:border-indigo-500/30 transition-colors group">
+              <div className="absolute -top-4 -right-4 w-16 h-16 rounded-full bg-indigo-500 opacity-5 blur-xl" />
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-9 h-9 rounded-xl bg-indigo-500/15 border border-indigo-500/20 flex items-center justify-center">
+                  <Layers size={15} className="text-indigo-400" />
+                </div>
+                <span className="text-sm font-semibold text-slate-300">{t('Group Products', 'منتجات المجموعة')}</span>
+              </div>
+              <div className="text-3xl font-black text-indigo-400 tabular-nums">
+                {visibilityAnalytics.groupCount.toLocaleString(isRTL ? 'ar-SA' : 'en-US')}
+              </div>
+              <div className="mt-2 text-xs text-slate-500">
+                {visibilityAnalytics.total > 0
+                  ? `${Math.round((visibilityAnalytics.groupCount / visibilityAnalytics.total) * 100)}% ${t('of total', 'من الإجمالي')}`
+                  : '—'}
+              </div>
+              <div className="mt-3 w-full h-1 bg-slate-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-indigo-400/60 transition-all duration-700"
+                  style={{ width: visibilityAnalytics.total > 0 ? `${Math.round((visibilityAnalytics.groupCount / visibilityAnalytics.total) * 100)}%` : '0%' }}
+                />
+              </div>
+            </div>
+
+            {/* Private */}
+            <div className="relative bg-slate-950/60 border border-slate-800/60 rounded-2xl p-5 overflow-hidden hover:border-rose-500/30 transition-colors group">
+              <div className="absolute -top-4 -right-4 w-16 h-16 rounded-full bg-rose-500 opacity-5 blur-xl" />
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-9 h-9 rounded-xl bg-rose-500/15 border border-rose-500/20 flex items-center justify-center">
+                  <Lock size={15} className="text-rose-400" />
+                </div>
+                <span className="text-sm font-semibold text-slate-300">{t('Private Products', 'منتجات خاصة')}</span>
+              </div>
+              <div className="text-3xl font-black text-rose-400 tabular-nums">
+                {visibilityAnalytics.privateCount.toLocaleString(isRTL ? 'ar-SA' : 'en-US')}
+              </div>
+              <div className="mt-2 text-xs text-slate-500">
+                {visibilityAnalytics.total > 0
+                  ? `${Math.round((visibilityAnalytics.privateCount / visibilityAnalytics.total) * 100)}% ${t('of total', 'من الإجمالي')}`
+                  : '—'}
+              </div>
+              <div className="mt-3 w-full h-1 bg-slate-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-rose-400/60 transition-all duration-700"
+                  style={{ width: visibilityAnalytics.total > 0 ? `${Math.round((visibilityAnalytics.privateCount / visibilityAnalytics.total) * 100)}%` : '0%' }}
+                />
               </div>
             </div>
           </div>
@@ -516,8 +783,7 @@ export default function AdminDashboardPage() {
                 <div className="absolute start-[18px] top-2 bottom-2 w-px bg-slate-800" />
                 <div className="space-y-4">
                   {recentOrders.map((order) => {
-                    const status = (order.status || 'pending') as OrderStatus;
-                    // Task 4: show "Unknown Shop" instead of —
+                    const status = (order.status ?? 'pending') as OrderStatus;
                     const unknownLabel = t('Unknown Shop', 'محل غير معروف');
                     return (
                       <div key={order.id} className="flex gap-4 items-start">
@@ -525,7 +791,7 @@ export default function AdminDashboardPage() {
                           <div className={`w-3 h-3 rounded-full ${STATUS_DOT[status]} ring-2 ring-slate-900`} />
                         </div>
                         <div className="flex-1 bg-slate-950/60 rounded-2xl px-4 py-3 border border-slate-800/60 hover:border-slate-700/60 transition-colors">
-                          <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1">
                             <span className="font-mono text-slate-500 text-xs">
                               #{String(order.id).padStart(5, '0')}
                             </span>
@@ -541,13 +807,13 @@ export default function AdminDashboardPage() {
                               </span>
                             </div>
                           </div>
-                          <div className="flex items-center gap-1.5 text-xs">
+                          <div className="flex items-center gap-1.5 text-xs flex-wrap">
                             <span className="text-blue-400 font-medium truncate max-w-[100px]">
-                              {order.from_shop?.shop_name || unknownLabel}
+                              {order.from_shop?.shop_name ?? unknownLabel}
                             </span>
                             <ArrowLeftRight size={10} className="shrink-0 text-slate-600" />
                             <span className="text-emerald-400 font-medium truncate max-w-[100px]">
-                              {order.to_shop?.shop_name || unknownLabel}
+                              {order.to_shop?.shop_name ?? unknownLabel}
                             </span>
                           </div>
                         </div>
@@ -696,7 +962,6 @@ export default function AdminDashboardPage() {
             </div>
           </div>
 
-          {/* Task 3: 4-column grid with WhatsApp field */}
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-5">
             <div className="space-y-1.5">
               <label className="text-xs text-slate-400 font-medium">{t('Shop Name', 'اسم المحل')} *</label>
@@ -704,7 +969,8 @@ export default function AdminDashboardPage() {
                 type="text"
                 placeholder={isRTL ? 'مثال: محل أبو أحمد' : 'e.g. Ahmed Auto Parts'}
                 value={newShop.shop_name}
-                onChange={(e) => setNewShop({ ...newShop, shop_name: e.target.value })}
+                onChange={(e) => setNewShop(prev => ({ ...prev, shop_name: e.target.value }))}
+                aria-label={t('Shop Name', 'اسم المحل')}
                 className="w-full h-12 rounded-2xl bg-slate-950 border border-slate-700 px-4 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 transition-all"
               />
             </div>
@@ -715,13 +981,13 @@ export default function AdminDashboardPage() {
                 type="text"
                 placeholder="05xxxxxxxx"
                 value={newShop.phone}
-                onChange={(e) => setNewShop({ ...newShop, phone: e.target.value })}
+                onChange={(e) => setNewShop(prev => ({ ...prev, phone: e.target.value }))}
+                aria-label={t('Mobile Number', 'رقم الجوال')}
                 className="w-full h-12 rounded-2xl bg-slate-950 border border-slate-700 px-4 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 transition-all"
                 dir="ltr"
               />
             </div>
 
-            {/* Task 3: WhatsApp field */}
             <div className="space-y-1.5">
               <label className="text-xs text-slate-400 font-medium flex items-center gap-1.5">
                 <MessageCircle size={12} className="text-emerald-500" />
@@ -731,7 +997,8 @@ export default function AdminDashboardPage() {
                 type="text"
                 placeholder="05xxxxxxxx"
                 value={newShop.whatsapp}
-                onChange={(e) => setNewShop({ ...newShop, whatsapp: e.target.value })}
+                onChange={(e) => setNewShop(prev => ({ ...prev, whatsapp: e.target.value }))}
+                aria-label={t('WhatsApp', 'واتساب')}
                 className="w-full h-12 rounded-2xl bg-slate-950 border border-slate-700 px-4 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500/40 focus:ring-1 focus:ring-emerald-500/20 transition-all"
                 dir="ltr"
               />
@@ -743,7 +1010,8 @@ export default function AdminDashboardPage() {
                 type="text"
                 placeholder={isRTL ? 'مثال: الرياض' : 'e.g. Riyadh'}
                 value={newShop.city}
-                onChange={(e) => setNewShop({ ...newShop, city: e.target.value })}
+                onChange={(e) => setNewShop(prev => ({ ...prev, city: e.target.value }))}
+                aria-label={t('City', 'المدينة')}
                 className="w-full h-12 rounded-2xl bg-slate-950 border border-slate-700 px-4 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 transition-all"
               />
             </div>
@@ -752,6 +1020,7 @@ export default function AdminDashboardPage() {
           <button
             onClick={createShop}
             disabled={loading}
+            aria-label={t('Create Shop', 'إنشاء محل')}
             className="h-12 px-8 rounded-2xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed font-semibold text-sm transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] flex items-center gap-2"
           >
             {loading ? (

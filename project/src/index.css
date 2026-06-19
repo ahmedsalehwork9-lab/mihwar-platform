@@ -31,14 +31,23 @@
   .animate-fade-in {
     animation: fadeIn 0.2s ease-out;
   }
+
+  /* Hide scrollbar while keeping scroll functionality */
+  .no-scrollbar {
+    -ms-overflow-style: none;   /* IE / Edge */
+    scrollbar-width: none;      /* Firefox */
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;              /* Chrome / Safari / Opera */
+  }
 }
 
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Custom scrollbar */
+/* ── Custom scrollbar (global) ─────────────────────────────── */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;

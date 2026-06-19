@@ -242,10 +242,44 @@ export function useOrderDetails({ t, lang, setGlobalError }: UseOrderDetailsArgs
       setTimeout(proceed, 2000);
     };
 
+    // waitForQRThenProceed:
+    // qrcodejs generates the QR synchronously once its <script> loads.
+    // The script is loaded from cdnjs via a <script src="..."> tag in the
+    // print HTML. We poll for the QR canvas/img to appear inside #qr-verify
+    // (max 3s) before proceeding to the fonts+images wait, so the QR element
+    // is always present in win.document.images when that wait runs.
+    const waitForQRThenProceed = () => {
+      const maxWait  = 3000;
+      const interval = 80;
+      let   elapsed  = 0;
+      let   done     = false;
+
+      const proceed = () => {
+        if (done) return;
+        done = true;
+        waitForFontsThenImagesThenPrint();
+      };
+
+      const check = () => {
+        if (done) return;
+        const qrEl = win.document.getElementById("qr-verify");
+        // qrcodejs appends a <canvas> or <img> inside the target div
+        if (qrEl && (qrEl.querySelector("canvas") || qrEl.querySelector("img[src]"))) {
+          proceed();
+          return;
+        }
+        elapsed += interval;
+        if (elapsed >= maxWait) { proceed(); return; }
+        setTimeout(check, interval);
+      };
+
+      setTimeout(check, interval);
+    };
+
     if (win.document.readyState === "complete") {
-      waitForFontsThenImagesThenPrint();
+      waitForQRThenProceed();
     } else {
-      win.addEventListener("load", waitForFontsThenImagesThenPrint, { once: true });
+      win.addEventListener("load", waitForQRThenProceed, { once: true });
     }
   }, [detailOrder, detailItems, approvedQtyMap, lang]);
 

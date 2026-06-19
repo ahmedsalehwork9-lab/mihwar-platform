@@ -97,7 +97,7 @@ import type { Order, OrderItem, OrderStatus } from "../types";
 import { escapeHTML } from "../utils/orderHelpers";
 import { calculateApprovedTotal } from "../utils/calculateApprovedTotal";
 import { buildDocumentNumber } from "../utils/buildDocumentNumber";
-import { buildVerifyUrl, generateVerificationQR } from "../utils/generateVerificationQR";
+import { buildVerifyUrl } from "../utils/generateVerificationQR";
 
 // -----------------------------------------------------------
 // Status badge — Pending / Approved / Partially Approved / Cancelled
@@ -178,7 +178,7 @@ export function buildTransferOrderPrintHTML(order: Order, items: OrderItem[], pr
   const docNumber       = buildDocumentNumber(order.id, "TRANSFER");
   const subtotal        = calculateApprovedTotal(items);
   const verifyUrl       = buildVerifyUrl(order.id);
-  const qrUrl           = generateVerificationQR(verifyUrl);
+  // qrUrl removed: QR now generated locally via qrcodejs CDN in the print window
   const hasAnyApproved  = items.some(i => i.approved_quantity != null && i.approved_quantity > 0);
   const hasAnyRemaining = items.some(i => displayRemainingQty(i) > 0);
   const rows            = buildItemRows(items, hasAnyApproved, hasAnyRemaining);
@@ -592,7 +592,11 @@ body{font-family:'IBM Plex Sans Arabic',Tahoma,Arial,sans-serif;font-size:12px;c
       <span style="font-size:7px;font-weight:500;color:#FED7AA;display:block;margin-top:1px;">${L.verifySub}</span>
     </div>
     <div style="background:#FFF7ED;padding:11px 10px;display:flex;flex-direction:column;align-items:center;flex:1;">
-      <div style="background:#fff;border:2px solid #FED7AA;border-radius:10px;padding:7px;"><img src="${qrUrl}" alt="QR" style="width:108px;height:108px;display:block;"/></div>
+      <div style="background:#fff;border:2px solid #FED7AA;border-radius:10px;padding:7px;">
+        <div id="qr-verify" style="width:108px;height:108px;display:flex;align-items:center;justify-content:center;">
+          <span style="font-size:9px;color:#D97706;">loading...</span>
+        </div>
+      </div>
       <span style="display:inline-flex;align-items:center;gap:3px;margin-top:7px;padding:2px 8px;border-radius:20px;background:#DCFCE7;color:#166534;font-size:7.5px;font-weight:700;">${L.verifyBadge}</span>
       <div style="width:100%;margin-top:8px;border-top:1px solid #FED7AA;padding-top:7px;">
         <div style="display:flex;justify-content:space-between;gap:4px;margin-bottom:4px;">
@@ -644,5 +648,26 @@ body{font-family:'IBM Plex Sans Arabic',Tahoma,Arial,sans-serif;font-size:12px;c
   </div>
 </div>
 
-</div></body></html>`;
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+(function() {
+  var el = document.getElementById("qr-verify");
+  if (!el) return;
+  el.innerHTML = "";
+  try {
+    new QRCode(el, {
+      text: "${verifyUrl}",
+      width: 108,
+      height: 108,
+      colorDark: "#1E3A5F",
+      colorLight: "#ffffff",
+      correctLevel: QRCode.CorrectLevel.H
+    });
+  } catch(e) {
+    el.innerHTML = "<span style=\"font-size:9px;color:#DC2626;\">QR Error</span>";
+  }
+})();
+</script>
+</body></html>`;
 }

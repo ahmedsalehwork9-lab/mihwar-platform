@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 
 import { supabase } from '../pages/lib/supabase';
+import NotificationBell from '../context/NotificationBell';
 import { useAuth } from '../context/AuthContext';
 import { useLang } from '../context/LanguageContext';
 
@@ -537,6 +538,8 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
           </h1>
 
           <div className="flex items-center gap-3">
+            {/* Notification Bell */}
+            <NotificationBell />
             <div className="hidden md:flex items-center gap-2 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-xl text-xs text-slate-300">
               <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               {isAdmin

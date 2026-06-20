@@ -1,5 +1,6 @@
+
 {
-    "name": "محور — منصة التجارة B2B",
+    "name": "محور",
     "short_name": "محور",
     "description": "منصة ذكية لإدارة المخزون والطلبات بين المحلات",
     "start_url": "/",
@@ -9,7 +10,10 @@
     "orientation": "portrait-primary",
     "lang": "ar",
     "dir": "rtl",
-    "categories": ["business", "productivity"],
+    "categories": [
+      "business",
+      "productivity"
+    ],
     "icons": [
       {
         "src": "/icon-192.png",
@@ -23,20 +27,5 @@
         "type": "image/png",
         "purpose": "any maskable"
       }
-    ],
-    "shortcuts": [
-      {
-        "name": "المخزون",
-        "short_name": "المخزون",
-        "url": "/",
-        "description": "عرض المخزون"
-      },
-      {
-        "name": "الطلبات",
-        "short_name": "الطلبات",
-        "url": "/",
-        "description": "عرض الطلبات"
-      }
     ]
   }
-  

@@ -157,9 +157,21 @@ export default function App() {
           }
         />
 
-        {/* ── Shop public page — scanned QR lands here ──────────────── */}
+        {/* ── Shop public page — numeric ID ────────────────────────── */}
         <Route
           path="/shop/:shopId"
+          element={
+            <LanguageProvider>
+              <Suspense fallback={<PageLoader />}>
+                <ShopPublicPage />
+              </Suspense>
+            </LanguageProvider>
+          }
+        />
+
+        {/* ── Shop public page — custom slug ────────────────────────── */}
+        <Route
+          path="/s/:slug"
           element={
             <LanguageProvider>
               <Suspense fallback={<PageLoader />}>

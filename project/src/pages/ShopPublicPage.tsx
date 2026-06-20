@@ -164,8 +164,8 @@ async function recordQRScan(shopId: number): Promise<void> {
 }
 
 export default function ShopPublicPage() {
-  const { shopId } = useParams<{ shopId: string }>();
-  const id = Number(shopId);
+  const { shopId, slug } = useParams<{ shopId?: string; slug?: string }>();
+  const id = shopId ? Number(shopId) : null;
 
   const [shop, setShop]         = useState<Shop | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
@@ -182,27 +182,36 @@ export default function ShopPublicPage() {
   // ── Fetch shop + products ─────────────────────────────────
 
   useEffect(() => {
-    if (!id || isNaN(id)) { setError('رابط المحل غير صحيح'); setLoading(false); return; }
+    if (!id && !slug) { setError('رابط المحل غير صحيح'); setLoading(false); return; }
+    if (id !== null && isNaN(id)) { setError('رابط المحل غير صحيح'); setLoading(false); return; }
 
     (async () => {
       try {
-        const { data: shopData, error: shopErr } = await supabase
+        // Support both /shop/:shopId and /s/:slug
+        let shopQuery = supabase
           .from('shops')
-          .select('id, shop_name, phone, whatsapp, google_maps_url, logo_url, visibility_mode, default_margin_percent')
-          .eq('id', id)
-          .eq('is_active', true)
-          .single();
+          .select('id, shop_name, phone, whatsapp, google_maps_url, logo_url, visibility_mode, default_margin_percent, slug')
+          .eq('is_active', true);
+
+        if (slug) {
+          shopQuery = shopQuery.eq('slug', slug);
+        } else {
+          shopQuery = shopQuery.eq('id', id!);
+        }
+
+        const { data: shopData, error: shopErr } = await shopQuery.single();
 
         if (shopErr || !shopData) throw new Error('المحل غير موجود أو غير نشط');
         setShop(shopData as Shop);
 
         // تسجيل المسحة بعد التحقق من وجود المحل
-        void recordQRScan(id);
+        void recordQRScan((shopData as any).id);
 
+        const resolvedShopId = (shopData as any).id;
         const { data: prodsData, error: prodsErr } = await supabase
           .from('products')
           .select('id, product_name, product_code, brand, model, quantity, price, product_image_url, visibility_scope')
-          .eq('shop_id', id)
+          .eq('shop_id', resolvedShopId)
           .eq('visibility_scope', 'public')
           .gt('quantity', 0)
           .order('created_at', { ascending: false });
@@ -215,7 +224,7 @@ export default function ShopPublicPage() {
         setLoading(false);
       }
     })();
-  }, [id]);
+  }, [id, slug]);
 
   // ── Display price (public viewers always see margin-adjusted price) ──
 

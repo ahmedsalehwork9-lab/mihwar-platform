@@ -319,7 +319,7 @@ export default function ShopPublicPage() {
 
       {/* ── Header ── */}
       <header className="sticky top-0 z-40 bg-slate-950/95 backdrop-blur-md border-b border-slate-800">
-        <div className="max-w-3xl mx-auto px-4 py-3">
+        <div className="max-w-6xl mx-auto px-4 py-3">
 
           {/* Shop identity */}
           <div className="flex items-center gap-3 mb-3">
@@ -382,8 +382,11 @@ export default function ShopPublicPage() {
         </div>
       </header>
 
-      {/* ── Products Grid ── */}
-      <main className="max-w-3xl mx-auto px-4 py-4" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 8rem)' }}>
+      {/* ── Main layout: products + desktop cart sidebar ── */}
+      <div className="max-w-6xl mx-auto px-4 py-4 flex gap-6 items-start">
+
+      {/* Products column */}
+      <main className="flex-1 min-w-0" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 8rem)' }}>
 
         {/* Stats strip */}
         {!loading && products.length > 0 && (
@@ -483,9 +486,55 @@ export default function ShopPublicPage() {
         )}
       </main>
 
-      {/* ── Floating cart button ── */}
+      </main>
+
+      {/* ── Desktop Cart Sidebar ── */}
       {cart.length > 0 && (
-        <div className={`fixed z-40 ${isRTL ? 'left-4' : 'right-4'}`} style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.5rem)' }}>
+        <aside className="hidden lg:flex flex-col w-80 shrink-0 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden sticky top-4 h-fit" dir={isRTL ? 'rtl' : 'ltr'}>
+          {/* Header */}
+          <div className="flex items-center gap-2 px-4 py-3.5 border-b border-slate-800">
+            <ShoppingCart size={16} className="text-emerald-400 shrink-0" />
+            <h2 className="text-white font-black text-sm">{t('Your Order', 'طلبك')}</h2>
+            <span className="mr-auto bg-emerald-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full tabular-nums">
+              {cartItemCount}
+            </span>
+          </div>
+          {/* Items */}
+          <div className="flex-1 overflow-y-auto overscroll-contain px-4 max-h-[50vh]">
+            {cart.map(item => (
+              <CartRow key={item.id} item={item}
+                onRemove={() => removeFromCart(item.id)}
+                onQty={qty => setQty(item.id, qty)}
+              />
+            ))}
+          </div>
+          {/* Footer */}
+          <div className="px-4 py-4 border-t border-slate-800 space-y-3">
+            <div className="flex items-center justify-between bg-slate-800/60 border border-slate-700/50 rounded-xl px-4 py-3">
+              <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wide">{t('Total', 'الإجمالي')}</span>
+              <span className="text-xl font-black text-white tabular-nums">
+                {cartTotal.toLocaleString()} <span className="text-xs font-normal text-slate-400">SAR</span>
+              </span>
+            </div>
+            {waNum && (
+              <button onClick={sendWhatsApp}
+                className="w-full bg-emerald-600 hover:bg-emerald-500 active:scale-[0.99] text-white font-black rounded-xl shadow-lg shadow-emerald-900/30 flex items-center justify-center gap-2 transition-all h-12 text-sm">
+                <MessageCircle size={16} />
+                {t('Send Order via WhatsApp', 'إرسال الطلب عبر واتساب')}
+              </button>
+            )}
+            <p className="text-center text-[10px] text-slate-600">
+              {t('Powered by', 'مشغّل بواسطة')} <span className="text-slate-500 font-bold">MIHWAR</span>
+            </p>
+          </div>
+        </aside>
+      )}
+
+      </div>{/* end main layout flex */}
+
+      {/* ── Floating cart button — mobile only ── */}
+      {cart.length > 0 && (
+        <div className={`fixed z-40 lg:hidden ${isRTL ? 'left-4' : 'right-4'}`} style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.5rem)' }}>
           <button onClick={() => setShowCart(true)}
             className="relative bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-2xl shadow-2xl shadow-blue-900/50 flex items-center gap-2.5 px-4 transition-all h-14">
             <span className="absolute -top-2 -right-2 bg-emerald-500 text-white text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center tabular-nums shadow">
@@ -502,7 +551,7 @@ export default function ShopPublicPage() {
 
       {/* ── Cart Sheet ── */}
       {showCart && (
-        <div className="fixed inset-0 z-50 flex items-end" dir={isRTL ? 'rtl' : 'ltr'}>
+        <div className="fixed inset-0 z-50 flex items-end lg:hidden" dir={isRTL ? 'rtl' : 'ltr'}>
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowCart(false)} />
           <div className="relative w-full bg-slate-900 rounded-t-3xl border-t border-slate-800 shadow-2xl flex flex-col overflow-hidden" style={{ maxHeight: '90vh' }}>
 

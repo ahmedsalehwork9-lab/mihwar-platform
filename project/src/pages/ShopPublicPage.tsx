@@ -488,7 +488,7 @@ export default function ShopPublicPage() {
 
       {/* ── Desktop Cart Sidebar ── */}
       {cart.length > 0 && (
-        <aside className="hidden lg:flex flex-col w-80 shrink-0 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden sticky top-4 h-fit" dir={isRTL ? 'rtl' : 'ltr'}>
+        <aside className="hidden md:flex flex-col w-80 shrink-0 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden sticky top-4 h-fit" dir={isRTL ? 'rtl' : 'ltr'}>
           {/* Header */}
           <div className="flex items-center gap-2 px-4 py-3.5 border-b border-slate-800">
             <ShoppingCart size={16} className="text-emerald-400 shrink-0" />
@@ -532,7 +532,7 @@ export default function ShopPublicPage() {
 
       {/* ── Floating cart button — mobile only ── */}
       {cart.length > 0 && (
-        <div className={`fixed z-40 lg:hidden ${isRTL ? 'left-4' : 'right-4'}`} style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.5rem)' }}>
+        <div className={`fixed z-40 md:hidden ${isRTL ? 'left-4' : 'right-4'}`} style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.5rem)' }}>
           <button onClick={() => setShowCart(true)}
             className="relative bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-2xl shadow-2xl shadow-blue-900/50 flex items-center gap-2.5 px-4 transition-all h-14">
             <span className="absolute -top-2 -right-2 bg-emerald-500 text-white text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center tabular-nums shadow">
@@ -549,7 +549,7 @@ export default function ShopPublicPage() {
 
       {/* ── Cart Sheet ── */}
       {showCart && (
-        <div className="fixed inset-0 z-50 flex items-end lg:hidden" dir={isRTL ? 'rtl' : 'ltr'}>
+        <div className="fixed inset-0 z-50 flex items-end md:hidden" dir={isRTL ? 'rtl' : 'ltr'}>
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowCart(false)} />
           <div className="relative w-full bg-slate-900 rounded-t-3xl border-t border-slate-800 shadow-2xl flex flex-col overflow-hidden" style={{ maxHeight: '90vh' }}>
 

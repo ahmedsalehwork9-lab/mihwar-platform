@@ -1,9 +1,40 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
 
-// https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      // Use the sw.js we wrote manually in public/
+      strategies: 'injectManifest',
+      srcDir: 'public',
+      filename: 'sw.js',
+      manifest: {
+        name: 'محور — منصة التجارة B2B',
+        short_name: 'محور',
+        description: 'منصة ذكية لإدارة المخزون والطلبات بين المحلات',
+        theme_color: '#0f172a',
+        background_color: '#020617',
+        display: 'standalone',
+        orientation: 'portrait-primary',
+        lang: 'ar',
+        dir: 'rtl',
+        start_url: '/',
+        icons: [
+          { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+          { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+        ],
+      },
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+      },
+      devOptions: {
+        enabled: false, // disable in dev to avoid confusion
+      },
+    }),
+  ],
   optimizeDeps: {
     exclude: ['lucide-react'],
   },
@@ -11,13 +42,9 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          // React core — changes least often, cached longest
-          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-          // Supabase client
-          'vendor-supabase': ['@supabase/supabase-js'],
-          // Icons — large library, isolated so it doesn't bust other chunks
-          'vendor-icons': ['lucide-react'],
-          // Admin pages — only loaded by admins
+          'vendor-react':   ['react', 'react-dom', 'react-router-dom'],
+          'vendor-supabase':['@supabase/supabase-js'],
+          'vendor-icons':   ['lucide-react'],
           'chunk-admin': [
             './src/pages/AdminDashboardPage',
             './src/pages/ShopsPage',
@@ -28,11 +55,7 @@ export default defineConfig({
             './src/pages/GlobalOrdersPage',
             './src/pages/OrganizationsPage',
           ],
-          // Orders subsystem — heaviest feature, isolated
-          'chunk-orders': [
-            './src/pages/orders/OrdersPage',
-          ],
-          // Shop user pages
+          'chunk-orders': ['./src/pages/orders/OrdersPage'],
           'chunk-shop': [
             './src/pages/DashboardPage',
             './src/pages/SearchPage',
@@ -41,7 +64,6 @@ export default defineConfig({
             './src/pages/AlertsPage',
             './src/pages/ShopSettingsPage',
           ],
-          // Public pages — no auth needed
           'chunk-public': [
             './src/pages/ShopPublicPage',
             './src/pages/VerifyInvoicePage',
@@ -49,7 +71,6 @@ export default defineConfig({
         },
       },
     },
-    // Raise the warning threshold slightly — we now split properly
     chunkSizeWarningLimit: 400,
   },
 });

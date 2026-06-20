@@ -1,0 +1,42 @@
+{
+    "name": "محور — منصة التجارة B2B",
+    "short_name": "محور",
+    "description": "منصة ذكية لإدارة المخزون والطلبات بين المحلات",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#020617",
+    "theme_color": "#0f172a",
+    "orientation": "portrait-primary",
+    "lang": "ar",
+    "dir": "rtl",
+    "categories": ["business", "productivity"],
+    "icons": [
+      {
+        "src": "/icon-192.png",
+        "sizes": "192x192",
+        "type": "image/png",
+        "purpose": "any maskable"
+      },
+      {
+        "src": "/icon-512.png",
+        "sizes": "512x512",
+        "type": "image/png",
+        "purpose": "any maskable"
+      }
+    ],
+    "shortcuts": [
+      {
+        "name": "المخزون",
+        "short_name": "المخزون",
+        "url": "/",
+        "description": "عرض المخزون"
+      },
+      {
+        "name": "الطلبات",
+        "short_name": "الطلبات",
+        "url": "/",
+        "description": "عرض الطلبات"
+      }
+    ]
+  }
+  

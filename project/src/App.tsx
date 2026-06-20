@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
@@ -7,28 +7,39 @@ import LoginPage from './pages/LoginPage';
 import LandingPage from './pages/LandingPage';
 import Layout, { Page } from './components/Layout';
 
-// ── User Pages ────────────────────────────────────────────────────────
-import DashboardPage      from './pages/DashboardPage';
-import SearchPage         from './pages/SearchPage';
-import InventoryPage      from './pages/InventoryPage';
-import OrdersPage         from './pages/orders/OrdersPage';
-import ReportsPage        from './pages/ReportsPage';
-import AlertsPage         from './pages/AlertsPage';
-import ShopSettingsPage   from './pages/ShopSettingsPage';   // ← جديد
+// ── Public pages — loaded immediately (no auth, on critical path) ─────────
+const VerifyInvoicePage = lazy(() => import('./pages/VerifyInvoicePage'));
+const ShopPublicPage    = lazy(() => import('./pages/ShopPublicPage'));
 
-// ── Admin Pages ───────────────────────────────────────────────────────
-import AdminDashboardPage  from './pages/AdminDashboardPage';
-import ShopsPage           from './pages/ShopsPage';
-import CreateShopPage      from './pages/CreateShopPage';
-import UsersPage           from './pages/UsersPage';
-import PermissionsPage     from './pages/PermissionsPage';
-import GlobalInventoryPage from './pages/GlobalInventoryPage';
-import GlobalOrdersPage    from './pages/GlobalOrdersPage';
-import OrganizationsPage   from './pages/OrganizationsPage';
+// ── Shop user pages ───────────────────────────────────────────────────────
+const DashboardPage     = lazy(() => import('./pages/DashboardPage'));
+const SearchPage        = lazy(() => import('./pages/SearchPage'));
+const InventoryPage     = lazy(() => import('./pages/InventoryPage'));
+const OrdersPage        = lazy(() => import('./pages/orders/OrdersPage'));
+const ReportsPage       = lazy(() => import('./pages/ReportsPage'));
+const AlertsPage        = lazy(() => import('./pages/AlertsPage'));
+const ShopSettingsPage  = lazy(() => import('./pages/ShopSettingsPage'));
 
-// ── Public Pages (لا تحتاج تسجيل دخول) ──────────────────────────────
-import VerifyInvoicePage  from './pages/VerifyInvoicePage';
-import ShopPublicPage     from './pages/ShopPublicPage';    // ← جديد
+// ── Admin pages — only downloaded when an admin logs in ──────────────────
+const AdminDashboardPage  = lazy(() => import('./pages/AdminDashboardPage'));
+const ShopsPage           = lazy(() => import('./pages/ShopsPage'));
+const CreateShopPage      = lazy(() => import('./pages/CreateShopPage'));
+const UsersPage           = lazy(() => import('./pages/UsersPage'));
+const PermissionsPage     = lazy(() => import('./pages/PermissionsPage'));
+const GlobalInventoryPage = lazy(() => import('./pages/GlobalInventoryPage'));
+const GlobalOrdersPage    = lazy(() => import('./pages/GlobalOrdersPage'));
+const OrganizationsPage   = lazy(() => import('./pages/OrganizationsPage'));
+
+// ── Shared loading fallback ───────────────────────────────────────────────
+function PageLoader() {
+  return (
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-10 h-10 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    </div>
+  );
+}
 
 // ══════════════════════════════════════════════════════════════════════
 // ACCESS DENIED
@@ -81,46 +92,48 @@ function AppContent() {
   return (
     <NotificationProvider>
       <Layout page={page} setPage={setPage}>
+        <Suspense fallback={<PageLoader />}>
 
-        {/* ══ USER PAGES ═══════════════════════════════════════════════ */}
-        {page === 'dashboard'     && <DashboardPage />}
-        {page === 'search'        && <SearchPage />}
-        {page === 'inventory'     && <InventoryPage />}
-        {page === 'orders'        && <OrdersPage />}
-        {page === 'reports'       && <ReportsPage />}
-        {page === 'alerts'        && <AlertsPage />}
-        {page === 'shop-settings' && <ShopSettingsPage />}   {/* ← جديد */}
+          {/* ══ USER PAGES ══════════════════════════════════════════════ */}
+          {page === 'dashboard'     && <DashboardPage />}
+          {page === 'search'        && <SearchPage />}
+          {page === 'inventory'     && <InventoryPage />}
+          {page === 'orders'        && <OrdersPage />}
+          {page === 'reports'       && <ReportsPage />}
+          {page === 'alerts'        && <AlertsPage />}
+          {page === 'shop-settings' && <ShopSettingsPage />}
 
-        {/* ══ ADMIN ════════════════════════════════════════════════════ */}
-        {page === 'admin' &&
-          (isAdmin ? <AdminDashboardPage /> : <AccessDenied />)}
+          {/* ══ ADMIN ════════════════════════════════════════════════════ */}
+          {page === 'admin' &&
+            (isAdmin ? <AdminDashboardPage /> : <AccessDenied />)}
 
-        {page === 'shops' &&
-          (isAdmin ? <ShopsPage /> : <AccessDenied />)}
+          {page === 'shops' &&
+            (isAdmin ? <ShopsPage /> : <AccessDenied />)}
 
-        {page === 'create-shop' &&
-          (isAdmin ? <CreateShopPage /> : <AccessDenied />)}
+          {page === 'create-shop' &&
+            (isAdmin ? <CreateShopPage /> : <AccessDenied />)}
 
-        {page === 'users' &&
-          (isAdmin ? <UsersPage /> : <AccessDenied />)}
+          {page === 'users' &&
+            (isAdmin ? <UsersPage /> : <AccessDenied />)}
 
-        {page === 'permissions' &&
-          (isAdmin ? <PermissionsPage /> : <AccessDenied />)}
+          {page === 'permissions' &&
+            (isAdmin ? <PermissionsPage /> : <AccessDenied />)}
 
-        {page === 'global-inventory' &&
-          (isAdmin ? <GlobalInventoryPage /> : <AccessDenied />)}
+          {page === 'global-inventory' &&
+            (isAdmin ? <GlobalInventoryPage /> : <AccessDenied />)}
 
-        {page === 'global-orders' &&
-          (isAdmin ? <GlobalOrdersPage /> : <AccessDenied />)}
+          {page === 'global-orders' &&
+            (isAdmin ? <GlobalOrdersPage /> : <AccessDenied />)}
 
-        {page === 'system-settings' &&
-          (isAdmin
-            ? renderAdminPlaceholder('إعدادات النظام')
-            : <AccessDenied />)}
+          {page === 'system-settings' &&
+            (isAdmin
+              ? renderAdminPlaceholder('إعدادات النظام')
+              : <AccessDenied />)}
 
-        {page === 'organizations' &&
-          (isAdmin ? <OrganizationsPage /> : <AccessDenied />)}
+          {page === 'organizations' &&
+            (isAdmin ? <OrganizationsPage /> : <AccessDenied />)}
 
+        </Suspense>
       </Layout>
     </NotificationProvider>
   );
@@ -135,19 +148,28 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         {/* ── Public routes — no auth required ──────────────────────── */}
-        <Route path="/verify/:orderId" element={<VerifyInvoicePage />} />
+        <Route
+          path="/verify/:orderId"
+          element={
+            <Suspense fallback={<PageLoader />}>
+              <VerifyInvoicePage />
+            </Suspense>
+          }
+        />
 
         {/* ── Shop public page — scanned QR lands here ──────────────── */}
         <Route
           path="/shop/:shopId"
           element={
             <LanguageProvider>
-              <ShopPublicPage />
+              <Suspense fallback={<PageLoader />}>
+                <ShopPublicPage />
+              </Suspense>
             </LanguageProvider>
           }
         />
 
-        {/* ── Main app — state-based routing ────────────────────────── */}
+        {/* ── Main app ──────────────────────────────────────────────── */}
         <Route
           path="*"
           element={

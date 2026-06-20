@@ -486,8 +486,6 @@ export default function ShopPublicPage() {
         )}
       </main>
 
-      </main>
-
       {/* ── Desktop Cart Sidebar ── */}
       {cart.length > 0 && (
         <aside className="hidden lg:flex flex-col w-80 shrink-0 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden sticky top-4 h-fit" dir={isRTL ? 'rtl' : 'ltr'}>

@@ -468,11 +468,11 @@ function MobileProductCard({ p, selected, onToggle, onEdit, onDelete, t }: Mobil
 
       <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 px-3 py-2.5 border-t border-slate-800/60">
         <div>
-          <div className="text-[9px] text-slate-600 uppercase tracking-wider mb-0.5">{t('Brand', 'الماركة')}</div>
+          <div className="text-[9px] text-slate-600 uppercase tracking-wider mb-0.5">{t('Category', 'الصنف')}</div>
           <div className="text-slate-300 text-xs font-medium truncate">{p.brand || '—'}</div>
         </div>
         <div>
-          <div className="text-[9px] text-slate-600 uppercase tracking-wider mb-0.5">{t('Model', 'الموديل')}</div>
+          <div className="text-[9px] text-slate-600 uppercase tracking-wider mb-0.5">{t('Details', 'التفاصيل')}</div>
           <div className="text-slate-300 text-xs uppercase truncate">{p.model || '—'}</div>
         </div>
         <div>
@@ -1204,7 +1204,7 @@ export default function InventoryPage() {
 
   const handleExport = useCallback(() => {
     const csv = [
-      ['Product Code', 'Name', 'Brand', 'Model', 'Quantity', 'Price', 'Visibility Scope', 'Barcode', 'Product Image Url'].join(','),
+      ['Product Code', 'Name', 'Category', 'Details', 'Quantity', 'Price', 'Visibility Scope', 'Barcode', 'Product Image Url'].join(','),
       ...filtered.map(p => [
         p.product_code, p.product_name, p.brand, p.model, p.quantity, p.price,
         safeVisibilityScope(p.visibility_scope),
@@ -1317,7 +1317,7 @@ export default function InventoryPage() {
           type="text"
           value={search}
           onChange={handleSearchChange}
-          placeholder={t('Search by product code, name or brand...', 'ابحث بكود المنتج، الاسم أو الماركة...')}
+          placeholder={t('Search by product code, name or category...', 'ابحث بكود المنتج، الاسم أو الصنف...')}
           className={`w-full bg-slate-900 border border-slate-800 rounded-2xl py-3.5 ${isRTL ? 'pr-11 pl-11' : 'pl-11 pr-11'} text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition-all placeholder:text-slate-600 shadow-sm text-sm sm:text-base`}
         />
         {search && (
@@ -1567,7 +1567,7 @@ export default function InventoryPage() {
                 </th>
                 <th scope="col" className="p-4 w-[64px] text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Image', 'الصورة')}</th>
                 <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Product Details', 'تفاصيل المنتج')}</th>
-                <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Vehicle / Brand', 'المركبة / الماركة')}</th>
+                <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Category / Details', 'الصنف / التفاصيل')}</th>
                 <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Stock Level', 'المخزون')}</th>
                 <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Unit Price', 'سعر الوحدة')}</th>
                 <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Visibility', 'نطاق الظهور')}</th>
@@ -1716,7 +1716,7 @@ export default function InventoryPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Brand', 'الماركة')}</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Category', 'الصنف')}</label>
                   <input
                     className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-emerald-500 focus:outline-none transition-colors text-sm"
                     value={form.brand}
@@ -1724,7 +1724,7 @@ export default function InventoryPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Model', 'الموديل')}</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Details', 'التفاصيل')}</label>
                   <input
                     className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-emerald-500 focus:outline-none transition-colors text-sm"
                     value={form.model}

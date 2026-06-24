@@ -891,9 +891,10 @@ const CartSheet = memo(({
       </div>
 
       {/* Fixed footer inside sheet: summary + order button */}
+      {/* paddingBottom must clear the mobile bottom nav (h-16 = 4rem) + safe area */}
       <div
         className="shrink-0 bg-slate-950 border-t border-slate-800 px-4 pt-3"
-        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)' }}
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 5rem)' }}
       >
         <CartSummary
           cartTotal={cartTotal}

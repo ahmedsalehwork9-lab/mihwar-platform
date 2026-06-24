@@ -1,31 +1,30 @@
-
 {
-    "name": "محور",
-    "short_name": "محور",
-    "description": "منصة ذكية لإدارة المخزون والطلبات بين المحلات",
-    "start_url": "/",
-    "display": "standalone",
-    "background_color": "#020617",
-    "theme_color": "#0f172a",
-    "orientation": "portrait-primary",
-    "lang": "ar",
-    "dir": "rtl",
-    "categories": [
-      "business",
-      "productivity"
-    ],
-    "icons": [
-      {
-        "src": "/icon-192.png",
-        "sizes": "192x192",
-        "type": "image/png",
-        "purpose": "any maskable"
-      },
-      {
-        "src": "/icon-512.png",
-        "sizes": "512x512",
-        "type": "image/png",
-        "purpose": "any maskable"
-      }
-    ]
-  }
+  "name": "MIHWAR — B2B Marketplace",
+  "short_name": "MIHWAR",
+  "description": "Smart B2B Marketplace for inventory, orders and transfers between shops",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#0f172a",
+  "orientation": "portrait-primary",
+  "lang": "ar",
+  "dir": "rtl",
+  "categories": [
+    "business",
+    "productivity"
+  ],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

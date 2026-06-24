@@ -1,18 +1,17 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
-
+ 
 export default defineConfig({
   plugins: [
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      // Use the sw.js we wrote manually in public/
-      strategies: 'injectManifest',
-      srcDir: 'public',
-      filename: 'sw.js',
+      // generateSW: Vite PWA generates the service worker automatically
+      // This avoids the swSrc/swDest conflict with injectManifest
+      strategies: 'generateSW',
       manifest: {
-        name: 'محور — منصة التجارة B2B',
+        name: 'محور',
         short_name: 'محور',
         description: 'منصة ذكية لإدارة المخزون والطلبات بين المحلات',
         theme_color: '#0f172a',
@@ -29,9 +28,18 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        navigateFallback: '/',
+        // Never cache Supabase API calls
+        navigateFallbackDenylist: [/^\/api/, /^\/verify/],
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
+            handler: 'NetworkOnly',
+          },
+        ],
       },
       devOptions: {
-        enabled: false, // disable in dev to avoid confusion
+        enabled: false,
       },
     }),
   ],
@@ -42,9 +50,9 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          'vendor-react':   ['react', 'react-dom', 'react-router-dom'],
-          'vendor-supabase':['@supabase/supabase-js'],
-          'vendor-icons':   ['lucide-react'],
+          'vendor-react':    ['react', 'react-dom', 'react-router-dom'],
+          'vendor-supabase': ['@supabase/supabase-js'],
+          'vendor-icons':    ['lucide-react'],
           'chunk-admin': [
             './src/pages/AdminDashboardPage',
             './src/pages/ShopsPage',
@@ -74,3 +82,4 @@ export default defineConfig({
     chunkSizeWarningLimit: 400,
   },
 });
+ 

@@ -1635,7 +1635,7 @@ export default function SearchPage() {
         <div
           className="fixed z-40 lg:hidden"
           style={{
-            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 5rem)',
+            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 5.5rem)',
             [isRTL ? 'left' : 'right']: '1rem',
           }}
         >

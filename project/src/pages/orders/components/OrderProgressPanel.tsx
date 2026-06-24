@@ -1,10 +1,5 @@
 // =============================================================
 // src/pages/orders/components/OrderProgressPanel.tsx
-//
-// Renders the list of order items inside the detail drawer, with
-// Requested / Approved / Remaining / Stock badges. In edit mode,
-// the Approved badge becomes an editable input wired to the
-// approvedQtyMap from useOrderApproval.
 // =============================================================
 
 import { memo, useCallback, useId } from "react";
@@ -22,9 +17,6 @@ type OrderProgressPanelProps = {
   t: (en: string, ar: string) => string;
 };
 
-// Clamp a raw input value to a safe integer within [0, max].
-// Centralized here so the same rule applies on every keystroke,
-// avoiding repeated inline math during render.
 function sanitizeQty(raw: number, max: number): number {
   if (!Number.isFinite(raw)) return 0;
   const intVal = Math.trunc(raw);
@@ -38,9 +30,6 @@ function OrderProgressPanelBase({
 }: OrderProgressPanelProps) {
   const idPrefix = useId();
 
-  // Stable handler identity across renders; clamping logic lives in
-  // sanitizeQty so this stays a thin adapter to the existing callback
-  // contract (onSetApprovedQty), unchanged in shape and behavior.
   const handleApprovedChange = useCallback(
     (itemId: number, rawValue: number, maxRequested: number, stockQty: number) => {
       const max = Math.min(maxRequested, stockQty);
@@ -49,6 +38,20 @@ function OrderProgressPanelBase({
     },
     [onSetApprovedQty]
   );
+
+  // ── Helper: resolve product name with fallback ─────────────────
+  // After the DB migration, columns are product_name / product_code.
+  // Old rows or cached data may still have part_name / part_number.
+  // This helper tries both so the drawer never shows an empty name.
+  const getProductName = (item: OrderItem): string =>
+    (item.product as any)?.product_name ??
+    (item.product as any)?.part_name ??
+    t("Unknown Product", "منتج غير معروف");
+
+  const getProductCode = (item: OrderItem): string =>
+    (item.product as any)?.product_code ??
+    (item.product as any)?.part_number ??
+    "—";
 
   return (
     <div>
@@ -78,18 +81,17 @@ function OrderProgressPanelBase({
             const stockQty       = item.product?.quantity ?? item.quantity;
             const isPartialOrder = detailOrder.status === "partially_approved";
             const maxApprovable  = Math.min(item.quantity, stockQty);
-            // Fallback default (used only until approvedQtyMap[item.id] is
-            // first set by the parent hook) now mirrors the required
-            // min(requested, stock) rule instead of always defaulting to
-            // the requested quantity. The map itself, and how/when it is
-            // populated, remain owned by useOrderApproval — unchanged here.
             const editorVal      = approvedQtyMap[item.id] ?? maxApprovable;
-            const dispQty         = showPartialEditor ? editorVal : effectiveApproved(item);
+            const dispQty        = showPartialEditor ? editorVal : effectiveApproved(item);
             const lineTotal      = item.price * dispQty;
             const isOverMax      = editorVal > maxApprovable;
             const isOutOfStock   = stockQty === 0;
             const isShortStock   = stockQty > 0 && stockQty < item.quantity;
             const inputId        = `${idPrefix}-approved-${item.id}`;
+
+            // ── Resolved name/code (migration-safe) ───────────────
+            const productName = getProductName(item);
+            const productCode = getProductCode(item);
 
             const stockBadgeClasses = isOutOfStock
               ? "bg-red-500/10 border-red-500/20 text-red-400"
@@ -108,8 +110,9 @@ function OrderProgressPanelBase({
                 <div className="px-4 pt-3 pb-2">
                   <div className="flex justify-between items-start gap-3">
                     <div className="flex-1 min-w-0">
-                      <p className="text-white font-bold text-sm leading-snug">{item.product?.part_name}</p>
-                      <p className="text-slate-500 text-[10px] font-mono mt-0.5 tracking-wide">{item.product?.part_number}</p>
+                      {/* ── FIX: use migration-safe name/code ── */}
+                      <p className="text-white font-bold text-sm leading-snug">{productName}</p>
+                      <p className="text-slate-500 text-[10px] font-mono mt-0.5 tracking-wide">{productCode}</p>
                     </div>
                     <div className="text-left shrink-0 pl-2">
                       <p className="text-white font-black text-sm tabular-nums">{lineTotal.toLocaleString()}<span className="text-[9px] font-normal text-slate-500"> {t("SAR", "ر.س")}</span></p>
@@ -146,15 +149,12 @@ function OrderProgressPanelBase({
                             max={maxApprovable}
                             value={editorVal}
                             aria-label={t(
-                              `Approved quantity for ${item.product?.part_name ?? "item"}`,
-                              `الكمية المعتمدة لـ ${item.product?.part_name ?? "الصنف"}`
+                              `Approved quantity for ${productName}`,
+                              `الكمية المعتمدة لـ ${productName}`
                             )}
                             aria-invalid={isOverMax}
                             onChange={e => handleApprovedChange(item.id, e.target.valueAsNumber, item.quantity, stockQty)}
                             onKeyDown={e => {
-                              // Block characters that would otherwise let the
-                              // browser accept a decimal point or minus sign
-                              // before our onChange clamp ever runs.
                               if (e.key === "." || e.key === "-" || e.key === "e" || e.key === "+") {
                                 e.preventDefault();
                               }

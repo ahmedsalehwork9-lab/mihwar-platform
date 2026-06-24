@@ -92,6 +92,9 @@ export function useOrderDetails({ t, lang, setGlobalError }: UseOrderDetailsArgs
         .select("*, product:products(*)")
         .eq("order_id", order.id);
 
+      // TEMP DEBUG — remove after diagnosis
+      console.log('ITEMS RAW:', JSON.stringify(data?.[0], null, 2));
+
       if (fetchError) {
         setGlobalError(fetchError.message);
       } else {

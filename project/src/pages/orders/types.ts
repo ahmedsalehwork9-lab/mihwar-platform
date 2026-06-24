@@ -41,8 +41,12 @@ export type Order = {
 
 export type Product = {
   id: number;
-  part_name: string;
-  part_number: string;
+  // ── Migration-safe: new column names (DB migrated from part_name/part_number)
+  product_name: string;
+  product_code: string;
+  // ── Fallback aliases for any cached/old rows still using old column names
+  part_name?: string;
+  part_number?: string;
   brand: string;
   model: string;
   quantity: number;
@@ -58,6 +62,7 @@ export type OrderItem = {
 
   quantity: number;
   approved_quantity?: number | null;
+  approval_reviewed?: boolean | null;
 
   price: number;
 
@@ -191,17 +196,12 @@ export const STATUS_META: Record<
 
 export const SCOPE_META = {
   public: {
-    color:
-      "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+    color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
   },
-
   group: {
-    color:
-      "bg-blue-500/10 text-blue-400 border-blue-500/20",
+    color: "bg-blue-500/10 text-blue-400 border-blue-500/20",
   },
-
   private: {
-    color:
-      "bg-slate-700/60 text-slate-400 border-slate-600/40",
+    color: "bg-slate-700/60 text-slate-400 border-slate-600/40",
   },
 } as const;

@@ -40,17 +40,17 @@ function OrderProgressPanelBase({
   );
 
   // ── Helper: resolve product name with fallback ─────────────────
-  // After the DB migration, columns are product_name / product_code.
-  // Old rows or cached data may still have part_name / part_number.
-  // This helper tries both so the drawer never shows an empty name.
+  // product_name / product_code are the current DB columns.
+  // part_name / part_number are kept as optional aliases in Product
+  // type for backward compatibility with any old cached rows.
   const getProductName = (item: OrderItem): string =>
-    (item.product as any)?.product_name ??
-    (item.product as any)?.part_name ??
+    item.product?.product_name ??
+    item.product?.part_name ??
     t("Unknown Product", "منتج غير معروف");
 
   const getProductCode = (item: OrderItem): string =>
-    (item.product as any)?.product_code ??
-    (item.product as any)?.part_number ??
+    item.product?.product_code ??
+    item.product?.part_number ??
     "—";
 
   return (

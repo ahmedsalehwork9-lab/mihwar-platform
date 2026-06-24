@@ -13,8 +13,11 @@ import { useNotifications } from '../context/NotificationContext';
 
 type Product = {
   id: number;
-  part_name: string;
-  part_number: string;
+  product_name: string;
+  product_code: string;
+  // fallback aliases for old rows
+  part_name?: string;
+  part_number?: string;
   brand: string;
   quantity: number;
   price: number;
@@ -94,7 +97,7 @@ export default function DashboardPage() {
         // بيانات المنتجات للعرض
         supabase
           .from('products')
-          .select('id, part_name, part_number, brand, quantity, price')
+          .select('id, product_name, product_code, brand, quantity, price')
           .eq('shop_id', shopData.id)
           .order('created_at', { ascending: false })
           .limit(1000),
@@ -541,8 +544,8 @@ export default function DashboardPage() {
                 lowStockItems.slice(0, 5).map(p => (
                   <div key={p.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-800/30 border border-slate-800/50 hover:border-slate-700/50 transition-colors">
                     <div className="min-w-0 flex-1">
-                      <div className="text-white text-xs font-bold truncate">{p.part_name}</div>
-                      <div className="text-slate-500 text-[10px] font-mono mt-0.5">{p.part_number}</div>
+                      <div className="text-white text-xs font-bold truncate">{(p as any).product_name ?? (p as any).part_name}</div>
+                      <div className="text-slate-500 text-[10px] font-mono mt-0.5">{(p as any).product_code ?? (p as any).part_number ?? '—'}</div>
                     </div>
                     <span className="text-[11px] px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-400 font-black tabular-nums border border-amber-500/20 ms-3 shrink-0">
                       {p.quantity} {t('left', 'تبقي')}
@@ -583,8 +586,8 @@ export default function DashboardPage() {
                       {p.brand?.charAt(0) || 'P'}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-white text-xs font-bold truncate">{p.part_name}</div>
-                      <div className="text-slate-600 text-[10px] font-mono mt-0.5">{p.brand}</div>
+                      <div className="text-white text-xs font-bold truncate">{(p as any).product_name ?? (p as any).part_name}</div>
+                      <div className="text-slate-600 text-[10px] font-mono mt-0.5">{p.brand || '—'}</div>
                     </div>
                     <div className="text-end shrink-0">
                       <div className="text-[#00A86B] text-xs font-black tabular-nums">
@@ -671,7 +674,7 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2 mb-8">
             <TrendingUp size={18} className="text-[#00A86B]" />
             <h3 className="font-bold text-white text-sm uppercase tracking-wider">
-              {t('Inventory Distribution by Brand', 'توزيع المخزون حسب العلامة التجارية')}
+              {t('Inventory Distribution by Category', 'توزيع المخزون حسب الصنف')}
             </h3>
           </div>
 
@@ -719,7 +722,7 @@ export default function DashboardPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-10 gap-y-5 flex-1 w-full">
               {topBrands.length === 0 ? (
                 <div className="col-span-2 text-slate-600 text-xs italic text-center py-4">
-                  {t('No brand data available', 'لا توجد بيانات علامات تجارية')}
+                  {t('No category data available', 'لا توجد بيانات أصناف')}
                 </div>
               ) : (
                 topBrands.map(([brand, count], i) => (

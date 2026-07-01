@@ -998,17 +998,38 @@ export default function SearchPage() {
         return;
       }
 
-      // Stage 2: products from valid-mode active shops
-      // NOTE: product-level group_id is intentionally excluded —
+      // Stage 2: products from valid-mode active shops (chunked pagination)
+      // NOTE: PostgREST returns max 1000 rows by default — we must paginate
+      // to fetch ALL products across all active shops without missing any.
+      // product-level group_id is intentionally excluded —
       // group matching uses SHOP group_id (via shopMap), not product group_id.
-      const { data: productsData, error: productsError } = await supabase
-        .from('products')
-        .select('id, product_name, product_code, brand, model, quantity, price, shop_id, visibility_scope, organization_id, product_image_url, margin_percent')
-        .in('shop_id', activeShopIds)
-        .gt('quantity', 0)
-        .order('created_at', { ascending: false });
+      const allProductsData: Product[] = [];
+      let fetchFrom = 0;
+      const FETCH_CHUNK = 1000;
+      let keepFetching = true;
 
-      if (productsError) throw productsError;
+      while (keepFetching) {
+        const { data: chunk, error: productsError } = await supabase
+          .from('products')
+          .select('id, product_name, product_code, brand, model, quantity, price, shop_id, visibility_scope, organization_id, product_image_url, margin_percent')
+          .in('shop_id', activeShopIds)
+          .gt('quantity', 0)
+          .order('id', { ascending: true })
+          .range(fetchFrom, fetchFrom + FETCH_CHUNK - 1);
+
+        if (productsError) throw productsError;
+
+        const chunkLen = chunk?.length ?? 0;
+        allProductsData.push(...(chunk as Product[] ?? []));
+
+        if (chunkLen < FETCH_CHUNK) {
+          keepFetching = false;
+        } else {
+          fetchFrom += FETCH_CHUNK;
+        }
+      }
+
+      const productsData = allProductsData;
 
       // Stage 3: resolve requester shop (with can_view_public_market)
       if (ownedShopId) {

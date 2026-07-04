@@ -229,7 +229,12 @@ export default function ShopPublicPage() {
   // ── Display price (public viewers always see margin-adjusted price) ──
 
   const effectiveDisplayPrice = useCallback((p: Product): number => {
-    const margin = shop?.default_margin_percent ?? 0;
+    // If a fixed selling price is set, use it directly
+    if (p.selling_price != null && Number.isFinite(p.selling_price) && p.selling_price > 0) {
+      return p.selling_price;
+    }
+    // Otherwise calculate from cost price + shop margin
+    const margin = p.margin_percent ?? shop?.default_margin_percent ?? 0;
     return p.price * (1 + Math.max(0, margin) / 100);
   }, [shop]);
 

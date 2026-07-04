@@ -210,7 +210,7 @@ export default function ShopPublicPage() {
         const resolvedShopId = (shopData as any).id;
         const { data: prodsData, error: prodsErr } = await supabase
           .from('products')
-          .select('id, product_name, product_code, brand, model, quantity, price, product_image_url, visibility_scope')
+          .select('id, product_name, product_code, brand, model, quantity, price, product_image_url, visibility_scope, margin_percent, selling_price')
           .eq('shop_id', resolvedShopId)
           .eq('visibility_scope', 'public')
           .gt('quantity', 0)

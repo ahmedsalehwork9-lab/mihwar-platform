@@ -1018,7 +1018,7 @@ export default function SearchPage() {
       while (keepFetching) {
         const { data: chunk, error: productsError } = await supabase
           .from('products')
-          .select('id, product_name, product_code, brand, model, quantity, price, shop_id, visibility_scope, organization_id, product_image_url, margin_percent')
+          .select('id, product_name, product_code, brand, model, quantity, price, shop_id, visibility_scope, organization_id, product_image_url, margin_percent, selling_price')
           .in('shop_id', activeShopIds)
           .gt('quantity', 0)
           .order('id', { ascending: true })

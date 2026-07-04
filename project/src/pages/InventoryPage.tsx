@@ -32,6 +32,10 @@ type Product = {
   // page) is never affected by margin — margin only changes the price
   // shown to a different-shop ("purchase") viewer in the marketplace.
   margin_percent?: number | null;
+  // Optional fixed selling price. When set, this overrides margin_percent
+  // and is shown directly as the display_price to buyers from other shops.
+  // null → fall back to price × (1 + margin%)
+  selling_price?: number | null;
 };
 
 type FilterStatus = 'all' | 'in_stock' | 'low_stock' | 'out_of_stock';
@@ -47,6 +51,8 @@ type FormState = {
   product_image_url: string;
   // Empty string = "use shop default margin" (maps to null in the DB).
   margin_percent: string;
+  // Empty string = "use margin instead". A number here overrides margin.
+  selling_price: string;
 };
 
 // ── Import summary returned after a completed sync ──────────────────────────
@@ -64,6 +70,7 @@ const EMPTY_FORM: FormState = {
   visibility_scope: 'public',
   product_image_url: '',
   margin_percent: '',
+  selling_price: '',
 };
 
 const PAGE_SIZE   = 12;
@@ -593,7 +600,7 @@ export default function InventoryPage() {
 
         const { data: chunk, error: fetchErr } = await supabase
           .from("products")
-          .select("id, product_code, product_name, brand, model, quantity, price, shop_id, visibility_scope, product_image_url, barcode, margin_percent")
+          .select("id, product_code, product_name, brand, model, quantity, price, shop_id, visibility_scope, product_image_url, barcode, margin_percent, selling_price")
           .eq("shop_id", ownedShopId)
           .order("created_at", { ascending: false })
           .range(from, to);
@@ -746,6 +753,19 @@ export default function InventoryPage() {
       parsedMargin = m;
     }
 
+    let parsedSellingPrice: number | null = null;
+    if (form.selling_price.trim() !== '') {
+      const sp = Number(form.selling_price);
+      if (!Number.isFinite(sp) || sp < 0) {
+        setFormError(t(
+          'Selling price must be a valid positive number.',
+          'سعر البيع يجب أن يكون رقماً صحيحاً موجباً.'
+        ));
+        return;
+      }
+      parsedSellingPrice = sp;
+    }
+
     setSaving(true);
     try {
       const basePayload = {
@@ -758,6 +778,7 @@ export default function InventoryPage() {
         shop_id:          ownedShopId,
         visibility_scope: safeVisibilityScope(form.visibility_scope),
         margin_percent:   parsedMargin,
+        selling_price:    parsedSellingPrice,
       };
 
       let productId: number;
@@ -1182,6 +1203,7 @@ export default function InventoryPage() {
       visibility_scope:   safeVisibilityScope(p.visibility_scope),
       product_image_url:  p.product_image_url ?? '',
       margin_percent:     p.margin_percent != null ? String(p.margin_percent) : '',
+      selling_price:      p.selling_price != null ? String(p.selling_price) : '',
     });
     setFormError(null);
     setImageError(null);
@@ -1770,16 +1792,38 @@ export default function InventoryPage() {
                   </div>
                 </div>
 
-                {/* ── Per-product margin override (optional) ──
-                     Empty = use the shop's default margin. A value here
-                     overrides the shop default for THIS product only —
-                     for products whose profit margin differs from the
-                     rest of the catalog. Never affects the cost price
-                     shown on this page; only affects the marketplace
-                     price shown to buyers from a different shop. ── */}
+                {/* ── Selling Price (optional fixed price) ──
+                     When set, this is shown directly to buyers from other shops
+                     instead of calculating from cost price + margin.
+                     Leave empty to use cost price + margin% instead. ── */}
                 <div className="col-span-2">
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
-                    {t('Product Margin Override (%)', 'هامش ربح خاص بالمنتج (%)')}
+                    {t('Selling Price (optional)', 'سعر البيع (اختياري)')}
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder={t(
+                      `Leave empty to use cost price + shop margin (${defaultMarginPercent}%)`,
+                      `اتركه فارغاً لاستخدام سعر التكلفة + هامش المحل (${defaultMarginPercent}%)`
+                    )}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-emerald-500 focus:outline-none transition-colors text-sm placeholder:text-slate-600"
+                    value={form.selling_price}
+                    onChange={e => setForm(f => ({ ...f, selling_price: e.target.value }))}
+                  />
+                  <p className="mt-1.5 text-[10px] text-slate-500">
+                    {t(
+                      'If set, buyers see this price directly. If empty, price = cost + margin%.',
+                      'إذا أُدخل، يرى المشترون هذا السعر مباشرة. إذا فارغ، السعر = التكلفة + الهامش%.'
+                    )}
+                  </p>
+                </div>
+
+                {/* ── Per-product margin override (optional) ── */}
+                <div className="col-span-2">
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                    {t('Margin Override (%)', 'هامش ربح خاص (%)')}
                   </label>
                   <input
                     type="number"

@@ -58,6 +58,8 @@ type Product = {
   // supplier shop's default_margin_percent instead. This is the SUPPLIER's
   // cost-price margin setting, not anything the buyer chooses.
   margin_percent?: number | null;
+  // Fixed selling price set by supplier. When present, overrides margin calculation.
+  selling_price?: number | null;
 };
 
 type Shop = {
@@ -276,9 +278,14 @@ function effectiveMarginPercent(product: Product, supplierShop: Shop | undefined
 function computeDisplayPrice(
   costPrice: number,
   requestType: 'TRANSFER' | 'PURCHASE',
-  marginPercent: number
+  marginPercent: number,
+  sellingPrice?: number | null
 ): number {
   if (requestType === 'TRANSFER') return costPrice;
+  // If a fixed selling price is set, use it directly
+  if (sellingPrice != null && Number.isFinite(sellingPrice) && sellingPrice > 0) {
+    return sellingPrice;
+  }
   return costPrice * (1 + marginPercent / 100);
 }
 
@@ -1152,7 +1159,7 @@ export default function SearchPage() {
       const procCtx     = buildProcurementContext(p);
       const elig        = determineProcurementEligibility(procCtx);
       const margin      = effectiveMarginPercent(p, shop);
-      const display_price = computeDisplayPrice(p.price, elig.requestType, margin);
+      const display_price = computeDisplayPrice(p.price, elig.requestType, margin, p.selling_price);
       return {
         ...p,
         visibility_scope:     scope,

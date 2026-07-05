@@ -972,94 +972,101 @@ export default function SearchPage() {
   // DATA FETCHING
   // ─────────────────────────────────────────────────────────────
 
+  // ─────────────────────────────────────────────────────────────
+  // SERVER-SIDE SEARCH — fetches only what's needed
+  // On load: first 50 products (fast initial render)
+  // On search: server filters by query (instant results)
+  // ─────────────────────────────────────────────────────────────
+  const PAGE_LIMIT = 50;
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [activeShopIds, setActiveShopIds] = useState<number[]>([]);
+
+  const fetchShopsAndRequester = useCallback(async (): Promise<number[]> => {
+    let shopsQuery = supabase
+      .from('shops')
+      .select('id, shop_name, phone, whatsapp, google_maps_url, logo_url, group_id, organization_id, visibility_mode, can_view_public_market, default_margin_percent')
+      .eq('is_active', true);
+
+    if (ownedShopId) shopsQuery = shopsQuery.neq('id', ownedShopId);
+
+    const { data: shopsData, error: shopsError } = await shopsQuery;
+    if (shopsError) throw shopsError;
+
+    const fetchedShops: Shop[] = shopsData || [];
+    const visibleShops = fetchedShops.filter(s => VALID_SHOP_VISIBILITY_MODES.has(s.visibility_mode));
+    const ids = visibleShops.map(s => s.id);
+
+    setShops(visibleShops);
+    setActiveShopIds(ids);
+
+    if (ownedShopId) {
+      const { data: ownData } = await supabase
+        .from('shops')
+        .select('id, shop_name, phone, whatsapp, google_maps_url, logo_url, group_id, organization_id, visibility_mode, can_view_public_market, default_margin_percent')
+        .eq('id', ownedShopId)
+        .single();
+      setRequesterShop((ownData as Shop) ?? null);
+    }
+
+    return ids;
+  }, [ownedShopId]);
+
+  const fetchProducts = useCallback(async (shopIds: number[], searchQuery: string, offset = 0) => {
+    if (shopIds.length === 0) return [];
+
+    let q = supabase
+      .from('products')
+      .select('id, product_name, product_code, brand, model, quantity, price, shop_id, visibility_scope, organization_id, product_image_url, margin_percent, selling_price')
+      .in('shop_id', shopIds)
+      .gt('quantity', 0)
+      .order('id', { ascending: false })
+      .range(offset, offset + PAGE_LIMIT - 1);
+
+    if (searchQuery.trim()) {
+      q = q.or(
+        `product_name.ilike.%${searchQuery.trim()}%,product_code.ilike.%${searchQuery.trim()}%,brand.ilike.%${searchQuery.trim()}%,model.ilike.%${searchQuery.trim()}%`
+      );
+    }
+
+    const { data, error } = await q;
+    if (error) throw error;
+    return (data as Product[]) || [];
+  }, []);
+
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       setFetchError(null);
+      setProducts([]);
 
-      // Stage 1: active shops — include can_view_public_market
-      let shopsQuery = supabase
-        .from('shops')
-        .select('id, shop_name, phone, whatsapp, google_maps_url, logo_url, group_id, organization_id, visibility_mode, can_view_public_market, default_margin_percent')
-        .eq('is_active', true);
+      const shopIds = await fetchShopsAndRequester();
+      if (shopIds.length === 0) return;
 
-      if (ownedShopId) shopsQuery = shopsQuery.neq('id', ownedShopId);
-
-      const { data: shopsData, error: shopsError } = await shopsQuery;
-      if (shopsError) throw shopsError;
-
-      const fetchedShops: Shop[] = shopsData || [];
-
-      // ── FIX 1: Allowlist filter — only include shops with known valid
-      // visibility_mode values (null | 'public' | 'group' | 'private').
-      // Previously used `!== 'hidden'` denylist; replaced with explicit
-      // allowlist so any future unknown mode values are also excluded,
-      // preventing accidental exposure as 'public' via effectiveScope().
-      const visibleShops = fetchedShops.filter(s =>
-        VALID_SHOP_VISIBILITY_MODES.has(s.visibility_mode)
-      );
-      const activeShopIds = visibleShops.map(s => s.id);
-
-      if (activeShopIds.length === 0) {
-        setProducts([]);
-        setShops([]);
-        setRequesterShop(null);
-        return;
-      }
-
-      // Stage 2: products from valid-mode active shops (chunked pagination)
-      // NOTE: PostgREST returns max 1000 rows by default — we must paginate
-      // to fetch ALL products across all active shops without missing any.
-      // product-level group_id is intentionally excluded —
-      // group matching uses SHOP group_id (via shopMap), not product group_id.
-      const allProductsData: Product[] = [];
-      let fetchFrom = 0;
-      const FETCH_CHUNK = 1000;
-      let keepFetching = true;
-
-      while (keepFetching) {
-        const { data: chunk, error: productsError } = await supabase
-          .from('products')
-          .select('id, product_name, product_code, brand, model, quantity, price, shop_id, visibility_scope, organization_id, product_image_url, margin_percent, selling_price')
-          .in('shop_id', activeShopIds)
-          .gt('quantity', 0)
-          .order('id', { ascending: true })
-          .range(fetchFrom, fetchFrom + FETCH_CHUNK - 1);
-
-        if (productsError) throw productsError;
-
-        const chunkLen = chunk?.length ?? 0;
-        allProductsData.push(...(chunk as Product[] ?? []));
-
-        if (chunkLen < FETCH_CHUNK) {
-          keepFetching = false;
-        } else {
-          fetchFrom += FETCH_CHUNK;
-        }
-      }
-
-      const productsData = allProductsData;
-
-      // Stage 3: resolve requester shop (with can_view_public_market)
-      if (ownedShopId) {
-        const { data: ownData } = await supabase
-          .from('shops')
-          .select('id, shop_name, phone, whatsapp, google_maps_url, logo_url, group_id, organization_id, visibility_mode, can_view_public_market, default_margin_percent')
-          .eq('id', ownedShopId)
-          .single();
-        setRequesterShop((ownData as Shop) ?? null);
-      }
-
-      setProducts((productsData as Product[]) || []);
-      setShops(visibleShops);
+      const data = await fetchProducts(shopIds, query);
+      setProducts(data);
+      setHasMore(data.length === PAGE_LIMIT);
     } catch (err: any) {
       console.error('[SearchPage] fetchData error:', err);
-      const msg = err?.message ?? t('Failed to load products', 'فشل تحميل المنتجات');
-      setFetchError(msg);
+      setFetchError(err?.message ?? t('Failed to load products', 'فشل تحميل المنتجات'));
     } finally {
       setLoading(false);
     }
-  }, [ownedShopId, t]);
+  }, [ownedShopId, query, fetchShopsAndRequester, fetchProducts, t]);
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
+    try {
+      setLoadingMore(true);
+      const more = await fetchProducts(activeShopIds, query, products.length);
+      setProducts(prev => [...prev, ...more]);
+      setHasMore(more.length === PAGE_LIMIT);
+    } catch (err: any) {
+      console.error('[SearchPage] loadMore error:', err);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, hasMore, activeShopIds, query, products.length, fetchProducts]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -1663,6 +1670,23 @@ export default function SearchPage() {
           isRTL={isRTL}
         />
       </div>
+
+      {/* ── Load More Button ────────────────────────────────────────── */}
+      {hasMore && !loading && (
+        <div className="flex justify-center mt-6 mb-4">
+          <button
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white text-sm font-bold transition-all active:scale-95 disabled:opacity-50"
+          >
+            {loadingMore ? (
+              <><RefreshCw size={16} className="animate-spin" />{t('Loading...', 'جاري التحميل...')}</>
+            ) : (
+              <>{t('Load More', 'تحميل المزيد')}</>
+            )}
+          </button>
+        </div>
+      )}
 
       {/* ── Mobile Floating Cart Button ──────────────────────────────── */}
       {cart.length > 0 && (

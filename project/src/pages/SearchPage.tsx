@@ -281,11 +281,13 @@ function computeDisplayPrice(
   marginPercent: number,
   sellingPrice?: number | null
 ): number {
-  if (requestType === 'TRANSFER') return costPrice;
-  // If a fixed selling price is set, use it directly
+  // Always show selling_price if set (display purposes)
   if (sellingPrice != null && Number.isFinite(sellingPrice) && sellingPrice > 0) {
     return sellingPrice;
   }
+  // For TRANSFER: show cost price (no markup between same-org branches)
+  if (requestType === 'TRANSFER') return costPrice;
+  // For PURCHASE: apply margin
   return costPrice * (1 + marginPercent / 100);
 }
 
@@ -1423,7 +1425,10 @@ export default function SearchPage() {
             order_id:   order.id,
             product_id: item.id,
             quantity:   item.quantity,
-            price:      item.display_price,
+            // Use cost price for order items — display_price is for UI only.
+            // For TRANSFER orders (same org), this is always the cost price.
+            // For PURCHASE orders, the supplier decides the price on approval.
+            price:      item.price,
           }))
         );
         if (itemsError) throw itemsError;

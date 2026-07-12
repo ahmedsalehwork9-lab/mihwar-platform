@@ -1224,22 +1224,41 @@ export default function InventoryPage() {
     setPage(1);
   }, []);
 
-  const handleExport = useCallback(() => {
-    const csv = [
-      ['Product Code', 'Name', 'Category', 'Details', 'Quantity', 'Price', 'Visibility Scope', 'Barcode', 'Product Image Url'].join(','),
-      ...filtered.map(p => [
-        p.product_code, p.product_name, p.brand, p.model, p.quantity, p.price,
-        safeVisibilityScope(p.visibility_scope),
-        effectiveBarcode(p),
-        p.product_image_url ?? '',
-      ].join(','))
-    ].join('\n');
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const handleExportXLSX = useCallback(async () => {
+    const XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx/xlsx.mjs' as any);
+    const headers = [
+      'كود المنتج', 'اسم المنتج', 'الصنف', 'التفاصيل',
+      'الكمية', 'السعر', 'سعر البيع', 'نطاق الظهور', 'الباركود',
+    ];
+    const rows = filtered.map(p => [
+      p.product_code, p.product_name, p.brand, p.model,
+      p.quantity, p.price, p.selling_price ?? '',
+      safeVisibilityScope(p.visibility_scope), effectiveBarcode(p),
+    ]);
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    ws['!cols'] = [18,35,12,12,10,10,12,15,22].map((w: number) => ({ wch: w }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'المخزون');
+    XLSX.writeFile(wb, `inventory_${new Date().toISOString().slice(0,10)}.xlsx`);
+  }, [filtered]);
+
+  const handleExportPDF = useCallback(() => {
+    const headers = ['كود المنتج', 'اسم المنتج', 'الصنف', 'الكمية', 'السعر', 'سعر البيع', 'نطاق الظهور'];
+    const rows = filtered.map(p => [
+      p.product_code, p.product_name, p.brand,
+      String(p.quantity), String(p.price), String(p.selling_price ?? '—'),
+      safeVisibilityScope(p.visibility_scope),
+    ]);
+    const csvContent = [headers, ...rows].map(r => r.join('	')).join('
+');
+    const blob = new Blob(['﻿' + csvContent], { type: 'text/plain;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `inventory_${new Date().toISOString().slice(0,10)}.csv`;
+    link.download = `inventory_${new Date().toISOString().slice(0,10)}.txt`;
     link.click();
   }, [filtered]);
+
+  const handleExport = handleExportXLSX;
 
   const toggleSelectAll = useCallback(() => {
     setSelected(prev => prev.size === pageItems.length ? new Set() : new Set(pageItems.map(p => p.id)));
@@ -1459,10 +1478,16 @@ export default function InventoryPage() {
             <Upload size={14} /> {importing ? t('Importing…', 'جاري الاستيراد…') : t('Import', 'استيراد')}
           </button>
           <button
-            onClick={handleExport}
-            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-800 bg-slate-900 text-slate-300 text-xs font-bold hover:bg-slate-800 transition-colors"
+            onClick={handleExportXLSX}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-emerald-800 bg-emerald-900/30 text-emerald-300 hover:bg-emerald-800/40 transition-colors text-sm font-bold"
           >
-            <Download size={14} /> {t('Export', 'تصدير')}
+            <Download size={14} /> {t('Excel', 'إكسيل')}
+          </button>
+          <button
+            onClick={handleExportPDF}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-red-800 bg-red-900/30 text-red-300 hover:bg-red-800/40 transition-colors text-sm font-bold"
+          >
+            <Download size={14} /> {t('PDF', 'PDF')}
           </button>
           <button
             onClick={openMarginModal}

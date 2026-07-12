@@ -146,6 +146,16 @@ function validateImageFile(file: File, t: (en: string, ar: string) => string): I
   return { ok: true };
 }
 
+// ─── HTML escaping for the print document ────────────────────────────────────
+function escapeHTML(val: string | number | null | undefined): string {
+  return String(val ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // ─── Production-grade CSV parser ─────────────────────────────────────────────
 function parseCSV(text: string): string[][] {
   const rows: string[][] = [];
@@ -1242,20 +1252,239 @@ export default function InventoryPage() {
     XLSX.writeFile(wb, `inventory_${new Date().toISOString().slice(0,10)}.xlsx`);
   }, [filtered]);
 
+  // ── PDF Export — RTL print window (same approach as buildPrintHTML.ts) ────
+  // Builds a complete, self-contained HTML document (RTL, Arabic, white
+  // print theme) containing the currently-filtered inventory, opens it in
+  // a new window and triggers the browser print dialog. The user picks
+  // "Save as PDF" — the browser natively handles Arabic shaping, RTL
+  // direction, fonts, repeating table headers and page numbering, so no
+  // PDF library (and none of its Arabic-glyph problems) is involved.
   const handleExportPDF = useCallback(() => {
-    const headers = ['كود المنتج', 'اسم المنتج', 'الصنف', 'الكمية', 'السعر', 'سعر البيع', 'نطاق الظهور'];
-    const rows = filtered.map(p => [
-      p.product_code, p.product_name, p.brand,
-      String(p.quantity), String(p.price), String(p.selling_price ?? '—'),
-      safeVisibilityScope(p.visibility_scope),
-    ]);
-    const csvContent = [headers, ...rows].map(r => r.join('\t')).join('\n');
-    const blob = new Blob(['﻿' + csvContent], { type: 'text/plain;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `inventory_${new Date().toISOString().slice(0,10)}.txt`;
-    link.click();
-  }, [filtered]);
+    const visibilityLabelAr = (scope: VisibilityScope): string =>
+      scope === 'public' ? 'السوق العام'
+      : scope === 'group' ? 'داخل المجموعة'
+      : 'داخل الفرع';
+
+    const now      = new Date();
+    const dateStr  = now.toLocaleDateString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric' });
+    const timeStr  = now.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
+    const isoDate  = now.toISOString().slice(0, 10);
+
+    const filteredValue = filtered.reduce((sum, p) => sum + p.quantity * p.price, 0);
+    const filteredQty   = filtered.reduce((sum, p) => sum + p.quantity, 0);
+
+    const fmtMoney = (n: number) =>
+      n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    const rowsHTML = filtered.map((p, i) => {
+      const status = getStatus(p.quantity);
+      const qtyCls = status === 'in_stock' ? 'ok' : status === 'low_stock' ? 'low' : 'out';
+      return `
+        <tr>
+          <td class="c num">${i + 1}</td>
+          <td class="mono">${escapeHTML(p.product_code)}</td>
+          <td class="name">${escapeHTML(p.product_name)}</td>
+          <td>${escapeHTML(p.brand || '—')}</td>
+          <td>${escapeHTML(p.model || '—')}</td>
+          <td class="c num ${qtyCls}">${p.quantity}</td>
+          <td class="c num">${fmtMoney(p.price)}</td>
+          <td class="c num">${p.selling_price != null ? fmtMoney(p.selling_price) : '—'}</td>
+          <td class="c scope">${visibilityLabelAr(safeVisibilityScope(p.visibility_scope))}</td>
+        </tr>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<title>تقرير المخزون — ${escapeHTML(isoDate)}</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    direction: rtl;
+    font-family: 'IBM Plex Sans Arabic', 'Segoe UI', Tahoma, Arial, sans-serif;
+    background: #ffffff;
+    color: #0f172a;
+    font-size: 11px;
+  }
+  @page { size: A4 landscape; margin: 12mm 10mm; }
+
+  .doc-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    border-bottom: 3px solid #059669;
+    padding-bottom: 10px;
+    margin-bottom: 12px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand-mark {
+    width: 38px; height: 38px; border-radius: 9px;
+    background: #0f172a; color: #10b981;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 900; font-size: 17px;
+  }
+  .brand-name { font-size: 17px; font-weight: 900; color: #0f172a; }
+  .brand-sub  { font-size: 9px;  color: #64748b; letter-spacing: 2px; }
+  .doc-title  { text-align: left; }
+  .doc-title h1 { font-size: 16px; font-weight: 900; color: #059669; }
+  .doc-title .meta { font-size: 10px; color: #64748b; margin-top: 3px; }
+
+  .kpis {
+    display: flex; gap: 8px; margin-bottom: 12px;
+  }
+  .kpi {
+    flex: 1;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 7px 10px;
+    background: #f8fafc;
+  }
+  .kpi .lbl { font-size: 8.5px; color: #64748b; font-weight: 700; }
+  .kpi .val { font-size: 13px; font-weight: 900; color: #0f172a; margin-top: 2px; }
+  .kpi .val.green { color: #059669; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+  thead { display: table-header-group; }
+  th {
+    background: #0f172a;
+    color: #ffffff;
+    font-size: 9.5px;
+    font-weight: 800;
+    padding: 7px 6px;
+    text-align: right;
+    border: 1px solid #0f172a;
+  }
+  th.c { text-align: center; }
+  td {
+    padding: 5.5px 6px;
+    border: 1px solid #e2e8f0;
+    font-size: 10px;
+    text-align: right;
+    vertical-align: middle;
+    word-wrap: break-word;
+  }
+  td.c    { text-align: center; }
+  td.num  { font-variant-numeric: tabular-nums; direction: ltr; }
+  td.mono { font-family: 'Courier New', monospace; font-size: 9px; direction: ltr; text-align: right; }
+  td.name { font-weight: 700; }
+  td.scope{ font-size: 9px; color: #475569; }
+  td.ok   { color: #059669; font-weight: 800; }
+  td.low  { color: #d97706; font-weight: 800; }
+  td.out  { color: #dc2626; font-weight: 800; }
+  tbody tr:nth-child(even) td { background: #f8fafc; }
+  tr { page-break-inside: avoid; }
+
+  .col-idx   { width: 4%;  }
+  .col-code  { width: 13%; }
+  .col-name  { width: 27%; }
+  .col-brand { width: 9%;  }
+  .col-model { width: 9%;  }
+  .col-qty   { width: 6%;  }
+  .col-price { width: 9%;  }
+  .col-sell  { width: 9%;  }
+  .col-scope { width: 14%; }
+
+  .doc-footer {
+    margin-top: 14px;
+    padding-top: 8px;
+    border-top: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    font-size: 9px;
+    color: #94a3b8;
+  }
+
+  @media print {
+    .no-print { display: none !important; }
+  }
+  .print-bar {
+    position: sticky; top: 0;
+    background: #0f172a; color: #fff;
+    padding: 10px 16px; margin-bottom: 14px;
+    display: flex; justify-content: space-between; align-items: center;
+    border-radius: 8px;
+  }
+  .print-bar button {
+    background: #059669; color: #fff; border: none;
+    padding: 8px 22px; border-radius: 7px;
+    font-family: inherit; font-size: 12px; font-weight: 800;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+  <div class="print-bar no-print">
+    <span>معاينة تقرير المخزون — اختر «حفظ كـ PDF» من نافذة الطباعة</span>
+    <button onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
+  </div>
+
+  <div class="doc-header">
+    <div class="brand">
+      <div class="brand-mark">م</div>
+      <div>
+        <div class="brand-name">محور</div>
+        <div class="brand-sub">MIHWAR PLATFORM</div>
+      </div>
+    </div>
+    <div class="doc-title">
+      <h1>تقرير المخزون المحلي</h1>
+      <div class="meta">${escapeHTML(dateStr)} — ${escapeHTML(timeStr)}</div>
+    </div>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi"><div class="lbl">عدد الأصناف في التقرير</div><div class="val">${filtered.length.toLocaleString('en-US')}</div></div>
+    <div class="kpi"><div class="lbl">إجمالي الكمية</div><div class="val">${filteredQty.toLocaleString('en-US')}</div></div>
+    <div class="kpi"><div class="lbl">إجمالي القيمة (سعر التكلفة)</div><div class="val green">${fmtMoney(filteredValue)} ر.س</div></div>
+  </div>
+
+  <table>
+    <colgroup>
+      <col class="col-idx"><col class="col-code"><col class="col-name">
+      <col class="col-brand"><col class="col-model"><col class="col-qty">
+      <col class="col-price"><col class="col-sell"><col class="col-scope">
+    </colgroup>
+    <thead>
+      <tr>
+        <th class="c">#</th>
+        <th>كود المنتج</th>
+        <th>اسم المنتج</th>
+        <th>الصنف</th>
+        <th>التفاصيل</th>
+        <th class="c">الكمية</th>
+        <th class="c">السعر (ر.س)</th>
+        <th class="c">سعر البيع (ر.س)</th>
+        <th class="c">نطاق الظهور</th>
+      </tr>
+    </thead>
+    <tbody>${rowsHTML}</tbody>
+  </table>
+
+  <div class="doc-footer">
+    <span>منصة محور — MIHWAR B2B Marketplace</span>
+    <span>تم إنشاء هذا التقرير آلياً من صفحة المخزون المحلي</span>
+  </div>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank');
+    if (!win) {
+      setError(t(
+        'Popup blocked — please allow popups for this site to export PDF.',
+        'تم حظر النافذة المنبثقة — الرجاء السماح بالنوافذ المنبثقة لهذا الموقع لتصدير PDF.'
+      ));
+      return;
+    }
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+  }, [filtered, t]);
 
   const handleExport = handleExportXLSX;
 

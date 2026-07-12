@@ -1234,23 +1234,43 @@ export default function InventoryPage() {
     setPage(1);
   }, []);
 
+  // ── Excel Export — local xlsx package (lazy-loaded) ───────────────────────
+  // The previous CDN dynamic import (jsdelivr) failed silently in the Vite
+  // production build. The library is now imported from node_modules via a
+  // dynamic import, so it stays out of the main bundle (lazy chunk) but is
+  // bundled reliably and works offline (PWA). Requires: npm install xlsx
   const handleExportXLSX = useCallback(async () => {
-    const XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx/xlsx.mjs' as any);
-    const headers = [
-      'كود المنتج', 'اسم المنتج', 'الصنف', 'التفاصيل',
-      'الكمية', 'السعر', 'سعر البيع', 'نطاق الظهور', 'الباركود',
-    ];
-    const rows = filtered.map(p => [
-      p.product_code, p.product_name, p.brand, p.model,
-      p.quantity, p.price, p.selling_price ?? '',
-      safeVisibilityScope(p.visibility_scope), effectiveBarcode(p),
-    ]);
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-    ws['!cols'] = [18,35,12,12,10,10,12,15,22].map((w: number) => ({ wch: w }));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'المخزون');
-    XLSX.writeFile(wb, `inventory_${new Date().toISOString().slice(0,10)}.xlsx`);
-  }, [filtered]);
+    try {
+      setError(null);
+      const XLSX = await import('xlsx');
+
+      const headers = [
+        'كود المنتج', 'اسم المنتج', 'الصنف', 'التفاصيل',
+        'الكمية', 'السعر', 'سعر البيع', 'نطاق الظهور', 'الباركود',
+      ];
+      const rows = filtered.map(p => [
+        p.product_code, p.product_name, p.brand, p.model,
+        p.quantity, p.price, p.selling_price ?? '',
+        safeVisibilityScope(p.visibility_scope), effectiveBarcode(p),
+      ]);
+
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      ws['!cols'] = [18, 35, 12, 12, 10, 10, 12, 15, 22].map((w: number) => ({ wch: w }));
+
+      const wb = XLSX.utils.book_new();
+      // Open the workbook in right-to-left view (column A on the right)
+      // so the Arabic sheet reads naturally in Excel.
+      wb.Workbook = { Views: [{ RTL: true }] };
+      XLSX.utils.book_append_sheet(wb, ws, 'المخزون');
+      XLSX.writeFile(wb, `inventory_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    } catch (e: any) {
+      console.error('[MIHWAR ExportXLSX] ✖ failed:', e);
+      setError(t(
+        `Excel export failed: ${e?.message ?? 'unknown error'}`,
+        `فشل تصدير الإكسيل: ${e?.message ?? 'خطأ غير معروف'}`
+      ));
+    }
+  }, [filtered, t]);
 
   // ── PDF Export — RTL print window (same approach as buildPrintHTML.ts) ────
   // Builds a complete, self-contained HTML document (RTL, Arabic, white

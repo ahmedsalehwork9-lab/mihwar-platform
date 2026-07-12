@@ -1249,8 +1249,7 @@ export default function InventoryPage() {
       String(p.quantity), String(p.price), String(p.selling_price ?? '—'),
       safeVisibilityScope(p.visibility_scope),
     ]);
-    const csvContent = [headers, ...rows].map(r => r.join('	')).join('
-');
+    const csvContent = [headers, ...rows].map(r => r.join('\t')).join('\n');
     const blob = new Blob(['﻿' + csvContent], { type: 'text/plain;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);

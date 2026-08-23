@@ -30,6 +30,7 @@ import { supabase } from '../pages/lib/supabase';
 import NotificationBell from '../context/NotificationBell';
 import { useAuth } from '../context/AuthContext';
 import { useLang } from '../context/LanguageContext';
+import { ThemeToggle } from './ThemeToggle';
 
 // ══════════════════════════════════════════════════════════════════════
 // PAGE TYPE
@@ -299,6 +300,12 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
           className="flex-shrink-0 px-3 py-4 border-t border-slate-700/50 space-y-2"
           style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
         >
+          {/* تبديل الثيم (فاتح | داكن) */}
+          <div className="flex items-center justify-between gap-2 bg-slate-800 rounded-xl px-3 py-2">
+            <span className="text-slate-400 text-xs font-medium">{t('Theme', 'المظهر')}</span>
+            <ThemeToggle />
+          </div>
+
           <button
             onClick={() => setLang(lang === 'en' ? 'ar' : 'en')}
             className="w-full flex items-center justify-center gap-2 bg-slate-800 text-slate-300 py-2 rounded-xl text-sm"
@@ -415,8 +422,13 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
           {/* Divider */}
           <div className="mx-4 border-t border-slate-700/40 my-1" />
 
-          {/* Language + Logout */}
+          {/* Theme + Language + Logout */}
           <div className="px-4 pb-2 space-y-1">
+            {/* تبديل الثيم داخل قائمة المزيد (للجوال) */}
+            <div className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-slate-300 text-sm font-medium">
+              <span className="flex-1 text-start">{label('Theme', 'المظهر')}</span>
+              <ThemeToggle />
+            </div>
             <button
               onClick={() => { setLang(lang === 'en' ? 'ar' : 'en'); setShowMore(false); }}
               className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-slate-300 hover:bg-slate-800 active:bg-slate-700 transition-colors text-sm font-medium"

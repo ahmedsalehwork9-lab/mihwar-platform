@@ -23,6 +23,7 @@ import {
   CheckCheck,
   XCircle,
   MoreVertical,
+  Printer,
 } from 'lucide-react';
 
 // ══════════════════════════════════════════════════════════════════════
@@ -141,6 +142,340 @@ function mapRow(row: TransferRow): Transfer {
     approved_at:     row.approved_at,
     completed_at:    row.completed_at,
   };
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// BARCODE — CODE128 (Code B) → inline SVG string. No external dependencies.
+// Produces a real, scannable barcode embedded directly in the print HTML.
+// "1" = bar module, "0" = space module (module width = 1 unit).
+// ══════════════════════════════════════════════════════════════════════
+
+const C128_PATTERNS = [
+  '11011001100','11001101100','11001100110','10010011000','10010001100',
+  '10001001100','10011001000','10011000100','10001100100','11001001000',
+  '11001000100','11000100100','10110011100','10011011100','10011001110',
+  '10111001100','10011101100','10011100110','11001110010','11001011100',
+  '11001001110','11011100100','11001110100','11101101110','11101001100',
+  '11100101100','11100100110','11101100100','11100110100','11100110010',
+  '11011011000','11011000110','11000110110','10100011000','10001011000',
+  '10001000110','10110001000','10001101000','10001100010','11010001000',
+  '11000101000','11000100010','10110111000','10110001110','10001101110',
+  '10111011000','10111000110','10001110110','11101110110','11010001110',
+  '11000101110','11011101000','11011100010','11011101110','11101011000',
+  '11101000110','11100010110','11101101000','11101100010','11100011010',
+  '11101111010','11001000010','11110001010','10100110000','10100001100',
+  '10010110000','10010000110','10000101100','10000100110','10110010000',
+  '10110000100','10011010000','10011000010','10000110100','10000110010',
+  '11000010010','11001010000','11110111010','11000010100','10001111010',
+  '10100111100','10010111100','10010011110','10111100100','10011110100',
+  '10011110010','11110100100','11110010100','11110010010','11011011110',
+  '11011110110','11110110110','10101111000','10100011110','10001011110',
+  '10111101000','10111100010','11110101000','11110100010','10111011110',
+  '10111101110','11101011110','11110101110','11010000100','11010010000',
+  '11010011100','1100011101011',
+];
+
+function code128Bits(value: string): string {
+  if (!value) return '';
+  const codes: number[] = [104]; // Start B
+  for (const ch of value) {
+    const v = ch.charCodeAt(0) - 32;
+    if (v < 0 || v > 94) continue; // تجاهُل أي محرف خارج نطاق Code B
+    codes.push(v);
+  }
+  let sum = 104;
+  for (let i = 1; i < codes.length; i++) sum += codes[i] * i;
+  codes.push(sum % 103); // checksum
+  codes.push(106);       // Stop
+  return codes.map((c) => C128_PATTERNS[c]).join('');
+}
+
+function code128SvgString(value: string, moduleWidth = 1.6, height = 44): string {
+  const bits = code128Bits(value);
+  if (!bits) return '';
+  const QZ = 10; // quiet zone (modules) على كل جانب — مطلوبة للمسح
+  const width = (bits.length + QZ * 2) * moduleWidth;
+  let rects = '';
+  let i = 0;
+  while (i < bits.length) {
+    if (bits[i] === '1') {
+      let run = 1;
+      while (bits[i + run] === '1') run++;
+      const x = (QZ + i) * moduleWidth;
+      rects += `<rect x="${x.toFixed(2)}" y="0" width="${(run * moduleWidth).toFixed(2)}" height="${height}" fill="#111"/>`;
+      i += run;
+    } else {
+      i++;
+    }
+  }
+  return `<svg width="${width.toFixed(1)}" height="${height + 16}" viewBox="0 0 ${width.toFixed(1)} ${height + 16}" xmlns="http://www.w3.org/2000/svg"><rect width="${width.toFixed(1)}" height="${height}" fill="#fff"/>${rects}<text x="${(width / 2).toFixed(1)}" y="${height + 12}" text-anchor="middle" font-family="'IBM Plex Mono', monospace" font-size="12" letter-spacing="2" fill="#111">${escapeHtml(value)}</text></svg>`;
+}
+
+// بيانات المنشأة المطبوعة على السند. املأ السجل التجاري / الرقم الضريبي / العنوان.
+// أي حقل يُترك فارغًا لا يظهر في المستند.
+const ORG_INFO = {
+  name:      'مؤسسة سما السابعة التجارية',
+  crNumber:  '', // السجل التجاري
+  vatNumber: '', // الرقم الضريبي
+  address:   '', // العنوان
+  phone:     '', // الهاتف
+};
+
+// ──────────────────────────────────────────────────────────────────────
+// PRINT / PDF INVOICE  (نمط E2 — ERP حديث، كحلي/رمادي بسيط + باركود حقيقي)
+// سند تحويل مخزون A4 جاهز للطباعة، مبني على بيانات inventory_transfers
+// (صنف واحد + كمية، بدون أسعار). يحافظ على كل الحقول الأساسية للتحويل.
+// ──────────────────────────────────────────────────────────────────────
+
+function escapeHtml(s: string | null | undefined): string {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function buildTransferInvoiceHTML(t: Transfer): string {
+  // لون شارة الحالة (صغيرة فقط — باقي المستند أحادي اللون + كحلي)
+  const statusColors: Record<
+    TransferStatus,
+    { bg: string; text: string; border: string; label: string }
+  > = {
+    pending:   { bg: '#fffbeb', text: '#b45309', border: '#fde68a', label: 'معلق'  },
+    approved:  { bg: '#eff6ff', text: '#1d4ed8', border: '#bfdbfe', label: 'معتمد' },
+    completed: { bg: '#ecfdf5', text: '#047857', border: '#a7f3d0', label: 'مكتمل' },
+    cancelled: { bg: '#fef2f2', text: '#b91c1c', border: '#fecaca', label: 'ملغي'  },
+  };
+  const sc = statusColors[t.status];
+
+  const created   = `${formatDate(t.created_at)} — ${formatTime(t.created_at)}`;
+  const approved  = t.approved_at  ? `${formatDate(t.approved_at)} — ${formatTime(t.approved_at)}`  : '—';
+  const completed = t.completed_at ? `${formatDate(t.completed_at)} — ${formatTime(t.completed_at)}` : '—';
+  const nowIso    = new Date().toISOString();
+  const generated = `${formatDate(nowIso)} — ${formatTime(nowIso)}`;
+
+  const num           = escapeHtml(t.transfer_number);
+  const fromShop      = escapeHtml(t.from_shop);
+  const toShop        = escapeHtml(t.to_shop);
+  const productName   = escapeHtml(t.product_name);
+  const productNumber = escapeHtml(t.product_number || '—');
+  const notes         = t.notes ? escapeHtml(t.notes) : '';
+  const barcode       = code128SvgString(t.transfer_number);
+
+  // أسطر المنشأة — تظهر فقط لو تم ملؤها في ORG_INFO
+  const orgRow1 =
+    ORG_INFO.crNumber || ORG_INFO.vatNumber
+      ? `<div class="co-row">${
+          ORG_INFO.crNumber ? `السجل التجاري <span class="mono">${escapeHtml(ORG_INFO.crNumber)}</span>` : ''
+        }${ORG_INFO.crNumber && ORG_INFO.vatNumber ? ' · ' : ''}${
+          ORG_INFO.vatNumber ? `الرقم الضريبي <span class="mono">${escapeHtml(ORG_INFO.vatNumber)}</span>` : ''
+        }</div>`
+      : '';
+  const orgRow2 =
+    ORG_INFO.address || ORG_INFO.phone
+      ? `<div class="co-row">${escapeHtml(ORG_INFO.address)}${
+          ORG_INFO.address && ORG_INFO.phone ? ' · ' : ''
+        }${ORG_INFO.phone ? `<span class="mono">${escapeHtml(ORG_INFO.phone)}</span>` : ''}</div>`
+      : '';
+
+  return `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>سند تحويل ${num}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --ink:#151515; --soft:#4a4f55; --faint:#7c828a;
+    --line:#b9bec4; --line-soft:#dde1e5; --fill:#eef1f4; --fill2:#f7f9fa;
+    --accent:#1f3a5f;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{ background:#e7eaed; }
+  body{
+    font-family:'IBM Plex Sans Arabic', system-ui, -apple-system, 'Segoe UI', Tahoma, sans-serif;
+    color:var(--ink); -webkit-print-color-adjust:exact; print-color-adjust:exact;
+  }
+  .mono{ font-family:'IBM Plex Mono', ui-monospace, monospace; direction:ltr; unicode-bidi:embed; font-variant-numeric:tabular-nums; }
+
+  /* شريط أدوات النافذة (لا يُطبع) */
+  .toolbar{
+    position:sticky; top:0; z-index:5; display:flex; align-items:center; justify-content:space-between;
+    gap:16px; background:#0f172a; color:#e2e8f0; padding:12px 22px; font-size:13px; font-weight:600;
+  }
+  .toolbar button{
+    background:#f8fafc; color:#0f172a; border:0; border-radius:9px; padding:9px 20px;
+    font-size:13px; font-weight:700; cursor:pointer; font-family:inherit;
+  }
+
+  .page{
+    width:210mm; min-height:297mm; margin:18px auto; background:#fff; padding:14mm 13mm;
+    box-shadow:0 10px 34px rgba(2,6,23,.12);
+  }
+
+  /* الترويسة */
+  .head{ display:flex; align-items:flex-start; justify-content:space-between;
+    padding-bottom:12px; border-bottom:2px solid var(--accent); }
+  .brand{ font-size:22px; font-weight:700; letter-spacing:.4px; color:var(--accent); margin-bottom:5px; }
+  .brand-sub{ font-size:9px; font-weight:400; letter-spacing:1.8px; color:var(--faint); }
+  .co-row{ font-size:10.5px; color:var(--soft); line-height:1.9; }
+  .co-row b{ color:var(--ink); font-weight:600; }
+  .dt{ text-align:left; }
+  .dt .t{ font-size:18px; font-weight:700; color:var(--accent); }
+  .dt .en{ font-size:8.5px; letter-spacing:2px; color:var(--faint); margin-bottom:7px; }
+  .pill{ display:inline-block; font-size:11px; font-weight:700; padding:4px 14px; border-radius:999px;
+    background:${sc.bg}; color:${sc.text}; border:1px solid ${sc.border}; }
+
+  /* شريط المعلومات */
+  .band{ display:flex; background:var(--fill); margin-top:16px; border:1px solid var(--line-soft); }
+  .band .cell{ flex:1; padding:10px 12px; border-left:1px solid var(--line-soft); }
+  .band .cell:last-child{ border-left:0; }
+  .band .k{ font-size:9.5px; color:var(--faint); margin-bottom:3px; }
+  .band .v{ font-size:12px; font-weight:600; }
+
+  /* الأطراف */
+  .parties{ display:flex; gap:14px; margin-top:16px; }
+  .parties .p{ flex:1; border:1px solid var(--line); border-radius:8px; padding:12px 14px; }
+  .parties .cap{ font-size:10px; font-weight:600; color:var(--accent);
+    border-bottom:1.5px solid var(--accent); padding-bottom:5px; margin-bottom:7px; }
+  .parties .nm{ font-size:15px; font-weight:600; }
+
+  /* جدول الأصناف */
+  table.grid{ width:100%; border-collapse:collapse; margin-top:16px; }
+  table.grid th, table.grid td{ border:1px solid var(--line); padding:9px 11px; text-align:right; vertical-align:middle; }
+  table.grid thead th{ background:var(--accent); color:#fff; font-weight:500; font-size:11px; letter-spacing:.2px; }
+  table.grid td.c, table.grid th.c{ text-align:center; }
+  table.grid td{ font-size:12px; }
+
+  /* ملاحظات + إجمالي الكمية */
+  .midrow{ display:flex; gap:14px; margin-top:14px; align-items:stretch; }
+  .notes{ flex:1; border:1px solid var(--line); border-radius:8px; padding:12px 14px; background:var(--fill2); }
+  .notes .k{ font-size:10.5px; color:var(--faint); font-weight:600; margin-bottom:5px; }
+  .notes .v{ font-size:11.5px; color:var(--soft); line-height:1.8; }
+  .qtybox{ width:200px; background:var(--accent); color:#fff; border-radius:8px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; padding:12px; }
+  .qtybox .qk{ font-size:11px; opacity:.85; margin-bottom:4px; }
+  .qtybox .qv{ font-size:26px; font-weight:700; }
+
+  /* سجل التتبع */
+  .timeline{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:16px; }
+  .tl{ border:1px solid var(--line); border-radius:8px; padding:12px 14px; }
+  .tl .k{ font-size:10px; color:var(--faint); font-weight:600; margin-bottom:6px; }
+  .tl .v{ font-size:12px; font-weight:600; }
+
+  /* التوقيعات */
+  .signs{ display:grid; grid-template-columns:repeat(3,1fr); gap:28px; margin-top:40px; }
+  .sign{ text-align:center; }
+  .sign .line{ border-top:1px solid var(--ink); margin-bottom:7px; }
+  .sign .role{ font-size:11px; color:var(--soft); font-weight:600; }
+
+  /* التذييل + الباركود */
+  .sysfoot{ margin-top:30px; padding-top:13px; border-top:1px solid var(--line);
+    display:flex; align-items:flex-end; justify-content:space-between; gap:20px; }
+  .sysfoot .meta{ font-size:9.5px; color:var(--faint); line-height:1.9; }
+  .sysfoot .meta b{ color:var(--soft); }
+  .sysfoot .bc{ text-align:center; flex:none; }
+
+  @media print{
+    html,body{ background:#fff; }
+    .toolbar{ display:none; }
+    .page{ width:auto; min-height:auto; margin:0; padding:0; box-shadow:none; }
+    @page{ size:A4; margin:12mm; }
+  }
+</style>
+</head>
+<body>
+  <div class="toolbar">
+    <span>معاينة سند التحويل — اختر «طباعة» ثم «حفظ كـPDF» من نافذة الطباعة</span>
+    <button onclick="window.print()">🖨 طباعة / حفظ PDF</button>
+  </div>
+
+  <div class="page">
+    <div class="head">
+      <div class="co">
+        <div class="brand">محور <span class="brand-sub">MIHWAR B2B</span></div>
+        <div class="co-row"><b>${escapeHtml(ORG_INFO.name)}</b></div>
+        ${orgRow1}
+        ${orgRow2}
+      </div>
+      <div class="dt">
+        <div class="t">سند تحويل مخزون</div>
+        <div class="en">STOCK TRANSFER ORDER</div>
+        <div class="pill">${sc.label}</div>
+      </div>
+    </div>
+
+    <div class="band">
+      <div class="cell"><div class="k">رقم السند</div><div class="v mono">${num}</div></div>
+      <div class="cell"><div class="k">تاريخ الإنشاء</div><div class="v">${formatDate(t.created_at)}</div></div>
+      <div class="cell"><div class="k">نوع الحركة</div><div class="v">تحويل بين فروع</div></div>
+      <div class="cell"><div class="k">عدد الأصناف</div><div class="v mono">1</div></div>
+      <div class="cell"><div class="k">الحالة</div><div class="v" style="color:${sc.text}">${sc.label}</div></div>
+    </div>
+
+    <div class="parties">
+      <div class="p"><div class="cap">من الفرع (المُرسِل)</div><div class="nm">${fromShop}</div></div>
+      <div class="p"><div class="cap">إلى الفرع (المُستقبِل)</div><div class="nm">${toShop}</div></div>
+    </div>
+
+    <table class="grid">
+      <thead>
+        <tr>
+          <th class="c" style="width:42px">م</th>
+          <th style="width:180px">كود الصنف</th>
+          <th>وصف الصنف</th>
+          <th class="c" style="width:72px">الوحدة</th>
+          <th class="c" style="width:90px">الكمية</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="c mono">1</td>
+          <td class="mono">${productNumber}</td>
+          <td style="font-weight:600">${productName}</td>
+          <td class="c">حبة</td>
+          <td class="c mono" style="font-weight:700">${t.quantity}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="midrow">
+      <div class="notes">
+        <div class="k">ملاحظات</div>
+        <div class="v">${notes ? notes : 'تحويل داخلي بين فروع نفس المنشأة — يُستلم بعد مطابقة الكمية المذكورة.'}</div>
+      </div>
+      <div class="qtybox">
+        <div class="qk">إجمالي الكمية</div>
+        <div class="qv mono">${t.quantity}</div>
+      </div>
+    </div>
+
+    <div class="timeline">
+      <div class="tl"><div class="k">تاريخ الإنشاء</div><div class="v">${created}</div></div>
+      <div class="tl"><div class="k">تاريخ الاعتماد</div><div class="v">${approved}</div></div>
+      <div class="tl"><div class="k">تاريخ الإتمام</div><div class="v">${completed}</div></div>
+    </div>
+
+    <div class="signs">
+      <div class="sign"><div class="line"></div><div class="role">أمين المستودع المُرسِل</div></div>
+      <div class="sign"><div class="line"></div><div class="role">أمين المستودع المُستقبِل</div></div>
+      <div class="sign"><div class="line"></div><div class="role">المسؤول المُعتمِد</div></div>
+    </div>
+
+    <div class="sysfoot">
+      <div class="meta">
+        أُنشئ إلكترونيًا بواسطة <b>MIHWAR ERP</b> — لا يتطلب توقيعًا يدويًا للصلاحية.<br>
+        تاريخ الطباعة: ${generated} · صفحة 1 / 1
+      </div>
+      <div class="bc">${barcode}</div>
+    </div>
+  </div>
+</body>
+</html>`;
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -272,7 +607,7 @@ function StatusBadge({ status }: { status: TransferStatus }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// ACTION BUTTONS — approve / complete / cancel
+// ACTION BUTTONS — approve / complete / cancel / print
 // Displayed inline in table row and mobile card
 // ══════════════════════════════════════════════════════════════════════
 
@@ -282,14 +617,11 @@ type ActionButtonsProps = {
   onApprove:  (t: Transfer) => void;
   onComplete: (t: Transfer) => void;
   onCancel:   (t: Transfer) => void;
+  onPrint:    (t: Transfer) => void;
 };
 
-function ActionButtons({ transfer: t, processingId, onApprove, onComplete, onCancel }: ActionButtonsProps) {
+function ActionButtons({ transfer: t, processingId, onApprove, onComplete, onCancel, onPrint }: ActionButtonsProps) {
   const busy = processingId === t.id;
-
-  if (t.status === 'completed' || t.status === 'cancelled') {
-    return <span className="text-slate-600 text-xs">—</span>;
-  }
 
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
@@ -342,6 +674,16 @@ function ActionButtons({ transfer: t, processingId, onApprove, onComplete, onCan
           </button>
         </>
       )}
+
+      {/* Print / PDF — available for every status */}
+      <button
+        onClick={() => onPrint(t)}
+        title="طباعة السند / حفظ PDF"
+        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-500/10 hover:bg-slate-500/20 border border-slate-600/40 text-slate-300 text-[11px] font-bold transition-all active:scale-95 whitespace-nowrap"
+      >
+        <Printer size={11} />
+        طباعة
+      </button>
     </div>
   );
 }
@@ -672,6 +1014,23 @@ export default function TransfersPage() {
       'تم إلغاء التحويل',
     );
   }, [applyStatusUpdate]);
+
+  // ────────────────────────────────────────────────────────────────────
+  // E) PRINT: open the styled transfer invoice in a new window
+  // The user can then Print or "Save as PDF" from the browser dialog.
+  // ────────────────────────────────────────────────────────────────────
+  const handlePrintInvoice = useCallback((t: Transfer) => {
+    const html = buildTransferInvoiceHTML(t);
+    const w = window.open('', '_blank', 'width=900,height=1000');
+    if (!w) {
+      setToast({ message: 'يرجى السماح بالنوافذ المنبثقة لعرض السند', type: 'error' });
+      return;
+    }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+  }, []);
 
   // ────────────────────────────────────────────────────────────────────
   // A) CREATE: INSERT into inventory_transfers
@@ -1152,6 +1511,7 @@ export default function TransfersPage() {
                         onApprove={handleApprove}
                         onComplete={handleComplete}
                         onCancel={handleCancel}
+                        onPrint={handlePrintInvoice}
                       />
                     </td>
                   </tr>
@@ -1221,6 +1581,7 @@ export default function TransfersPage() {
                     onApprove={handleApprove}
                     onComplete={handleComplete}
                     onCancel={handleCancel}
+                    onPrint={handlePrintInvoice}
                   />
                 </div>
               </div>

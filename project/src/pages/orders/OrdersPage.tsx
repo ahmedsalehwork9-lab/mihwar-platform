@@ -20,6 +20,7 @@ import { useCreateOrder } from "./hooks/useCreateOrder";
 
 import { OrderSummaryCards } from "./components/OrderSummaryCards";
 import { OrderFilters } from "./components/OrderFilters";
+import { OrderReportExport } from "./components/OrderReportExport";
 import { OrdersMobileCards } from "./components/OrdersMobileCards";
 import { OrdersTable } from "./components/OrdersTable";
 import { OrderDetailsDrawer } from "./components/OrderDetailsDrawer";
@@ -41,7 +42,7 @@ export default function OrdersPage() {
     shops, requesterShop, loading, error, setError, fetchOrders,
     tab, statusFilter, search, page, setPage,
     handleTabChange, handleStatusFilter, handleSearchChange,
-    counts, totalPages, pageItems,
+    filtered, counts, totalPages, pageItems,
   } = useOrders({ isAdmin, ownedShopId, t });
 
   // ── Order detail drawer: open/close, item fetch, print ──
@@ -113,6 +114,9 @@ export default function OrdersPage() {
         isRTL={isRTL}
         t={t}
       />
+
+      {/* فلتر بالتاريخ + تصدير التقرير (PDF / Excel) بناءً على الفلترة الحالية */}
+      <OrderReportExport orders={filtered} t={t} isRTL={isRTL} />
 
       <OrdersMobileCards orders={pageItems} onOpenDetail={openDetail} isRTL={isRTL} t={t} />
 

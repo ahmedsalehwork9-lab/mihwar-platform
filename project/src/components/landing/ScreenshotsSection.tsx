@@ -7,37 +7,7 @@
  */
 
 import { useState } from "react";
-
-const screens = [
-  {
-    id: "dashboard",
-    label: "Dashboard",
-    labelAr: "لوحة التحكم",
-    url: "app.mihwar.sa/dashboard",
-    content: <DashboardMock />,
-  },
-  {
-    id: "inventory",
-    label: "Inventory",
-    labelAr: "المخزون",
-    url: "app.mihwar.sa/inventory",
-    content: <InventoryMock />,
-  },
-  {
-    id: "orders",
-    label: "Orders",
-    labelAr: "الطلبات",
-    url: "app.mihwar.sa/orders",
-    content: <OrdersMock />,
-  },
-  {
-    id: "shops",
-    label: "Shops",
-    labelAr: "المحلات",
-    url: "app.mihwar.sa/shops",
-    content: <ShopsMock />,
-  },
-];
+import { useLang } from "../../context/LanguageContext";
 
 function ScreenFrame({
   url,
@@ -92,14 +62,16 @@ function ScreenFrame({
 }
 
 function DashboardMock() {
+  const { t } = useLang();
+
   return (
     <div className="p-4" dir="rtl">
       <div className="grid grid-cols-4 gap-2 mb-3">
         {[
-          ["248", "المنتجات", false],
-          ["1,420", "الكمية", false],
-          ["13", "الطلبات", false],
-          ["7", "تنبيهات", true],
+          ["248", t("Products", "المنتجات"), false],
+          ["1,420", t("Quantity", "الكمية"), false],
+          ["13", t("Orders", "الطلبات"), false],
+          ["7", t("Alerts", "تنبيهات"), true],
         ].map(([v, l, w]) => (
           <div
             key={l as string}
@@ -136,9 +108,9 @@ function DashboardMock() {
         style={{ background: "#111C2E", border: "0.5px solid rgba(30,144,255,0.06)" }}
       >
         {[
-          ["فلتر هواء", "42", "#5DCAA5"],
-          ["شمعة إشعال", "3", "#EF9F27"],
-          ["تيل فرامل", "نافد", "#E24B4A"],
+          [t("Air Filter", "فلتر هواء"), "42", "#5DCAA5"],
+          [t("Spark Plug", "شمعة إشعال"), "3", "#EF9F27"],
+          [t("Brake Pads", "تيل فرامل"), t("Out of Stock", "نافد"), "#E24B4A"],
         ].map(([n, q, c]) => (
           <div
             key={n as string}
@@ -172,6 +144,8 @@ function DashboardMock() {
 }
 
 function InventoryMock() {
+  const { t } = useLang();
+
   return (
     <div className="p-4" dir="rtl">
       <div className="flex gap-2 mb-3">
@@ -180,14 +154,14 @@ function InventoryMock() {
           style={{ background: "#111C2E", border: "0.5px solid rgba(30,144,255,0.1)" }}
         >
           <span style={{ color: "#3A4E66", fontSize: "0.7rem", fontFamily: "'Cairo'" }}>
-            🔍 بحث...
+            {t("🔍 Search...", "🔍 بحث...")}
           </span>
         </div>
         <div
           className="h-7 px-3 rounded-lg flex items-center"
           style={{ background: "#1E90FF", fontSize: "0.7rem", color: "#fff", fontFamily: "'Cairo'" }}
         >
-          + إضافة
+          {t("+ Add", "+ إضافة")}
         </div>
       </div>
       <div
@@ -202,7 +176,12 @@ function InventoryMock() {
             borderBottom: "0.5px solid rgba(30,144,255,0.08)",
           }}
         >
-          {["المنتج", "الرقم", "الكمية", "السعر"].map((h) => (
+          {[
+            t("Product", "المنتج"),
+            t("Part No.", "الرقم"),
+            t("Quantity", "الكمية"),
+            t("Price", "السعر"),
+          ].map((h) => (
             <span
               key={h}
               style={{ color: "#3A4E66", fontSize: "0.6rem", fontFamily: "'Cairo'" }}
@@ -212,10 +191,10 @@ function InventoryMock() {
           ))}
         </div>
         {[
-          ["فلتر هواء تويوتا", "TY-AF", "42", "#5DCAA5"],
-          ["شمعة إشعال كيا", "KI-SP", "3", "#EF9F27"],
-          ["تيل فرامل نيسان", "NI-BF", "0", "#E24B4A"],
-          ["حزام توقيت", "HY-TB", "18", "#5DCAA5"],
+          [t("Toyota Air Filter", "فلتر هواء تويوتا"), "TY-AF", "42", "#5DCAA5"],
+          [t("Kia Spark Plug", "شمعة إشعال كيا"), "KI-SP", "3", "#EF9F27"],
+          [t("Nissan Brake Pads", "تيل فرامل نيسان"), "NI-BF", "0", "#E24B4A"],
+          [t("Timing Belt", "حزام توقيت"), "HY-TB", "18", "#5DCAA5"],
         ].map(([n, r, q, c]) => (
           <div
             key={n as string}
@@ -243,16 +222,24 @@ function InventoryMock() {
 }
 
 function OrdersMock() {
+  const { t } = useLang();
+
   const statuses = [
-    ["#1044", "جديد", "#0C2240", "#85B7EB"],
-    ["#1043", "جاري", "#261B08", "#FAC775"],
-    ["#1042", "مكتمل", "#0D2216", "#5DCAA5"],
-    ["#1041", "ملغى", "#200E0E", "#F09595"],
+    ["#1044", t("New", "جديد"), "#0C2240", "#85B7EB"],
+    ["#1043", t("In Progress", "جاري"), "#261B08", "#FAC775"],
+    ["#1042", t("Completed", "مكتمل"), "#0D2216", "#5DCAA5"],
+    ["#1041", t("Cancelled", "ملغى"), "#200E0E", "#F09595"],
   ];
+
   return (
     <div className="p-4" dir="rtl">
       <div className="flex gap-2 mb-3">
-        {["الكل", "جديد", "جاري", "مكتمل"].map((s, i) => (
+        {[
+          t("All", "الكل"),
+          t("New", "جديد"),
+          t("In Progress", "جاري"),
+          t("Completed", "مكتمل"),
+        ].map((s, i) => (
           <div
             key={s}
             className="h-6 px-3 rounded-lg flex items-center text-xs"
@@ -307,14 +294,16 @@ function OrdersMock() {
 }
 
 function ShopsMock() {
+  const { t } = useLang();
+
   return (
     <div className="p-4" dir="rtl">
       <div className="grid grid-cols-2 gap-2">
         {[
-          ["الرياض — شعبة 1", "5 مستخدمين", true],
-          ["جدة — شعبة 2", "3 مستخدمين", false],
-          ["الدمام — شعبة 1", "4 مستخدمين", false],
-          ["+ إضافة فرع", "", false],
+          [t("Riyadh — Branch 1", "الرياض — شعبة 1"), t("5 users", "5 مستخدمين"), true],
+          [t("Jeddah — Branch 2", "جدة — شعبة 2"), t("3 users", "3 مستخدمين"), false],
+          [t("Dammam — Branch 1", "الدمام — شعبة 1"), t("4 users", "4 مستخدمين"), false],
+          [t("+ Add Branch", "+ إضافة فرع"), "", false],
         ].map(([name, users, active]) => (
           <div
             key={name as string}
@@ -347,7 +336,35 @@ function ShopsMock() {
 }
 
 export default function ScreenshotsSection() {
+  const { t } = useLang();
   const [active, setActive] = useState(0);
+
+  const screens = [
+    {
+      id: "dashboard",
+      label: t("Dashboard", "لوحة التحكم"),
+      url: "app.mihwar.sa/dashboard",
+      content: <DashboardMock />,
+    },
+    {
+      id: "inventory",
+      label: t("Inventory", "المخزون"),
+      url: "app.mihwar.sa/inventory",
+      content: <InventoryMock />,
+    },
+    {
+      id: "orders",
+      label: t("Orders", "الطلبات"),
+      url: "app.mihwar.sa/orders",
+      content: <OrdersMock />,
+    },
+    {
+      id: "shops",
+      label: t("Shops", "المحلات"),
+      url: "app.mihwar.sa/shops",
+      content: <ShopsMock />,
+    },
+  ];
 
   return (
     <section
@@ -372,7 +389,7 @@ export default function ScreenshotsSection() {
               letterSpacing: "0.14em",
             }}
           >
-            مثال حقيقي
+            {t("Live Preview", "مثال حقيقي")}
           </span>
           <h2
             className="mt-3 font-black"
@@ -382,7 +399,7 @@ export default function ScreenshotsSection() {
               fontFamily: "'Cairo', sans-serif",
             }}
           >
-            شوف النظام بنفسك
+            {t("See the System in Action", "شوف النظام بنفسك")}
           </h2>
           <p
             className="mt-2"
@@ -391,7 +408,7 @@ export default function ScreenshotsSection() {
               fontFamily: "'Cairo', sans-serif",
             }}
           >
-            واجهة مصممة للسرعة والوضوح
+            {t("An interface built for speed and clarity", "واجهة مصممة للسرعة والوضوح")}
           </p>
         </div>
 
@@ -411,15 +428,13 @@ export default function ScreenshotsSection() {
                   active === i ? "0 0 16px rgba(30,144,255,0.3)" : "none",
               }}
             >
-              {s.labelAr}
+              {s.label}
             </button>
           ))}
         </div>
 
         {/* Active screen */}
-        <div
-          style={{ transition: "opacity 0.3s ease" }}
-        >
+        <div style={{ transition: "opacity 0.3s ease" }}>
           <ScreenFrame url={screens[active].url}>
             {screens[active].content}
           </ScreenFrame>

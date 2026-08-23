@@ -1,4 +1,5 @@
 import { ChevronLeft, Play } from 'lucide-react';
+import { useLang } from '../../context/LanguageContext';
 
 type HeroSectionProps = {
   onStart?: () => void;
@@ -6,6 +7,8 @@ type HeroSectionProps = {
 };
 
 export default function HeroSection({ onStart }: HeroSectionProps) {
+  const { t } = useLang();
+
   return (
     <section className="relative pt-32 pb-20 px-4">
       <div className="max-w-7xl mx-auto text-center">
@@ -14,16 +17,23 @@ export default function HeroSection({ onStart }: HeroSectionProps) {
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
           </span>
-          <span className="text-blue-400 text-xs font-bold uppercase tracking-wider">نظام مِحور الجديد 2.0</span>
+          <span className="text-blue-400 text-xs font-bold uppercase tracking-wider">
+            {t('New MIHWAR System 2.0', 'نظام مِحور الجديد 2.0')}
+          </span>
         </div>
         
         <h1 className="text-5xl md:text-7xl font-black text-white mb-6 leading-tight">
-          شبكة تجارة <br />
-          <span className="text-transparent bg-clip-text bg-gradient-to-l from-blue-400 to-indigo-500">قطع الغيار الذكية</span>
+          {t('Commerce Network for', 'شبكة تجارة')} <br />
+          <span className="text-transparent bg-clip-text bg-gradient-to-l from-blue-400 to-indigo-500">
+            {t('Smart Auto Parts', 'قطع الغيار الذكية')}
+          </span>
         </h1>
         
         <p className="text-slate-400 text-lg md:text-xl max-w-2xl mx-auto mb-10 leading-relaxed">
-          منصة ذكية لإدارة المنتجات والمخزون والطلبات بين محلات قطع الغيار من مكان واحد.
+          {t(
+            'An intelligent platform to manage products, inventory, and orders across auto parts shops from one place.',
+            'منصة ذكية لإدارة المنتجات والمخزون والطلبات بين محلات قطع الغيار من مكان واحد.'
+          )}
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -31,13 +41,13 @@ export default function HeroSection({ onStart }: HeroSectionProps) {
             onClick={() => onStart?.()}
             className="w-full sm:w-auto flex items-center justify-center gap-2 bg-white text-slate-950 px-8 py-4 rounded-2xl font-bold text-lg hover:bg-slate-100 transition-all group"
           >
-            ابدأ تجربتك المجانية
+            {t('Start Your Free Trial', 'ابدأ تجربتك المجانية')}
             <ChevronLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
           </button>
           
           <button className="w-full sm:w-auto flex items-center justify-center gap-2 bg-slate-900 text-white border border-slate-800 px-8 py-4 rounded-2xl font-bold text-lg hover:bg-slate-800 transition-all">
             <Play size={18} fill="currentColor" />
-            شاهد العرض التجريبي
+            {t('Watch the Demo', 'شاهد العرض التجريبي')}
           </button>
         </div>
       </div>

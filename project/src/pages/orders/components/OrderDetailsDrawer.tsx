@@ -2,7 +2,7 @@
 // src/pages/orders/components/OrderDetailsDrawer.tsx
 //
 // The order detail modal. Composes:
-//   - Header (doc title/number, status badge, print/close buttons)
+//   - Header (doc title/number, status badge, print/download/close buttons)
 //   - Party cards (requester / supplier)
 //   - OrderProgressPanel (item list with qty badges)
 //   - Notes
@@ -10,8 +10,8 @@
 //   - OrderApprovalPanel (status-driven footer actions)
 // =============================================================
 
-import { memo } from "react";
-import { RefreshCw, X, Printer } from "lucide-react";
+import { memo, useState } from "react";
+import { RefreshCw, X, Printer, Download } from "lucide-react";
 import type { ApprovedQtyMap, Order, OrderItem } from "../types";
 import { calculateApprovedTotal } from "../utils/calculateApprovedTotal";
 import { buildDocumentNumber } from "../utils/buildDocumentNumber";
@@ -31,6 +31,7 @@ type OrderDetailsDrawerProps = {
   canAct: boolean;
   onClose: () => void;
   onPrint: () => void;
+  onDownloadPdf: () => void | Promise<void>;
   onSetApprovedQty: (itemId: number, value: number, maxRequested: number, stockQty: number) => void;
   onReject: () => void;
   onOpenPartialEditor: () => void;
@@ -46,7 +47,7 @@ type OrderDetailsDrawerProps = {
 
 function OrderDetailsDrawerBase({
   detailOrder, detailItems, detailLoading, approvedQtyMap, showPartialEditor, partialSaving,
-  actionId, creatingMissingOrder, canAct, onClose, onPrint, onSetApprovedQty, onReject,
+  actionId, creatingMissingOrder, canAct, onClose, onPrint, onDownloadPdf, onSetApprovedQty, onReject,
   onOpenPartialEditor, onCancelPartialEditor, onConfirmPartialApprove, onApproveAll,
   onApproveRemaining, onRejectRemaining, onCreateMissingOrder, isRTL, t,
 }: OrderDetailsDrawerProps) {
@@ -55,6 +56,20 @@ function OrderDetailsDrawerBase({
   console.log("REQUEST TYPE:", detailOrder.request_type);
   console.log("FULL ORDER:", detailOrder);
   console.log("================================");
+
+  // Local busy state for the "Download PDF" button so a click can show
+  // a spinner while the (async) PDF is generated, and can't be fired
+  // twice. Purely UI state — no wiring needed from the parent page.
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const handleDownloadClick = async () => {
+    if (downloadingPdf) return;
+    try {
+      setDownloadingPdf(true);
+      await onDownloadPdf();
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
 
   const detailDocTitle = detailOrder.request_type === "TRANSFER"
     ? t("Transfer Order", "طلب تحويل")
@@ -95,6 +110,18 @@ function OrderDetailsDrawerBase({
           <div className="flex items-center gap-2 shrink-0 ml-3">
             <button onClick={onPrint} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white text-xs font-bold transition-all active:scale-95">
               <Printer size={15} /><span className="hidden sm:inline">{t("Print", "طباعة")}</span>
+            </button>
+            <button
+              onClick={handleDownloadClick}
+              disabled={downloadingPdf}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white text-xs font-bold transition-all active:scale-95 disabled:opacity-60 disabled:cursor-wait"
+            >
+              {downloadingPdf
+                ? <RefreshCw size={15} className="animate-spin" />
+                : <Download size={15} />}
+              <span className="hidden sm:inline">
+                {downloadingPdf ? t("Preparing...", "جاري التجهيز...") : t("Download PDF", "تنزيل PDF")}
+              </span>
             </button>
             <button onClick={onClose} className="p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-white transition-all active:scale-95"><X size={18} /></button>
           </div>

@@ -15,12 +15,20 @@
 //     decision (including a deliberate 0) and must be shown as-is.
 //   - approval_reviewed === false → approved_quantity is not a real
 //     decision yet; default to min(requested, stock) instead.
+//
+// Both "Print" and "Download PDF" go through the browser's native
+// print engine, which is the ONLY renderer that shapes Arabic text
+// correctly (letter joining, word spacing, RTL). Image-based PDF
+// libraries such as html2canvas mangle Arabic, so they are NOT used.
+// "Download PDF" differs from "Print" only in that it presets the
+// Save-as-PDF filename to Transfer-<docNumber>.
 // =============================================================
 
 import { useState, useCallback } from "react";
 import { supabase } from "../../lib/supabase";
 import type { ApprovedQtyMap, Order, OrderItem } from "../types";
 import { buildPrintHTML } from "../utils/buildPrintHTML";
+import { buildDocumentNumber } from "../utils/buildDocumentNumber";
 
 type UseOrderDetailsArgs = {
   t: (en: string, ar: string) => string;
@@ -42,6 +50,108 @@ function defaultApprovedQty(item: OrderItem): number {
   }
   const stockQty = item.product?.quantity ?? item.quantity;
   return Math.min(item.quantity, stockQty);
+}
+
+/**
+ * Pre-render the verification QR as a base64 PNG data URL via
+ * Image()+Canvas (avoids CORS and any extra network request inside
+ * the opened window). Falls back to null on any failure so print/PDF
+ * still works without the QR.
+ */
+async function renderVerifyQrDataUrl(orderId: number): Promise<string | null> {
+  try {
+    const verifyUrl = `${window.location.origin}/verify/${orderId}`;
+    const qrApiUrl  = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&ecc=H&data=${encodeURIComponent(verifyUrl)}&color=1E3A5F&bgcolor=ffffff&qzone=3&margin=0`;
+    return await new Promise<string | null>((resolve) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        try {
+          const canvas  = document.createElement("canvas");
+          canvas.width  = img.naturalWidth  || 300;
+          canvas.height = img.naturalHeight || 300;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) { resolve(null); return; }
+          ctx.drawImage(img, 0, 0);
+          resolve(canvas.toDataURL("image/png"));
+        } catch {
+          resolve(null);
+        }
+      };
+      img.onerror = () => resolve(null);
+      setTimeout(() => resolve(null), 5000);
+      img.src = qrApiUrl;
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Open the transfer template in a new window and, once its Arabic
+ * webfont and QR image have loaded, invoke the browser print dialog.
+ * The browser renders Arabic correctly and lets the user pick
+ * "Save as PDF". An optional filenameTitle presets the suggested
+ * PDF filename (browsers use document.title for that).
+ */
+function openTransferPrintWindow(
+  order: Order,
+  items: OrderItem[],
+  lang: "ar" | "en",
+  qrDataUrl: string | null,
+  filenameTitle?: string,
+): void {
+  const win = window.open("", "_blank");
+  if (!win) return;
+
+  win.document.write(buildPrintHTML(order, items, lang, qrDataUrl ?? undefined));
+  win.document.close();
+
+  // Preset the Save-as-PDF suggested filename when requested.
+  if (filenameTitle) {
+    try { win.document.title = filenameTitle; } catch { /* noop */ }
+  }
+
+  const triggerPrint = () => {
+    win.focus();
+    win.print();
+  };
+
+  const waitForImagesThenPrint = () => {
+    const pending = Array.from(win.document.images).filter((img) => !img.complete);
+    if (pending.length === 0) { triggerPrint(); return; }
+
+    let settled = 0;
+    let done = false;
+    const finish = () => { if (done) return; done = true; triggerPrint(); };
+
+    pending.forEach((img) => {
+      const onSettle = () => { settled += 1; if (settled === pending.length) finish(); };
+      img.addEventListener("load", onSettle, { once: true });
+      img.addEventListener("error", onSettle, { once: true });
+    });
+
+    // Safety net: a stalled/failed image must never block printing.
+    setTimeout(finish, 2000);
+  };
+
+  const waitForFontsThenImagesThenPrint = () => {
+    const fontsReady = (win.document as Document & { fonts?: FontFaceSet }).fonts?.ready;
+    if (!fontsReady) { waitForImagesThenPrint(); return; }
+
+    let proceeded = false;
+    const proceed = () => { if (proceeded) return; proceeded = true; waitForImagesThenPrint(); };
+    fontsReady.then(proceed).catch(proceed);
+
+    // Safety net: a slow/blocked webfont must never block printing.
+    setTimeout(proceed, 2000);
+  };
+
+  if (win.document.readyState === "complete") {
+    waitForFontsThenImagesThenPrint();
+  } else {
+    win.addEventListener("load", waitForFontsThenImagesThenPrint, { once: true });
+  }
 }
 
 export function useOrderDetails({ t, lang, setGlobalError }: UseOrderDetailsArgs) {
@@ -124,92 +234,14 @@ export function useOrderDetails({ t, lang, setGlobalError }: UseOrderDetailsArgs
     setShowPartialEditor(false);
   }, []);
 
-  // -----------------------------------------------------------
-  // Print-timing fix:
-  //
-  // Previously `win.print()` was called immediately after
-  // `win.document.close()`. This raced against two async resources
-  // inside the generated print HTML: the Google Fonts @import and,
-  // critically, the QR verification <img>. Chrome would sometimes
-  // print before either finished loading, producing two symptoms
-  // reported in testing — a blank QR code box, and the page layout
-  // intermittently reverting to an unstyled/un-centered state
-  // (because the fallback font has different metrics than the
-  // webfont, so content reflows once the font *does* arrive, but
-  // by then the page was already sent to the printer).
-  //
-  // Fix, part 1 (images): wait for the print window's `load` event
-  // (covers stylesheet application) and then explicitly wait for
-  // every <img> in that window to finish loading (covers the QR
-  // code specifically — a window `load` event does not reliably
-  // guarantee every image decoded from a document.write'd document
-  // has finished across browsers). A 2s safety timeout still calls
-  // print() even if an image never resolves (e.g. network failure),
-  // so a broken QR source can never block printing entirely — it
-  // would just print without that one image, the same failure mode
-  // as before, but bounded instead of indefinite.
-  //
-  // Fix, part 2 (webfont — closes a gap the image-only fix above
-  // left open): the printed document's @import'd Google Font is a
-  // separate network resource that is NOT an <img>, so the image
-  // wait above never accounted for it. Testing confirmed the blank
-  // QR box was resolved by part 1, but the centering/layout still
-  // intermittently reverted — exactly the signature of a race with
-  // webfont loading (fallback font has different character metrics,
-  // so the page reflows once the real font swaps in; if that swap
-  // happens after print() was already called, the printed output
-  // reflects the pre-swap layout). `document.fonts.ready` is the
-  // correct, purpose-built API for this: it resolves once all fonts
-  // requested by the document have finished loading (or failed). It
-  // is awaited first, before the image wait, with its own 2s safety
-  // timeout for the same reason as the image timeout — a slow/blocked
-  // font request must never block printing indefinitely.
-  // -----------------------------------------------------------
+  /**
+   * Print: opens the transfer document and fires the browser print
+   * dialog. Arabic is rendered natively (correct shaping/spacing).
+   */
   const handlePrint = useCallback(async () => {
     if (!detailOrder) return;
 
-    // ── Pre-render QR as base64 data URL via Image + Canvas ─────
-    // Using Image() + drawImage on a Canvas avoids CORS issues that
-    // plague fetch() for cross-origin image resources. The canvas
-    // .toDataURL() call extracts the pixel data as a base64 PNG that
-    // can be embedded directly in the print HTML — zero additional
-    // network requests needed inside the print window.
-    //
-    // crossOrigin="anonymous" tells the browser to request CORS headers;
-    // api.qrserver.com returns Access-Control-Allow-Origin: * so this
-    // works reliably. If the image fails to load (network issue), we
-    // fall back to null and the print continues without the QR.
-    let qrDataUrl: string | null = null;
-    try {
-      const verifyUrl = `${window.location.origin}/verify/${detailOrder.id}`;
-      const qrApiUrl  = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&ecc=H&data=${encodeURIComponent(verifyUrl)}&color=1E3A5F&bgcolor=ffffff&qzone=3&margin=0`;
-      qrDataUrl = await new Promise<string | null>((resolve) => {
-        const img    = new Image();
-        img.crossOrigin = "anonymous";
-        img.onload = () => {
-          try {
-            const canvas  = document.createElement("canvas");
-            canvas.width  = img.naturalWidth  || 300;
-            canvas.height = img.naturalHeight || 300;
-            const ctx = canvas.getContext("2d");
-            if (!ctx) { resolve(null); return; }
-            ctx.drawImage(img, 0, 0);
-            resolve(canvas.toDataURL("image/png"));
-          } catch {
-            resolve(null);
-          }
-        };
-        img.onerror = () => resolve(null);
-        // 5s timeout — if image hasn't loaded, continue without QR
-        setTimeout(() => resolve(null), 5000);
-        img.src = qrApiUrl;
-      });
-    } catch {
-      qrDataUrl = null;
-    }
-
-    const win = window.open("", "_blank");
-    if (!win) return;
+    const qrDataUrl = await renderVerifyQrDataUrl(detailOrder.id);
 
     const itemsWithApproved = detailItems.map(i => ({
       ...i,
@@ -219,81 +251,39 @@ export function useOrderDetails({ t, lang, setGlobalError }: UseOrderDetailsArgs
         null,
     }));
 
-    win.document.write(
-      buildPrintHTML(detailOrder, itemsWithApproved, lang, qrDataUrl ?? undefined)
-    );
-
-    win.document.close();
-
-    const triggerPrint = () => {
-      win.focus();
-      win.print();
-    };
-
-    const waitForImagesThenPrint = () => {
-      const images = Array.from(win.document.images);
-      const pending = images.filter(img => !img.complete);
-
-      if (pending.length === 0) {
-        triggerPrint();
-        return;
-      }
-
-      let settled = 0;
-      let printed = false;
-      const finish = () => {
-        if (printed) return;
-        printed = true;
-        triggerPrint();
-      };
-
-      pending.forEach(img => {
-        const onSettle = () => {
-          settled += 1;
-          if (settled === pending.length) finish();
-        };
-        img.addEventListener("load", onSettle, { once: true });
-        img.addEventListener("error", onSettle, { once: true });
-      });
-
-      // Safety net: never let a stalled/failed image (e.g. network
-      // issue loading the QR code) block printing indefinitely.
-      setTimeout(finish, 2000);
-    };
-
-    const waitForFontsThenImagesThenPrint = () => {
-      const fontsReady = (win.document as Document & { fonts?: FontFaceSet }).fonts?.ready;
-
-      if (!fontsReady) {
-        // Environment has no FontFaceSet API support — fall back to
-        // the image-only wait rather than skipping straight to print.
-        waitForImagesThenPrint();
-        return;
-      }
-
-      let proceeded = false;
-      const proceed = () => {
-        if (proceeded) return;
-        proceeded = true;
-        waitForImagesThenPrint();
-      };
-
-      fontsReady.then(proceed).catch(proceed);
-
-      // Safety net: a slow/blocked webfont request (e.g. Google
-      // Fonts unreachable) must never block printing indefinitely.
-      setTimeout(proceed, 2000);
-    };
-
-    // QR is now a base64 data URL embedded directly in the HTML —
-    // no external requests needed in the print window. Proceed with
-    // the original fonts-then-images-then-print sequence directly.
-    if (win.document.readyState === "complete") {
-      waitForFontsThenImagesThenPrint();
-    } else {
-      win.addEventListener("load", waitForFontsThenImagesThenPrint, { once: true });
-    }
+    openTransferPrintWindow(detailOrder, itemsWithApproved, lang, qrDataUrl);
   }, [detailOrder, detailItems, approvedQtyMap, lang]);
+
+  /**
+   * Download PDF: identical to Print, but presets the Save-as-PDF
+   * filename to Transfer-<docNumber>. The user picks "Save as PDF"
+   * as the destination in the dialog. This is the only path that
+   * produces a PDF with correctly shaped Arabic — image-based PDF
+   * generation (html2canvas) mangles Arabic and is intentionally
+   * not used.
+   */
+  const handleDownloadPdf = useCallback(async () => {
+    if (!detailOrder) return;
+
+    const docNumber = buildDocumentNumber(detailOrder.id, detailOrder.request_type);
+    const qrDataUrl = await renderVerifyQrDataUrl(detailOrder.id);
+
+    const itemsWithApproved = detailItems.map(i => ({
+      ...i,
+      approved_quantity:
+        approvedQtyMap[i.id] ??
+        i.approved_quantity ??
+        null,
+    }));
+
+    try {
+      openTransferPrintWindow(detailOrder, itemsWithApproved, lang, qrDataUrl, `Transfer-${docNumber}`);
+    } catch (e: any) {
+      setGlobalError(
+        e?.message ?? t("Failed to generate PDF", "فشل إنشاء ملف PDF")
+      );
+    }
+  }, [detailOrder, detailItems, approvedQtyMap, lang, t, setGlobalError]);
 
   /** Clamp a candidate approved qty between 0 and min(requested, stock). */
   const setApprovedQty = useCallback(
@@ -342,6 +332,7 @@ export function useOrderDetails({ t, lang, setGlobalError }: UseOrderDetailsArgs
     openDetail,
     closeDetail,
     handlePrint,
+    handleDownloadPdf,
     refreshDetailItems,
     setApprovedQty,
     resetEditorToCurrent,

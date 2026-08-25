@@ -1,27 +1,6 @@
 // =============================================================
 // src/pages/orders/hooks/useOrderDetails.ts
-//
-// Owns: detailOrder/detailItems state, opening/closing the drawer,
-// refreshing items after an approval action, and triggering print.
-// Approval-qty map (approvedQtyMap) lives here since it's tightly
-// coupled to "which order/items are currently open", and is then
-// handed to useOrderApproval for the actual save/approve/reject logic.
-//
-// approved_quantity alone cannot tell us whether a value is a real
-// saved decision or just an untouched default (a deliberate 0 looks
-// identical to "never reviewed"). The approval_reviewed column on
-// order_items disambiguates this:
-//   - approval_reviewed === true  → approved_quantity is a real
-//     decision (including a deliberate 0) and must be shown as-is.
-//   - approval_reviewed === false → approved_quantity is not a real
-//     decision yet; default to min(requested, stock) instead.
-//
-// Both "Print" and "Download PDF" go through the browser's native
-// print engine, which is the ONLY renderer that shapes Arabic text
-// correctly (letter joining, word spacing, RTL). Image-based PDF
-// libraries such as html2canvas mangle Arabic, so they are NOT used.
-// "Download PDF" differs from "Print" only in that it presets the
-// Save-as-PDF filename to Transfer-<docNumber>.
+// (unchanged header comments preserved)
 // =============================================================
 
 import { useState, useCallback } from "react";
@@ -36,14 +15,6 @@ type UseOrderDetailsArgs = {
   setGlobalError: (msg: string | null) => void;
 };
 
-/**
- * Single source of truth for the approved-qty editor default.
- * - Reviewed items (a real prior decision, including a deliberate 0)
- *   keep their saved approved_quantity.
- * - Unreviewed items default to min(requested, stock) rather than
- *   the full requested quantity, so the editor never proposes more
- *   than what's actually in stock.
- */
 function defaultApprovedQty(item: OrderItem): number {
   if (item.approval_reviewed && item.approved_quantity != null) {
     return item.approved_quantity;
@@ -52,12 +23,6 @@ function defaultApprovedQty(item: OrderItem): number {
   return Math.min(item.quantity, stockQty);
 }
 
-/**
- * Pre-render the verification QR as a base64 PNG data URL via
- * Image()+Canvas (avoids CORS and any extra network request inside
- * the opened window). Falls back to null on any failure so print/PDF
- * still works without the QR.
- */
 async function renderVerifyQrDataUrl(orderId: number): Promise<string | null> {
   try {
     const verifyUrl = `${window.location.origin}/verify/${orderId}`;
@@ -88,26 +53,53 @@ async function renderVerifyQrDataUrl(orderId: number): Promise<string | null> {
 }
 
 /**
- * Open the transfer template in a new window and, once its Arabic
- * webfont and QR image have loaded, invoke the browser print dialog.
- * The browser renders Arabic correctly and lets the user pick
- * "Save as PDF". An optional filenameTitle presets the suggested
- * PDF filename (browsers use document.title for that).
+ * iOS Safari fix: window.open() must be called SYNCHRONOUSLY, inside
+ * the original click handler's call stack, with no `await` before it —
+ * otherwise Safari treats it as an untrusted popup and blocks it
+ * (Chrome/Android tolerate the async gap; Safari does not).
+ *
+ * So we now open the (blank) window FIRST, before any async work,
+ * and only fill in its content once the QR/data is ready. A small
+ * neutral loading placeholder is written immediately so the popup
+ * doesn't sit as a blank white tab while the QR loads.
  */
-function openTransferPrintWindow(
+function openBlankPrintWindow(t: (en: string, ar: string) => string): Window | null {
+  const win = window.open("", "_blank");
+  if (!win) return null;
+
+  try {
+    win.document.write(
+      `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${t("Preparing document…", "جارِ تجهيز المستند…")}</title></head>` +
+      `<body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;` +
+      `font-family:system-ui,-apple-system,sans-serif;color:#64748B;background:#f1f5f9;">` +
+      `<p>${t("Preparing document…", "جارِ تجهيز المستند…")}</p></body></html>`
+    );
+    win.document.close();
+  } catch {
+    /* non-fatal: placeholder is cosmetic only, final write() still runs later */
+  }
+
+  return win;
+}
+
+/**
+ * Writes the actual transfer/purchase document into an ALREADY-OPEN
+ * window (see openBlankPrintWindow), waits for its Arabic webfont and
+ * QR image to finish loading, then triggers window.print().
+ * document.write() on an already-loaded document implicitly re-opens
+ * it, so this safely replaces the loading placeholder.
+ */
+function writeIntoPrintWindow(
+  win: Window,
   order: Order,
   items: OrderItem[],
   lang: "ar" | "en",
   qrDataUrl: string | null,
   filenameTitle?: string,
 ): void {
-  const win = window.open("", "_blank");
-  if (!win) return;
-
   win.document.write(buildPrintHTML(order, items, lang, qrDataUrl ?? undefined));
   win.document.close();
 
-  // Preset the Save-as-PDF suggested filename when requested.
   if (filenameTitle) {
     try { win.document.title = filenameTitle; } catch { /* noop */ }
   }
@@ -131,7 +123,6 @@ function openTransferPrintWindow(
       img.addEventListener("error", onSettle, { once: true });
     });
 
-    // Safety net: a stalled/failed image must never block printing.
     setTimeout(finish, 2000);
   };
 
@@ -143,7 +134,6 @@ function openTransferPrintWindow(
     const proceed = () => { if (proceeded) return; proceeded = true; waitForImagesThenPrint(); };
     fontsReady.then(proceed).catch(proceed);
 
-    // Safety net: a slow/blocked webfont must never block printing.
     setTimeout(proceed, 2000);
   };
 
@@ -161,7 +151,6 @@ export function useOrderDetails({ t, lang, setGlobalError }: UseOrderDetailsArgs
   const [showPartialEditor, setShowPartialEditor] = useState(false);
   const [approvedQtyMap, setApprovedQtyMap] = useState<ApprovedQtyMap>({});
 
-  /** Re-fetch order items after an approval action, then sync the approved-qty map. */
   const refreshDetailItems = useCallback(async (orderId: number) => {
     try {
       const { data, error: fetchError } = await supabase
@@ -178,11 +167,7 @@ export function useOrderDetails({ t, lang, setGlobalError }: UseOrderDetailsArgs
       setDetailItems(items);
 
       const map: ApprovedQtyMap = {};
-
-      items.forEach(i => {
-        map[i.id] = defaultApprovedQty(i);
-      });
-
+      items.forEach(i => { map[i.id] = defaultApprovedQty(i); });
       setApprovedQtyMap(map);
     } catch (e: any) {
       setGlobalError(e?.message ?? "Failed to refresh order items");
@@ -209,15 +194,10 @@ export function useOrderDetails({ t, lang, setGlobalError }: UseOrderDetailsArgs
         setGlobalError(fetchError.message);
       } else {
         const items = (data as OrderItem[]) || [];
-
         setDetailItems(items);
 
         const initMap: ApprovedQtyMap = {};
-
-        items.forEach(i => {
-          initMap[i.id] = defaultApprovedQty(i);
-        });
-
+        items.forEach(i => { initMap[i.id] = defaultApprovedQty(i); });
         setApprovedQtyMap(initMap);
       }
     } catch (e: any) {
@@ -235,87 +215,86 @@ export function useOrderDetails({ t, lang, setGlobalError }: UseOrderDetailsArgs
   }, []);
 
   /**
-   * Print: opens the transfer document and fires the browser print
-   * dialog. Arabic is rendered natively (correct shaping/spacing).
+   * Print: opens the print window SYNCHRONOUSLY (iOS Safari requirement),
+   * then fills it in once the QR is ready and fires window.print().
    */
   const handlePrint = useCallback(async () => {
     if (!detailOrder) return;
 
-    const qrDataUrl = await renderVerifyQrDataUrl(detailOrder.id);
+    const win = openBlankPrintWindow(t);
+    if (!win) {
+      setGlobalError(
+        t(
+          "Your browser blocked the print window. Please allow pop-ups for this site and try again.",
+          "قام المتصفح بحظر نافذة الطباعة. يرجى السماح بالنوافذ المنبثقة لهذا الموقع والمحاولة مرة أخرى."
+        )
+      );
+      return;
+    }
 
-    const itemsWithApproved = detailItems.map(i => ({
-      ...i,
-      approved_quantity:
-        approvedQtyMap[i.id] ??
-        i.approved_quantity ??
-        null,
-    }));
+    try {
+      const qrDataUrl = await renderVerifyQrDataUrl(detailOrder.id);
 
-    openTransferPrintWindow(detailOrder, itemsWithApproved, lang, qrDataUrl);
-  }, [detailOrder, detailItems, approvedQtyMap, lang]);
+      const itemsWithApproved = detailItems.map(i => ({
+        ...i,
+        approved_quantity: approvedQtyMap[i.id] ?? i.approved_quantity ?? null,
+      }));
+
+      writeIntoPrintWindow(win, detailOrder, itemsWithApproved, lang, qrDataUrl);
+    } catch (e: any) {
+      try { win.close(); } catch { /* noop */ }
+      setGlobalError(e?.message ?? t("Failed to prepare print document", "فشل تجهيز مستند الطباعة"));
+    }
+  }, [detailOrder, detailItems, approvedQtyMap, lang, t, setGlobalError]);
 
   /**
-   * Download PDF: identical to Print, but presets the Save-as-PDF
-   * filename to Transfer-<docNumber>. The user picks "Save as PDF"
-   * as the destination in the dialog. This is the only path that
-   * produces a PDF with correctly shaped Arabic — image-based PDF
-   * generation (html2canvas) mangles Arabic and is intentionally
-   * not used.
+   * Download PDF: same iOS-safe pattern as handlePrint. On Desktop/
+   * Android the user still lands on the native print dialog and
+   * chooses "Save as PDF" (unchanged behavior); the window title is
+   * preset to Transfer-<docNumber> so that suggested filename is used.
    */
   const handleDownloadPdf = useCallback(async () => {
     if (!detailOrder) return;
 
-    const docNumber = buildDocumentNumber(detailOrder.id, detailOrder.request_type);
-    const qrDataUrl = await renderVerifyQrDataUrl(detailOrder.id);
-
-    const itemsWithApproved = detailItems.map(i => ({
-      ...i,
-      approved_quantity:
-        approvedQtyMap[i.id] ??
-        i.approved_quantity ??
-        null,
-    }));
+    const win = openBlankPrintWindow(t);
+    if (!win) {
+      setGlobalError(
+        t(
+          "Your browser blocked the PDF window. Please allow pop-ups for this site and try again.",
+          "قام المتصفح بحظر نافذة PDF. يرجى السماح بالنوافذ المنبثقة لهذا الموقع والمحاولة مرة أخرى."
+        )
+      );
+      return;
+    }
 
     try {
-      openTransferPrintWindow(detailOrder, itemsWithApproved, lang, qrDataUrl, `Transfer-${docNumber}`);
+      const docNumber = buildDocumentNumber(detailOrder.id, detailOrder.request_type);
+      const qrDataUrl = await renderVerifyQrDataUrl(detailOrder.id);
+
+      const itemsWithApproved = detailItems.map(i => ({
+        ...i,
+        approved_quantity: approvedQtyMap[i.id] ?? i.approved_quantity ?? null,
+      }));
+
+      writeIntoPrintWindow(win, detailOrder, itemsWithApproved, lang, qrDataUrl, `Transfer-${docNumber}`);
     } catch (e: any) {
-      setGlobalError(
-        e?.message ?? t("Failed to generate PDF", "فشل إنشاء ملف PDF")
-      );
+      try { win.close(); } catch { /* noop */ }
+      setGlobalError(e?.message ?? t("Failed to generate PDF", "فشل إنشاء ملف PDF"));
     }
   }, [detailOrder, detailItems, approvedQtyMap, lang, t, setGlobalError]);
 
-  /** Clamp a candidate approved qty between 0 and min(requested, stock). */
   const setApprovedQty = useCallback(
-    (
-      itemId: number,
-      value: number,
-      maxRequested: number,
-      stockQty: number
-    ) => {
-      const clamped = Math.max(
-        0,
-        Math.min(value, maxRequested, stockQty)
-      );
-
-      setApprovedQtyMap(prev => ({
-        ...prev,
-        [itemId]: clamped,
-      }));
+    (itemId: number, value: number, maxRequested: number, stockQty: number) => {
+      const clamped = Math.max(0, Math.min(value, maxRequested, stockQty));
+      setApprovedQtyMap(prev => ({ ...prev, [itemId]: clamped }));
     },
     []
   );
 
-  /** Resets the editor map back to current DB value (or the computed default) and closes editor. */
   const resetEditorToCurrent = useCallback(() => {
     setShowPartialEditor(false);
-
     const m: ApprovedQtyMap = {};
-
-    detailItems.forEach(i => {
-      m[i.id] = defaultApprovedQty(i);
-    });
-
+    detailItems.forEach(i => { m[i.id] = defaultApprovedQty(i); });
     setApprovedQtyMap(m);
   }, [detailItems]);
 

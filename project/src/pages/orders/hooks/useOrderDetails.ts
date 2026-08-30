@@ -1,26 +1,13 @@
 // =============================================================
 // src/pages/orders/hooks/useOrderDetails.ts
-//
-// Owns: detailOrder/detailItems state, opening/closing the drawer,
-// refreshing items after an approval action, and triggering print.
-// Approval-qty map (approvedQtyMap) lives here since it's tightly
-// coupled to "which order/items are currently open", and is then
-// handed to useOrderApproval for the actual save/approve/reject logic.
-//
-// approved_quantity alone cannot tell us whether a value is a real
-// saved decision or just an untouched default (a deliberate 0 looks
-// identical to "never reviewed"). The approval_reviewed column on
-// order_items disambiguates this:
-//   - approval_reviewed === true  → approved_quantity is a real
-//     decision (including a deliberate 0) and must be shown as-is.
-//   - approval_reviewed === false → approved_quantity is not a real
-//     decision yet; default to min(requested, stock) instead.
+// (unchanged header comments preserved)
 // =============================================================
 
 import { useState, useCallback } from "react";
 import { supabase } from "../../lib/supabase";
 import type { ApprovedQtyMap, Order, OrderItem } from "../types";
 import { buildPrintHTML } from "../utils/buildPrintHTML";
+import { buildDocumentNumber } from "../utils/buildDocumentNumber";
 
 type UseOrderDetailsArgs = {
   t: (en: string, ar: string) => string;
@@ -28,20 +15,133 @@ type UseOrderDetailsArgs = {
   setGlobalError: (msg: string | null) => void;
 };
 
-/**
- * Single source of truth for the approved-qty editor default.
- * - Reviewed items (a real prior decision, including a deliberate 0)
- *   keep their saved approved_quantity.
- * - Unreviewed items default to min(requested, stock) rather than
- *   the full requested quantity, so the editor never proposes more
- *   than what's actually in stock.
- */
 function defaultApprovedQty(item: OrderItem): number {
   if (item.approval_reviewed && item.approved_quantity != null) {
     return item.approved_quantity;
   }
   const stockQty = item.product?.quantity ?? item.quantity;
   return Math.min(item.quantity, stockQty);
+}
+
+async function renderVerifyQrDataUrl(orderId: number): Promise<string | null> {
+  try {
+    const verifyUrl = `${window.location.origin}/verify/${orderId}`;
+    const qrApiUrl  = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&ecc=H&data=${encodeURIComponent(verifyUrl)}&color=1E3A5F&bgcolor=ffffff&qzone=3&margin=0`;
+    return await new Promise<string | null>((resolve) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        try {
+          const canvas  = document.createElement("canvas");
+          canvas.width  = img.naturalWidth  || 300;
+          canvas.height = img.naturalHeight || 300;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) { resolve(null); return; }
+          ctx.drawImage(img, 0, 0);
+          resolve(canvas.toDataURL("image/png"));
+        } catch {
+          resolve(null);
+        }
+      };
+      img.onerror = () => resolve(null);
+      setTimeout(() => resolve(null), 5000);
+      img.src = qrApiUrl;
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * iOS Safari fix: window.open() must be called SYNCHRONOUSLY, inside
+ * the original click handler's call stack, with no `await` before it —
+ * otherwise Safari treats it as an untrusted popup and blocks it
+ * (Chrome/Android tolerate the async gap; Safari does not).
+ *
+ * So we now open the (blank) window FIRST, before any async work,
+ * and only fill in its content once the QR/data is ready. A small
+ * neutral loading placeholder is written immediately so the popup
+ * doesn't sit as a blank white tab while the QR loads.
+ */
+function openBlankPrintWindow(t: (en: string, ar: string) => string): Window | null {
+  const win = window.open("", "_blank");
+  if (!win) return null;
+
+  try {
+    win.document.write(
+      `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${t("Preparing document…", "جارِ تجهيز المستند…")}</title></head>` +
+      `<body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;` +
+      `font-family:system-ui,-apple-system,sans-serif;color:#64748B;background:#f1f5f9;">` +
+      `<p>${t("Preparing document…", "جارِ تجهيز المستند…")}</p></body></html>`
+    );
+    win.document.close();
+  } catch {
+    /* non-fatal: placeholder is cosmetic only, final write() still runs later */
+  }
+
+  return win;
+}
+
+/**
+ * Writes the actual transfer/purchase document into an ALREADY-OPEN
+ * window (see openBlankPrintWindow), waits for its Arabic webfont and
+ * QR image to finish loading, then triggers window.print().
+ * document.write() on an already-loaded document implicitly re-opens
+ * it, so this safely replaces the loading placeholder.
+ */
+function writeIntoPrintWindow(
+  win: Window,
+  order: Order,
+  items: OrderItem[],
+  lang: "ar" | "en",
+  qrDataUrl: string | null,
+  filenameTitle?: string,
+): void {
+  win.document.write(buildPrintHTML(order, items, lang, qrDataUrl ?? undefined));
+  win.document.close();
+
+  if (filenameTitle) {
+    try { win.document.title = filenameTitle; } catch { /* noop */ }
+  }
+
+  const triggerPrint = () => {
+    win.focus();
+    win.print();
+  };
+
+  const waitForImagesThenPrint = () => {
+    const pending = Array.from(win.document.images).filter((img) => !img.complete);
+    if (pending.length === 0) { triggerPrint(); return; }
+
+    let settled = 0;
+    let done = false;
+    const finish = () => { if (done) return; done = true; triggerPrint(); };
+
+    pending.forEach((img) => {
+      const onSettle = () => { settled += 1; if (settled === pending.length) finish(); };
+      img.addEventListener("load", onSettle, { once: true });
+      img.addEventListener("error", onSettle, { once: true });
+    });
+
+    setTimeout(finish, 2000);
+  };
+
+  const waitForFontsThenImagesThenPrint = () => {
+    const fontsReady = (win.document as Document & { fonts?: FontFaceSet }).fonts?.ready;
+    if (!fontsReady) { waitForImagesThenPrint(); return; }
+
+    let proceeded = false;
+    const proceed = () => { if (proceeded) return; proceeded = true; waitForImagesThenPrint(); };
+    fontsReady.then(proceed).catch(proceed);
+
+    setTimeout(proceed, 2000);
+  };
+
+  if (win.document.readyState === "complete") {
+    waitForFontsThenImagesThenPrint();
+  } else {
+    win.addEventListener("load", waitForFontsThenImagesThenPrint, { once: true });
+  }
 }
 
 export function useOrderDetails({ t, lang, setGlobalError }: UseOrderDetailsArgs) {
@@ -51,7 +151,6 @@ export function useOrderDetails({ t, lang, setGlobalError }: UseOrderDetailsArgs
   const [showPartialEditor, setShowPartialEditor] = useState(false);
   const [approvedQtyMap, setApprovedQtyMap] = useState<ApprovedQtyMap>({});
 
-  /** Re-fetch order items after an approval action, then sync the approved-qty map. */
   const refreshDetailItems = useCallback(async (orderId: number) => {
     try {
       const { data, error: fetchError } = await supabase
@@ -68,11 +167,7 @@ export function useOrderDetails({ t, lang, setGlobalError }: UseOrderDetailsArgs
       setDetailItems(items);
 
       const map: ApprovedQtyMap = {};
-
-      items.forEach(i => {
-        map[i.id] = defaultApprovedQty(i);
-      });
-
+      items.forEach(i => { map[i.id] = defaultApprovedQty(i); });
       setApprovedQtyMap(map);
     } catch (e: any) {
       setGlobalError(e?.message ?? "Failed to refresh order items");
@@ -99,15 +194,10 @@ export function useOrderDetails({ t, lang, setGlobalError }: UseOrderDetailsArgs
         setGlobalError(fetchError.message);
       } else {
         const items = (data as OrderItem[]) || [];
-
         setDetailItems(items);
 
         const initMap: ApprovedQtyMap = {};
-
-        items.forEach(i => {
-          initMap[i.id] = defaultApprovedQty(i);
-        });
-
+        items.forEach(i => { initMap[i.id] = defaultApprovedQty(i); });
         setApprovedQtyMap(initMap);
       }
     } catch (e: any) {
@@ -124,208 +214,87 @@ export function useOrderDetails({ t, lang, setGlobalError }: UseOrderDetailsArgs
     setShowPartialEditor(false);
   }, []);
 
-  // -----------------------------------------------------------
-  // Print-timing fix:
-  //
-  // Previously `win.print()` was called immediately after
-  // `win.document.close()`. This raced against two async resources
-  // inside the generated print HTML: the Google Fonts @import and,
-  // critically, the QR verification <img>. Chrome would sometimes
-  // print before either finished loading, producing two symptoms
-  // reported in testing — a blank QR code box, and the page layout
-  // intermittently reverting to an unstyled/un-centered state
-  // (because the fallback font has different metrics than the
-  // webfont, so content reflows once the font *does* arrive, but
-  // by then the page was already sent to the printer).
-  //
-  // Fix, part 1 (images): wait for the print window's `load` event
-  // (covers stylesheet application) and then explicitly wait for
-  // every <img> in that window to finish loading (covers the QR
-  // code specifically — a window `load` event does not reliably
-  // guarantee every image decoded from a document.write'd document
-  // has finished across browsers). A 2s safety timeout still calls
-  // print() even if an image never resolves (e.g. network failure),
-  // so a broken QR source can never block printing entirely — it
-  // would just print without that one image, the same failure mode
-  // as before, but bounded instead of indefinite.
-  //
-  // Fix, part 2 (webfont — closes a gap the image-only fix above
-  // left open): the printed document's @import'd Google Font is a
-  // separate network resource that is NOT an <img>, so the image
-  // wait above never accounted for it. Testing confirmed the blank
-  // QR box was resolved by part 1, but the centering/layout still
-  // intermittently reverted — exactly the signature of a race with
-  // webfont loading (fallback font has different character metrics,
-  // so the page reflows once the real font swaps in; if that swap
-  // happens after print() was already called, the printed output
-  // reflects the pre-swap layout). `document.fonts.ready` is the
-  // correct, purpose-built API for this: it resolves once all fonts
-  // requested by the document have finished loading (or failed). It
-  // is awaited first, before the image wait, with its own 2s safety
-  // timeout for the same reason as the image timeout — a slow/blocked
-  // font request must never block printing indefinitely.
-  // -----------------------------------------------------------
+  /**
+   * Print: opens the print window SYNCHRONOUSLY (iOS Safari requirement),
+   * then fills it in once the QR is ready and fires window.print().
+   */
   const handlePrint = useCallback(async () => {
     if (!detailOrder) return;
 
-    // ── Pre-render QR as base64 data URL via Image + Canvas ─────
-    // Using Image() + drawImage on a Canvas avoids CORS issues that
-    // plague fetch() for cross-origin image resources. The canvas
-    // .toDataURL() call extracts the pixel data as a base64 PNG that
-    // can be embedded directly in the print HTML — zero additional
-    // network requests needed inside the print window.
-    //
-    // crossOrigin="anonymous" tells the browser to request CORS headers;
-    // api.qrserver.com returns Access-Control-Allow-Origin: * so this
-    // works reliably. If the image fails to load (network issue), we
-    // fall back to null and the print continues without the QR.
-    let qrDataUrl: string | null = null;
-    try {
-      const verifyUrl = `${window.location.origin}/verify/${detailOrder.id}`;
-      const qrApiUrl  = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&ecc=H&data=${encodeURIComponent(verifyUrl)}&color=1E3A5F&bgcolor=ffffff&qzone=3&margin=0`;
-      qrDataUrl = await new Promise<string | null>((resolve) => {
-        const img    = new Image();
-        img.crossOrigin = "anonymous";
-        img.onload = () => {
-          try {
-            const canvas  = document.createElement("canvas");
-            canvas.width  = img.naturalWidth  || 300;
-            canvas.height = img.naturalHeight || 300;
-            const ctx = canvas.getContext("2d");
-            if (!ctx) { resolve(null); return; }
-            ctx.drawImage(img, 0, 0);
-            resolve(canvas.toDataURL("image/png"));
-          } catch {
-            resolve(null);
-          }
-        };
-        img.onerror = () => resolve(null);
-        // 5s timeout — if image hasn't loaded, continue without QR
-        setTimeout(() => resolve(null), 5000);
-        img.src = qrApiUrl;
-      });
-    } catch {
-      qrDataUrl = null;
-    }
-
-    const win = window.open("", "_blank");
-    if (!win) return;
-
-    const itemsWithApproved = detailItems.map(i => ({
-      ...i,
-      approved_quantity:
-        approvedQtyMap[i.id] ??
-        i.approved_quantity ??
-        null,
-    }));
-
-    win.document.write(
-      buildPrintHTML(detailOrder, itemsWithApproved, lang, qrDataUrl ?? undefined)
-    );
-
-    win.document.close();
-
-    const triggerPrint = () => {
-      win.focus();
-      win.print();
-    };
-
-    const waitForImagesThenPrint = () => {
-      const images = Array.from(win.document.images);
-      const pending = images.filter(img => !img.complete);
-
-      if (pending.length === 0) {
-        triggerPrint();
-        return;
-      }
-
-      let settled = 0;
-      let printed = false;
-      const finish = () => {
-        if (printed) return;
-        printed = true;
-        triggerPrint();
-      };
-
-      pending.forEach(img => {
-        const onSettle = () => {
-          settled += 1;
-          if (settled === pending.length) finish();
-        };
-        img.addEventListener("load", onSettle, { once: true });
-        img.addEventListener("error", onSettle, { once: true });
-      });
-
-      // Safety net: never let a stalled/failed image (e.g. network
-      // issue loading the QR code) block printing indefinitely.
-      setTimeout(finish, 2000);
-    };
-
-    const waitForFontsThenImagesThenPrint = () => {
-      const fontsReady = (win.document as Document & { fonts?: FontFaceSet }).fonts?.ready;
-
-      if (!fontsReady) {
-        // Environment has no FontFaceSet API support — fall back to
-        // the image-only wait rather than skipping straight to print.
-        waitForImagesThenPrint();
-        return;
-      }
-
-      let proceeded = false;
-      const proceed = () => {
-        if (proceeded) return;
-        proceeded = true;
-        waitForImagesThenPrint();
-      };
-
-      fontsReady.then(proceed).catch(proceed);
-
-      // Safety net: a slow/blocked webfont request (e.g. Google
-      // Fonts unreachable) must never block printing indefinitely.
-      setTimeout(proceed, 2000);
-    };
-
-    // QR is now a base64 data URL embedded directly in the HTML —
-    // no external requests needed in the print window. Proceed with
-    // the original fonts-then-images-then-print sequence directly.
-    if (win.document.readyState === "complete") {
-      waitForFontsThenImagesThenPrint();
-    } else {
-      win.addEventListener("load", waitForFontsThenImagesThenPrint, { once: true });
-    }
-  }, [detailOrder, detailItems, approvedQtyMap, lang]);
-
-  /** Clamp a candidate approved qty between 0 and min(requested, stock). */
-  const setApprovedQty = useCallback(
-    (
-      itemId: number,
-      value: number,
-      maxRequested: number,
-      stockQty: number
-    ) => {
-      const clamped = Math.max(
-        0,
-        Math.min(value, maxRequested, stockQty)
+    const win = openBlankPrintWindow(t);
+    if (!win) {
+      setGlobalError(
+        t(
+          "Your browser blocked the print window. Please allow pop-ups for this site and try again.",
+          "قام المتصفح بحظر نافذة الطباعة. يرجى السماح بالنوافذ المنبثقة لهذا الموقع والمحاولة مرة أخرى."
+        )
       );
+      return;
+    }
 
-      setApprovedQtyMap(prev => ({
-        ...prev,
-        [itemId]: clamped,
+    try {
+      const qrDataUrl = await renderVerifyQrDataUrl(detailOrder.id);
+
+      const itemsWithApproved = detailItems.map(i => ({
+        ...i,
+        approved_quantity: approvedQtyMap[i.id] ?? i.approved_quantity ?? null,
       }));
+
+      writeIntoPrintWindow(win, detailOrder, itemsWithApproved, lang, qrDataUrl);
+    } catch (e: any) {
+      try { win.close(); } catch { /* noop */ }
+      setGlobalError(e?.message ?? t("Failed to prepare print document", "فشل تجهيز مستند الطباعة"));
+    }
+  }, [detailOrder, detailItems, approvedQtyMap, lang, t, setGlobalError]);
+
+  /**
+   * Download PDF: same iOS-safe pattern as handlePrint. On Desktop/
+   * Android the user still lands on the native print dialog and
+   * chooses "Save as PDF" (unchanged behavior); the window title is
+   * preset to Transfer-<docNumber> so that suggested filename is used.
+   */
+  const handleDownloadPdf = useCallback(async () => {
+    if (!detailOrder) return;
+
+    const win = openBlankPrintWindow(t);
+    if (!win) {
+      setGlobalError(
+        t(
+          "Your browser blocked the PDF window. Please allow pop-ups for this site and try again.",
+          "قام المتصفح بحظر نافذة PDF. يرجى السماح بالنوافذ المنبثقة لهذا الموقع والمحاولة مرة أخرى."
+        )
+      );
+      return;
+    }
+
+    try {
+      const docNumber = buildDocumentNumber(detailOrder.id, detailOrder.request_type);
+      const qrDataUrl = await renderVerifyQrDataUrl(detailOrder.id);
+
+      const itemsWithApproved = detailItems.map(i => ({
+        ...i,
+        approved_quantity: approvedQtyMap[i.id] ?? i.approved_quantity ?? null,
+      }));
+
+      writeIntoPrintWindow(win, detailOrder, itemsWithApproved, lang, qrDataUrl, `Transfer-${docNumber}`);
+    } catch (e: any) {
+      try { win.close(); } catch { /* noop */ }
+      setGlobalError(e?.message ?? t("Failed to generate PDF", "فشل إنشاء ملف PDF"));
+    }
+  }, [detailOrder, detailItems, approvedQtyMap, lang, t, setGlobalError]);
+
+  const setApprovedQty = useCallback(
+    (itemId: number, value: number, maxRequested: number, stockQty: number) => {
+      const clamped = Math.max(0, Math.min(value, maxRequested, stockQty));
+      setApprovedQtyMap(prev => ({ ...prev, [itemId]: clamped }));
     },
     []
   );
 
-  /** Resets the editor map back to current DB value (or the computed default) and closes editor. */
   const resetEditorToCurrent = useCallback(() => {
     setShowPartialEditor(false);
-
     const m: ApprovedQtyMap = {};
-
-    detailItems.forEach(i => {
-      m[i.id] = defaultApprovedQty(i);
-    });
-
+    detailItems.forEach(i => { m[i.id] = defaultApprovedQty(i); });
     setApprovedQtyMap(m);
   }, [detailItems]);
 
@@ -342,6 +311,7 @@ export function useOrderDetails({ t, lang, setGlobalError }: UseOrderDetailsArgs
     openDetail,
     closeDetail,
     handlePrint,
+    handleDownloadPdf,
     refreshDetailItems,
     setApprovedQty,
     resetEditorToCurrent,

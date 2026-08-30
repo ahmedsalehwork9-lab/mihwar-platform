@@ -1,37 +1,8 @@
-// =============================================================
-// src/pages/orders/print/TransferOrderPrint.tsx
-//
-// Transfer Order print template — E2 clean ERP theme (slate/navy).
-// Exports a plain string builder (not a React component) because the
-// output is injected into a raw print window via document.write.
-//
-// This version:
-//   - Redesigned to the minimal E2 look: white paper, hairline grid,
-//     ONE accent colour (slate navy #1f3a5f). No orange gradients,
-//     no heavy fills — ink-efficient and B2B-clean.
-//   - Real verification QR preserved exactly (qrDataUrl + buildVerifyUrl).
-//   - NEW: a real, scannable CODE128 barcode of the document number,
-//     rendered as an inline SVG string (no dependency), in the footer.
-//   - Fully bilingual-isolated via the same L dictionary (ar/en).
-//   - Public signature preserved EXACTLY:
-//       buildTransferOrderPrintHTML(order, items, printLang, qrDataUrl)
-//   - Same helpers/util calls: escapeHTML, calculateApprovedTotal,
-//     buildDocumentNumber, buildVerifyUrl. Same status mapping, same
-//     approved/remaining logic, same execution summary math, same
-//     audit-trail stages, same 4 signature roles.
-// =============================================================
-
 import type { Order, OrderItem, OrderStatus } from "../types";
 import { escapeHTML } from "../utils/orderHelpers";
 import { calculateApprovedTotal } from "../utils/calculateApprovedTotal";
 import { buildDocumentNumber } from "../utils/buildDocumentNumber";
 import { buildVerifyUrl } from "../utils/generateVerificationQR";
-
-// -----------------------------------------------------------
-// BARCODE — CODE128 (Code B) → inline SVG string. No dependencies.
-// "1" = bar module, "0" = space module. Produces a real, scannable
-// barcode embedded directly in the print HTML.
-// -----------------------------------------------------------
 
 const C128_PATTERNS = [
   "11011001100","11001101100","11001100110","10010011000","10010001100",
@@ -94,9 +65,6 @@ function code128SvgString(value: string, moduleWidth = 1.5, height = 40): string
   return `<svg width="${width.toFixed(1)}" height="${height + 15}" viewBox="0 0 ${width.toFixed(1)} ${height + 15}" xmlns="http://www.w3.org/2000/svg"><rect width="${width.toFixed(1)}" height="${height}" fill="#fff"/>${rects}<text x="${(width / 2).toFixed(1)}" y="${height + 11}" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="11" letter-spacing="2" fill="#111">${escapeHTML(value)}</text></svg>`;
 }
 
-// -----------------------------------------------------------
-// Palette (E2)
-// -----------------------------------------------------------
 const ACCENT = "#1f3a5f";
 const LINE   = "#b9bec4";
 const LINE_S = "#dde1e5";
@@ -104,10 +72,6 @@ const FILL2  = "#f7f9fa";
 const INK    = "#151515";
 const SOFT   = "#4a4f55";
 const FAINT  = "#7c828a";
-
-// -----------------------------------------------------------
-// Status badge — Pending / Approved / Partially Approved / Cancelled
-// -----------------------------------------------------------
 
 type TransferStatusCfg = { label: string; bg: string; color: string; dot: string };
 
@@ -123,11 +87,6 @@ function getTransferStatusCfg(status: OrderStatus, printLang: "ar" | "en"): Tran
   return { label: printLang === "ar" ? m.ar : m.en, bg: m.bg, color: m.color, dot: m.dot };
 }
 
-// -----------------------------------------------------------
-// Approved/Remaining consistency: both compute from
-// approved_quantity ?? 0 (mirroring calculateApprovedTotal).
-// -----------------------------------------------------------
-
 function displayRemainingQty(item: OrderItem): number {
   const approvedQty = item.approved_quantity != null ? item.approved_quantity : 0;
   return Math.max(0, item.quantity - approvedQty);
@@ -142,8 +101,7 @@ function buildItemRows(items: OrderItem[], hasAnyApproved: boolean, hasAnyRemain
     const zebra       = i % 2 === 0 ? "#fff" : FILL2;
     return `<tr style="background:${zebra}">
       <td style="padding:8px 9px;border:1px solid ${LINE};font-family:'JetBrains Mono',monospace;font-size:11px;color:${SOFT};text-align:center;">${i + 1}</td>
-      <td style="padding:8px 9px;border:1px solid ${LINE};font-size:12px;font-weight:600;color:${INK};">${escapeHTML(item.product?.product_name)}</td>
-      <td style="padding:8px 9px;border:1px solid ${LINE};font-family:'JetBrains Mono',monospace;font-size:11px;color:${SOFT};">${escapeHTML(item.product?.product_code)}</td>
+      <td style="padding:8px 9px;border:1px solid ${LINE};font-size:12px;font-weight:600;color:${INK};text-align:center;">${escapeHTML(item.product?.product_name)}</td>
       <td style="padding:8px 9px;border:1px solid ${LINE};font-family:'JetBrains Mono',monospace;font-size:12px;color:${INK};text-align:center;">${item.quantity}</td>
       ${hasAnyApproved ? `<td style="padding:8px 9px;border:1px solid ${LINE};font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:${ACCENT};text-align:center;">${dispQty}</td>` : ""}
       ${hasAnyRemaining ? `<td style="padding:8px 9px;border:1px solid ${LINE};font-family:'JetBrains Mono',monospace;font-size:12px;color:${remaining > 0 ? "#B45309" : SOFT};text-align:center;">${remaining}</td>` : ""}
@@ -170,30 +128,29 @@ export function buildTransferOrderPrintHTML(order: Order, items: OrderItem[], pr
   const statusCfg       = getTransferStatusCfg(order.status, printLang);
   const barcodeSvg      = code128SvgString(docNumber);
 
-  // Execution summary figures
   const totalItems        = items.length;
   const totalQuantity     = items.reduce((s, i) => s + i.quantity, 0);
   const approvedQuantity  = items.reduce((s, i) => s + (i.approved_quantity != null && i.approved_quantity > 0 ? i.approved_quantity : 0), 0);
   const remainingQuantity = Math.max(0, totalQuantity - approvedQuantity);
   const completionPct     = totalQuantity > 0 ? Math.round((approvedQuantity / totalQuantity) * 100) : 0;
 
-  // Audit trail flags
   const isPartial   = order.status === "partially_approved";
   const isCompleted = order.status === "approved" || order.status === "completed";
   const isRejected  = order.status === "rejected";
 
-  // Display-only verification URL (never expose localhost on a B2B doc)
   const displayVerifyUrl = verifyUrl.includes("localhost") || verifyUrl.includes("127.0.0.1")
     ? `https://mihwarb2b.com/verify/${order.id}`
     : verifyUrl;
 
-  // -----------------------------------------------------------
-  // Bilingual label dictionary — fully isolated per language.
-  // -----------------------------------------------------------
+  // Read the group activity from the requesting branch. Cast locally so this
+  // file does not depend on a ShopInfo type change.
+  const fromActivity = (order.from_shop as { activity_type?: string | null } | undefined)?.activity_type;
+
   const L = printLang === "ar" ? {
-    brandLine1: "منصة محور للتجارة بين الشركات", brandLine2: "شبكة محور لقطع الغيار",
+    brandLine1: "منصة محور للتجارة بين الشركات", brandLine2: fromActivity ? `شبكة محور لـ${fromActivity}` : "شبكة محور التجارية",
     headerTitle: "طلب تحويل", headerSub: "TRANSFER ORDER",
-    sendingBranch: "الفرع المرسل", receivingBranch: "الفرع المستلم",
+    sendingBranch: "الفرع الطالب", receivingBranch: "الفرع المورّد",
+    sendingSub: "يستلم البضاعة", receivingSub: "يرسل البضاعة",
     sumType: "نوع التحويل", sumTypeVal: "تحويل بين الفروع",
     sumDate: "تاريخ التحويل", sumDocNo: "رقم المستند",
     sumTotalItems: "عدد الأصناف", sumTotalQty: "إجمالي الكمية",
@@ -204,7 +161,7 @@ export function buildTransferOrderPrintHTML(order: Order, items: OrderItem[], pr
     auditCreated: "تم الإنشاء", auditPartial: "اعتماد جزئي", auditCompleted: "اكتمال الاعتماد", auditCancelled: "إلغاء الطلب",
     auditPending: "قيد الانتظار",
     itemsSectionAr: "الأصناف المحوّلة", itemsSectionSub: "بنود التحويل",
-    colPartName: "اسم القطعة", colPartNo: "رقم القطعة", colReq: "المطلوب",
+    colPartName: "اسم المنتج", colPartNo: "رقم القطعة", colReq: "المطلوب",
     colTransferred: "المعتمد", colRemaining: "المتبقي", colUnitPrice: "سعر الوحدة", colTotal: "الإجمالي",
     notes: "ملاحظات", grandTotal: "الإجمالي الكلي",
     verifyTitle: "التحقق من المستند", verifySub: "بوابة التحقق الرسمية",
@@ -213,12 +170,13 @@ export function buildTransferOrderPrintHTML(order: Order, items: OrderItem[], pr
     docBarcodeLabel: "باركود المستند",
     footerWebsite: "الموقع", footerEmail: "البريد", footerVersion: "إصدار المستند", footerPrinted: "وقت الطباعة",
     sysGenerated: "أُنشئ إلكترونيًا بواسطة نظام محور — لا يتطلب توقيعًا يدويًا للصلاحية",
-    sigSender: "مستلم المخزن المرسل", sigReceiver: "مستلم المخزن المستلم", sigManager: "مدير الفرع", sigSystem: "اعتماد النظام",
+    sigSender: "استلام الفرع الطالب", sigReceiver: "تسليم الفرع المورّد", sigManager: "مدير الفرع", sigSystem: "اعتماد النظام",
     page: "صفحة",
   } : {
-    brandLine1: "MIHWAR B2B Marketplace", brandLine2: "Auto Parts Trading Network",
+    brandLine1: "MIHWAR B2B Marketplace", brandLine2: fromActivity ? `MIHWAR ${fromActivity} Network` : "MIHWAR Trading Network",
     headerTitle: "Transfer Order", headerSub: "BRANCH TRANSFER",
-    sendingBranch: "Sending Branch", receivingBranch: "Receiving Branch",
+    sendingBranch: "Requesting Branch", receivingBranch: "Supplying Branch",
+    sendingSub: "Receives goods", receivingSub: "Sends goods",
     sumType: "Transfer Type", sumTypeVal: "Branch to Branch",
     sumDate: "Transfer Date", sumDocNo: "Document Number",
     sumTotalItems: "Total Items", sumTotalQty: "Total Quantity",
@@ -229,7 +187,7 @@ export function buildTransferOrderPrintHTML(order: Order, items: OrderItem[], pr
     auditCreated: "Created", auditPartial: "Partially Approved", auditCompleted: "Approval Completed", auditCancelled: "Order Cancelled",
     auditPending: "Pending",
     itemsSectionAr: "Transferred Items", itemsSectionSub: "Transfer Line Items",
-    colPartName: "Part Name", colPartNo: "Part No.", colReq: "Req. Qty",
+    colPartName: "Product Name", colPartNo: "Part No.", colReq: "Req. Qty",
     colTransferred: "Approved Qty", colRemaining: "Remaining Qty", colUnitPrice: "Unit Price", colTotal: "Total",
     notes: "Notes", grandTotal: "Grand Total",
     verifyTitle: "Document Verification", verifySub: "Official Verification Portal",
@@ -238,13 +196,10 @@ export function buildTransferOrderPrintHTML(order: Order, items: OrderItem[], pr
     docBarcodeLabel: "Document Barcode",
     footerWebsite: "Website", footerEmail: "Email", footerVersion: "Document Version", footerPrinted: "Print Time",
     sysGenerated: "Generated electronically by MIHWAR — no handwritten signature required for validity",
-    sigSender: "Sender Warehouse", sigReceiver: "Receiver Warehouse", sigManager: "Branch Manager", sigSystem: "System Approval",
+    sigSender: "Requesting Branch", sigReceiver: "Supplying Branch", sigManager: "Branch Manager", sigSystem: "System Approval",
     page: "Page",
   };
 
-  // -----------------------------------------------------------
-  // Audit trail stages
-  // -----------------------------------------------------------
   type AuditState = "done" | "current" | "upcoming" | "cancelled";
   type AuditStage  = { icon: string; label: string; time: string; state: AuditState };
 
@@ -298,9 +253,6 @@ export function buildTransferOrderPrintHTML(order: Order, items: OrderItem[], pr
     </div>${connector}`;
   }).join("");
 
-  // -----------------------------------------------------------
-  // Signature cards — 4 roles. Field labels stay English in both langs.
-  // -----------------------------------------------------------
   const sigRoles: string[] = [L.sigSender, L.sigReceiver, L.sigManager, L.sigSystem];
 
   const signatureCards = sigRoles.map(role => `
@@ -359,7 +311,6 @@ body{font-family:'IBM Plex Sans Arabic',Tahoma,Arial,sans-serif;font-size:12px;c
 </div>
 <div class="page">
 
-<!-- HEADER -->
 <div class="no-break" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding-bottom:13px;border-bottom:2px solid ${ACCENT};">
   <div>
     <div style="font-weight:800;font-size:26px;color:${ACCENT};line-height:1;letter-spacing:-.5px;">محور <span style="font-size:10px;font-weight:400;letter-spacing:1.5px;color:${FAINT};">MIHWAR B2B</span></div>
@@ -375,7 +326,6 @@ body{font-family:'IBM Plex Sans Arabic',Tahoma,Arial,sans-serif;font-size:12px;c
   </div>
 </div>
 
-<!-- INFO BAND -->
 <div class="no-break" style="display:flex;background:#eef1f4;margin-top:14px;border:1px solid ${LINE_S};">
   <div style="flex:1;padding:9px 12px;border-left:1px solid ${LINE_S};"><span style="font-size:9px;color:${FAINT};display:block;margin-bottom:3px;">${L.sumDocNo}</span><span class="mono" style="font-size:12px;font-weight:700;">${docNumber}</span></div>
   <div style="flex:1;padding:9px 12px;border-left:1px solid ${LINE_S};"><span style="font-size:9px;color:${FAINT};display:block;margin-bottom:3px;">${L.sumDate}</span><span style="font-size:12px;font-weight:600;">${date}</span></div>
@@ -384,10 +334,9 @@ body{font-family:'IBM Plex Sans Arabic',Tahoma,Arial,sans-serif;font-size:12px;c
   <div style="flex:1;padding:9px 12px;"><span style="font-size:9px;color:${FAINT};display:block;margin-bottom:3px;">${L.sumTotalQty}</span><span class="mono" style="font-size:12px;font-weight:700;">${totalQuantity}</span></div>
 </div>
 
-<!-- BRANCH FLOW -->
 <div class="branch-row no-break" style="display:flex;gap:14px;margin-top:16px;align-items:stretch;">
   <div style="flex:1;border:1px solid ${LINE};border-radius:8px;padding:12px 14px;">
-    <div style="font-size:10px;font-weight:600;color:${ACCENT};border-bottom:1.5px solid ${ACCENT};padding-bottom:5px;margin-bottom:7px;">${L.sendingBranch}</div>
+    <div style="font-size:10px;font-weight:600;color:${ACCENT};border-bottom:1.5px solid ${ACCENT};padding-bottom:5px;margin-bottom:7px;">${L.sendingBranch} <span style="font-weight:500;color:${FAINT};font-size:8.5px;">· ${L.sendingSub}</span></div>
     <div style="font-size:15px;font-weight:700;color:${INK};">${escapeHTML(order.from_shop?.shop_name)}</div>
     ${order.from_shop?.phone ? `<div style="font-size:10px;color:${SOFT};margin-top:4px;">${escapeHTML(order.from_shop.phone)}</div>` : ""}
     ${order.from_shop?.address ? `<div style="font-size:10px;color:${SOFT};margin-top:2px;">${escapeHTML(order.from_shop.address)}</div>` : ""}
@@ -398,14 +347,13 @@ body{font-family:'IBM Plex Sans Arabic',Tahoma,Arial,sans-serif;font-size:12px;c
     </div>
   </div>
   <div style="flex:1;border:1px solid ${LINE};border-radius:8px;padding:12px 14px;">
-    <div style="font-size:10px;font-weight:600;color:${ACCENT};border-bottom:1.5px solid ${ACCENT};padding-bottom:5px;margin-bottom:7px;">${L.receivingBranch}</div>
+    <div style="font-size:10px;font-weight:600;color:${ACCENT};border-bottom:1.5px solid ${ACCENT};padding-bottom:5px;margin-bottom:7px;">${L.receivingBranch} <span style="font-weight:500;color:${FAINT};font-size:8.5px;">· ${L.receivingSub}</span></div>
     <div style="font-size:15px;font-weight:700;color:${INK};">${escapeHTML(order.to_shop?.shop_name)}</div>
     ${order.to_shop?.phone ? `<div style="font-size:10px;color:${SOFT};margin-top:4px;">${escapeHTML(order.to_shop.phone)}</div>` : ""}
     ${order.to_shop?.address ? `<div style="font-size:10px;color:${SOFT};margin-top:2px;">${escapeHTML(order.to_shop.address)}</div>` : ""}
   </div>
 </div>
 
-<!-- EXECUTION SUMMARY -->
 <div class="no-break" style="margin-top:16px;border:1px solid ${LINE};border-radius:8px;overflow:hidden;">
   <div style="background:#eef1f4;padding:9px 16px;border-bottom:1px solid ${LINE_S};"><span style="font-size:12px;font-weight:700;color:${ACCENT};">${L.execTitle}</span></div>
   <div class="exec-grid" style="background:#fff;padding:13px 16px;display:grid;grid-template-columns:repeat(5,1fr);gap:0;">
@@ -422,7 +370,6 @@ body{font-family:'IBM Plex Sans Arabic',Tahoma,Arial,sans-serif;font-size:12px;c
   </div>
 </div>
 
-<!-- ITEMS TABLE -->
 <div style="margin-top:16px;">
   <div class="no-break" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
     <div style="width:4px;height:18px;background:${ACCENT};border-radius:3px;"></div>
@@ -435,8 +382,7 @@ body{font-family:'IBM Plex Sans Arabic',Tahoma,Arial,sans-serif;font-size:12px;c
     <thead class="no-break">
       <tr style="background:${ACCENT};">
         <th style="padding:8px 9px;border:1px solid ${ACCENT};font-size:8.5px;font-weight:600;text-transform:uppercase;color:#fff;text-align:center;width:26px;">#</th>
-        <th style="padding:8px 9px;border:1px solid ${ACCENT};font-size:8.5px;font-weight:600;text-transform:uppercase;color:#fff;text-align:right;">${L.colPartName}</th>
-        <th style="padding:8px 9px;border:1px solid ${ACCENT};font-size:8.5px;font-weight:600;text-transform:uppercase;color:#fff;text-align:right;width:88px;">${L.colPartNo}</th>
+        <th style="padding:8px 9px;border:1px solid ${ACCENT};font-size:8.5px;font-weight:600;text-transform:uppercase;color:#fff;text-align:center;">${L.colPartName}</th>
         <th style="padding:8px 9px;border:1px solid ${ACCENT};font-size:8.5px;font-weight:600;text-transform:uppercase;color:#fff;text-align:center;width:46px;">${L.colReq}</th>
         ${hasAnyApproved ? `<th style="padding:8px 9px;border:1px solid ${ACCENT};font-size:8.5px;font-weight:600;text-transform:uppercase;color:#fff;text-align:center;width:50px;">${L.colTransferred}</th>` : ""}
         ${hasAnyRemaining ? `<th style="padding:8px 9px;border:1px solid ${ACCENT};font-size:8.5px;font-weight:600;text-transform:uppercase;color:#fff;text-align:center;width:50px;">${L.colRemaining}</th>` : ""}
@@ -447,7 +393,6 @@ body{font-family:'IBM Plex Sans Arabic',Tahoma,Arial,sans-serif;font-size:12px;c
     <tbody>${rows}</tbody>
   </table>
 
-  <!-- TOTAL + NOTES -->
   <div class="no-break" style="display:flex;gap:0;margin-top:12px;align-items:stretch;">
     ${order.notes ? `<div style="flex:1;border:1px solid ${LINE};border-radius:8px;padding:11px 14px;background:${FILL2};"><div style="font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:${FAINT};margin-bottom:5px;">${L.notes}</div><div style="font-size:11px;color:${SOFT};line-height:1.7;">${escapeHTML(order.notes)}</div></div>` : `<div style="flex:1;"></div>`}
     <div style="width:250px;flex-shrink:0;margin-right:${order.notes ? "12px" : "0"};background:${ACCENT};border-radius:8px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;">
@@ -457,9 +402,7 @@ body{font-family:'IBM Plex Sans Arabic',Tahoma,Arial,sans-serif;font-size:12px;c
   </div>
 </div>
 
-<!-- VERIFICATION (QR) + AUDIT TRAIL -->
 <div class="verify-row" style="display:flex;gap:13px;margin-top:16px;align-items:stretch;">
-  <!-- QR verification card -->
   <div class="verify-card no-break" style="width:172px;flex-shrink:0;border:1px solid ${LINE};border-radius:10px;overflow:hidden;display:flex;flex-direction:column;">
     <div style="background:${ACCENT};padding:9px 10px;text-align:center;">
       <span style="font-size:10.5px;font-weight:700;color:#fff;display:block;">${L.verifyTitle}</span>
@@ -483,7 +426,6 @@ body{font-family:'IBM Plex Sans Arabic',Tahoma,Arial,sans-serif;font-size:12px;c
     </div>
   </div>
 
-  <!-- Audit trail + signatures -->
   <div class="audit-card" style="flex:1;border:1px solid ${LINE};border-radius:10px;overflow:hidden;display:flex;flex-direction:column;">
     <div class="no-break" style="background:#eef1f4;padding:9px 16px;display:flex;align-items:baseline;gap:8px;border-bottom:1px solid ${LINE_S};">
       <span style="font-size:12px;font-weight:700;color:${ACCENT};">${L.auditTitle}</span>
@@ -498,7 +440,6 @@ body{font-family:'IBM Plex Sans Arabic',Tahoma,Arial,sans-serif;font-size:12px;c
   </div>
 </div>
 
-<!-- FOOTER + BARCODE -->
 <div class="no-break" style="margin-top:16px;padding-top:12px;border-top:1px solid ${LINE};display:flex;align-items:flex-end;justify-content:space-between;gap:20px;">
   <div style="font-size:9px;color:${FAINT};line-height:1.9;">
     <div style="font-weight:700;color:${ACCENT};font-size:11px;">محور · MIHWAR B2B</div>

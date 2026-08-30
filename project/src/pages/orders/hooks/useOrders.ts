@@ -39,11 +39,11 @@ export function useOrders({ isAdmin, ownedShopId, t }: UseOrdersArgs) {
           *,
           from_shop:shops!orders_from_shop_id_fkey(
             shop_name, phone, whatsapp, email,
-            website, commercial_registration, address, logo_url
+            website, commercial_registration, address, logo_url, activity_type
           ),
           to_shop:shops!orders_to_shop_id_fkey(
             shop_name, phone, whatsapp, email,
-            website, commercial_registration, address, logo_url
+            website, commercial_registration, address, logo_url, activity_type
           ),
           order_items(id)
         `);

@@ -54,7 +54,7 @@ export function useCreateOrder({
       .select("*, visibility_scope")
       .eq("shop_id", supplierShopId)
       .gt("quantity", 0)
-      .order("part_name")
+      .order("product_name")
       .then(({ data, error: fetchError }) => {
         if (fetchError) { setModalError(fetchError.message); setSupplierProducts([]); }
         else setSupplierProducts((data as Product[]) || []);
@@ -128,7 +128,7 @@ export function useCreateOrder({
     if (!productSearch.trim()) return visibleSupplierProducts;
     const q = productSearch.toLowerCase();
     return visibleSupplierProducts.filter(p =>
-      p.part_name.toLowerCase().includes(q) || p.part_number.toLowerCase().includes(q)
+      p.product_name.toLowerCase().includes(q) || p.product_code.toLowerCase().includes(q)
     );
   }, [visibleSupplierProducts, productSearch]);
 

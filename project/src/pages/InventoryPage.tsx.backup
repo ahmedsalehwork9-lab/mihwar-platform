@@ -869,14 +869,14 @@ export default function InventoryPage() {
     await fetchProducts();
 
     if (failed.length === 0) {
-      setSuccessMsg(t(`Deleted ${deleted} products`, `تم حذف ${deleted} منتج ✓`)); setTimeout(() => setSuccessMsg(null), 3000);
+      showSuccess(t(`Deleted ${deleted} products`, `تم حذف ${deleted} منتج ✓`));
     } else {
       setError(t(
-        `Deleted ${deleted}, failed ${failed.length} (used in orders).`,
-        `تم حذف ${deleted}، وتعذّر حذف ${failed.length} (مستخدمين في طلبات).`
+        `Deleted ${deleted}, failed ${failed.length} (likely used in existing orders).`,
+        `تم حذف ${deleted}، وتعذّر حذف ${failed.length} (على الأرجح مستخدمين في طلبات).`
       ));
     }
-  }, [selected, t, fetchProducts]);
+  }, [selected, t, fetchProducts, showSuccess]);
 
   const handleImageFileSelected = useCallback((file: File) => {
     const result = validateImageFile(file, t);

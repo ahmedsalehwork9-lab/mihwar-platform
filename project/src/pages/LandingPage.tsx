@@ -1,6 +1,6 @@
-/**
- * MIHWAR | مِحور — Landing Page
- * ─────────────────────────────
+﻿/**
+ * MIHWAR | Ù…ÙØ­ÙˆØ± â€” Landing Page
+ * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
  * File: src/pages/LandingPage.tsx
  * 
  * Integration:
@@ -19,11 +19,22 @@ import FaqSection from "../components/landing/FaqSection";
 import CtaSection from "../components/landing/CtaSection";
 import LandingFooter from "../components/landing/LandingFooter";
 
+type ActivityType = "spare-parts" | "grocery" | "cafe" | "restaurant" | "retail" | "general";
 type LandingPageProps = {
   onLogin?: () => void;
+  activity?: ActivityType;
 };
 
-export default function LandingPage({ onLogin }: LandingPageProps) {
+export default function LandingPage({ onLogin, activity }: LandingPageProps) {
+  const path = window.location.pathname;
+  const currentActivity: ActivityType = activity ?? (
+    path === "/spare-parts" ? "spare-parts" :
+    path === "/grocery" ? "grocery" :
+    path === "/cafe" ? "cafe" :
+    path === "/restaurant" ? "restaurant" :
+    path === "/retail" ? "retail" :
+    "general"
+  );
   // Navigation wrapper to ensure it only fires if the prop is provided
   const handleNavigation = () => {
     onLogin?.();
@@ -40,19 +51,19 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
 
       <main>
         {/* Hero Section */}
-        <HeroSection onStart={handleNavigation} onLogin={handleNavigation} />
+        <HeroSection activity={currentActivity} onStart={handleNavigation} onLogin={handleNavigation} />
 
         {/* Problem Description */}
-        <ProblemSection />
+        <ProblemSection activity={currentActivity} />
 
         {/* Core Features */}
-        <FeaturesSection />
+        <FeaturesSection activity={currentActivity} />
 
         {/* Workflow Steps */}
-        <HowItWorksSection />
+        <HowItWorksSection activity={currentActivity} />
 
         {/* App Preview / Screenshots */}
-        <ScreenshotsSection />
+        <ScreenshotsSection activity={currentActivity} />
 
         {/* Subscription Plans */}
         <PricingSection onStart={handleNavigation} />
@@ -65,7 +76,9 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
       </main>
 
       {/* Footer */}
-      <LandingFooter />
+      <LandingFooter activity={currentActivity} />
     </div>
   );
 }
+
+

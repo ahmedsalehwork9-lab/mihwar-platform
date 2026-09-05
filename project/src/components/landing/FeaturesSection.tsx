@@ -1,28 +1,56 @@
-/**
+﻿/**
  * File: src/components/landing/FeaturesSection.tsx
  */
 
 import { useLang } from "../../context/LanguageContext";
 
-export default function FeaturesSection() {
+type ActivityType = "spare-parts" | "grocery" | "cafe" | "restaurant" | "retail" | "general";
+
+export default function FeaturesSection({ activity = "general" }: { activity?: ActivityType }) {
   const { t } = useLang();
+  const activityDescription = {
+    "spare-parts": {
+      en: "Built specifically for auto parts businesses. Manage products, inventory, orders, branches, and users in one platform.",
+      ar: "مصممة خصيصًا لنشاط قطع الغيار لإدارة المنتجات والمخزون والطلبات والفروع والمستخدمين من منصة واحدة."
+    },
+    "grocery": {
+      en: "Built for grocery businesses and branches. Manage products, inventory, orders, and operations from one platform.",
+      ar: "مصممة لنشاط التموينات والفروع لإدارة المنتجات والمخزون والطلبات والعمليات من منصة واحدة."
+    },
+    "cafe": {
+      en: "Built for cafes and branches. Manage products, inventory, orders, sales, and operations from one platform.",
+      ar: "مصممة للمقاهي والفروع لإدارة المنتجات والمخزون والطلبات والمبيعات والعمليات من منصة واحدة."
+    },
+    "restaurant": {
+      en: "Built for restaurants and branches. Manage products, inventory, orders, sales, and operations from one platform.",
+      ar: "مصممة للمطاعم والفروع لإدارة المنتجات والمخزون والطلبات والمبيعات والعمليات من منصة واحدة."
+    },
+    "retail": {
+      en: "Built for retail businesses and branches. Manage products, inventory, orders, and operations from one platform.",
+      ar: "مصممة لنشاط التجزئة والفروع لإدارة المنتجات والمخزون والطلبات والعمليات من منصة واحدة."
+    },
+    "general": {
+      en: "Everything you need to manage products, inventory, orders, branches, users, and business operations in one platform.",
+      ar: "كل ما تحتاجه لإدارة المنتجات والمخزون والطلبات والفروع والمستخدمين وعمليات الأعمال من منصة واحدة."
+    }
+  }[activity];
 
   const features = [
     {
       icon: "📦",
       title: t("Product Management", "إدارة المنتجات"),
       desc: t(
-        "Add your products easily — name, part number, price, and quantity. Everything in one place.",
-        "أضف منتجاتك بسهولة — الاسم، رقم القطعة، السعر، الكمية. كل شيء في مكان واحد."
+        "Add your products easily — name, product code, price, and quantity. Everything in one place.",
+        "أضف منتجاتك بسهولة — الاسم، رقم المنتج، السعر، والكمية. كل شيء في مكان واحد."
       ),
       accent: "#1E90FF",
     },
     {
-      icon: "🗄",
+      icon: "📊",
       title: t("Inventory Management", "إدارة المخزون"),
       desc: t(
         "Track stock levels in real time. Automatic alerts when you reach minimum thresholds.",
-        "تابع كميات المخزون لحظة بلحظة. تنبيهات تلقائية عند الوصول للحد الأدنى."
+        "تابع كميات المخزون لحظيًا. تنبيهات تلقائية عند الوصول إلى الحد الأدنى."
       ),
       accent: "#5DCAA5",
     },
@@ -31,7 +59,7 @@ export default function FeaturesSection() {
       title: t("Orders", "الطلبات"),
       desc: t(
         "Receive and track orders from creation to closure. Clear, transparent statuses.",
-        "استقبل الطلبات وتتبعها من الإنشاء حتى الإغلاق. حالات واضحة وشفافة."
+        "استقبل الطلبات وتابعها من الإنشاء حتى الإغلاق. حالات واضحة وشفافة."
       ),
       accent: "#C8A96E",
     },
@@ -39,8 +67,8 @@ export default function FeaturesSection() {
       icon: "👥",
       title: t("Users", "المستخدمون"),
       desc: t(
-        "Add your staff and give each person the right access for their role in the shop.",
-        "أضف موظفيك وامنح كل شخص الوصول المناسب لدوره في المحل."
+        "Add your staff and give each person the right access for their role.",
+        "أضف موظفيك وحدد لكل شخص الصلاحيات المناسبة لدوره."
       ),
       accent: "#1E90FF",
     },
@@ -49,7 +77,7 @@ export default function FeaturesSection() {
       title: t("Permissions", "الصلاحيات"),
       desc: t(
         "Full control over who sees what. Manager, user, viewer — you decide.",
-        "تحكم كامل في من يرى ماذا. مدير، مستخدم، مشاهد — أنت تحدد."
+        "تحكم كامل فيمن يمكنه رؤية كل جزء من النظام. مدير، مستخدم، أو مشاهد — أنت تحدد."
       ),
       accent: "#5DCAA5",
     },
@@ -58,25 +86,25 @@ export default function FeaturesSection() {
       title: t("Alerts", "التنبيهات"),
       desc: t(
         "Never miss a thing. Low stock, new orders, out-of-stock items — all at a glance.",
-        "لا يفوتك شيء. مخزون قليل، طلب جديد، منتج نفد — كل شيء أمام عينيك."
+        "لا يفوتك شيء. مخزون منخفض، طلب جديد، أو منتج نافد — كل شيء أمام عينيك."
       ),
       accent: "#E24B4A",
     },
     {
-      icon: "📊",
+      icon: "📈",
       title: t("Reports", "التقارير"),
       desc: t(
         "Clear, simple reports for products, inventory, and orders. Decisions backed by data.",
-        "تقارير واضحة وبسيطة للمنتجات والمخزون والطلبات. قرارات مبنية على بيانات."
+        "تقارير واضحة وبسيطة للمنتجات والمخزون والطلبات. قراراتك مبنية على البيانات."
       ),
       accent: "#C8A96E",
     },
     {
-      icon: "🏪",
-      title: t("Shop Management", "إدارة المحلات"),
+      icon: "🏢",
+      title: t("Branch Management", "إدارة الفروع"),
       desc: t(
-        "Manage multiple branches from one system. Each shop has its own data and users.",
-        "أدر أكثر من فرع من نظام واحد. كل محل له بياناته ومستخدميه."
+        "Manage multiple branches from one system. Each branch has its own data and users.",
+        "أدر عدة فروع من نظام واحد. لكل فرع بياناته ومستخدموه وصلاحياته."
       ),
       accent: "#1E90FF",
     },
@@ -127,11 +155,7 @@ export default function FeaturesSection() {
               color: "#5A6E8A",
               fontFamily: "'Cairo', sans-serif",
             }}
-          >
-            {t(
-              "Built specifically for auto parts shops. No complexity, no bloat.",
-              "مصمم خصيصاً لمحلات قطع الغيار. لا تعقيد، لا زيادة."
-            )}
+          >            {t(activityDescription.en, activityDescription.ar)}
           </p>
         </div>
 
@@ -192,3 +216,9 @@ export default function FeaturesSection() {
     </section>
   );
 }
+
+
+
+
+
+

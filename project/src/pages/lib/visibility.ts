@@ -71,7 +71,7 @@ export interface VisibilityContext {
  * - `group`   → visible only to shops within the same organization group
  * - `private` → visible only to the originating shop (internal transfer only)
  */
-export type ProductVisibilityScope = 'public' | 'group' | 'private';
+export type ProductVisibilityScope = 'public' | 'group' | 'private' | 'specific';
  
 /**
  * Context object passed to scope-based visibility functions.
@@ -100,6 +100,7 @@ export interface ProductVisibilityContext {
   visibilityScope: ProductVisibilityScope | null | undefined;
   requesterOrganizationId?: number | null;
   supplierOrganizationId?: number | null;
+  allowedShopIds?: number[] | null;
 }
  
 // ─────────────────────────────────────────────

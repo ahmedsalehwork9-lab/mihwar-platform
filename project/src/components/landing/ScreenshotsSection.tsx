@@ -1,13 +1,129 @@
-/**
- * File: src/components/landing/ScreenshotsSection.tsx
- *
- * Uses placeholder UI mockups instead of real screenshots.
- * To use real screenshots: replace the MockScreen components
- * with <img src="/screenshots/dashboard.png" ... />
- */
-
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useLang } from "../../context/LanguageContext";
+
+type ActivityType =
+  | "spare-parts"
+  | "grocery"
+  | "cafe"
+  | "restaurant"
+  | "retail"
+  | "general";
+
+type ScreenshotsSectionProps = {
+  activity?: ActivityType;
+};
+
+type ActivityMockData = {
+  productLabel: string;
+  codeLabel: string;
+  products: [string, string, string, string][];
+  dashboardProducts: [string, string, string][];
+  urlName: string;
+};
+
+const ACTIVITY_DATA: Record<ActivityType, ActivityMockData> = {
+  "spare-parts": {
+    productLabel: "Product",
+    codeLabel: "Part No.",
+    products: [
+      ["Toyota Air Filter", "TY-AF", "42", "#5DCAA5"],
+      ["Kia Spark Plug", "KI-SP", "3", "#EF9F27"],
+      ["Nissan Brake Pads", "NI-BF", "0", "#E24B4A"],
+      ["Timing Belt", "HY-TB", "18", "#5DCAA5"],
+    ],
+    dashboardProducts: [
+      ["Air Filter", "42", "#5DCAA5"],
+      ["Spark Plug", "3", "#EF9F27"],
+      ["Brake Pads", "Out of Stock", "#E24B4A"],
+    ],
+    urlName: "spare-parts",
+  },
+
+  grocery: {
+    productLabel: "Product",
+    codeLabel: "Product Code",
+    products: [
+      ["Milk 1 Liter", "GR-MK", "42", "#5DCAA5"],
+      ["Arabic Bread", "GR-BR", "18", "#5DCAA5"],
+      ["Cooking Oil", "GR-OIL", "3", "#EF9F27"],
+      ["Rice 5 KG", "GR-RC", "0", "#E24B4A"],
+    ],
+    dashboardProducts: [
+      ["Milk 1 Liter", "42", "#5DCAA5"],
+      ["Arabic Bread", "18", "#5DCAA5"],
+      ["Cooking Oil", "Out of Stock", "#E24B4A"],
+    ],
+    urlName: "grocery",
+  },
+
+  cafe: {
+    productLabel: "Product",
+    codeLabel: "Product Code",
+    products: [
+      ["Espresso", "CF-ESP", "42", "#5DCAA5"],
+      ["Cappuccino", "CF-CAP", "18", "#5DCAA5"],
+      ["Iced Latte", "CF-LAT", "3", "#EF9F27"],
+      ["Cheesecake", "CF-CHK", "0", "#E24B4A"],
+    ],
+    dashboardProducts: [
+      ["Espresso", "42", "#5DCAA5"],
+      ["Cappuccino", "18", "#5DCAA5"],
+      ["Iced Latte", "Out of Stock", "#E24B4A"],
+    ],
+    urlName: "cafe",
+  },
+
+  restaurant: {
+    productLabel: "Product",
+    codeLabel: "Product Code",
+    products: [
+      ["Chicken Burger", "RS-BRG", "42", "#5DCAA5"],
+      ["French Fries", "RS-FRY", "18", "#5DCAA5"],
+      ["Chicken Meal", "RS-MEL", "3", "#EF9F27"],
+      ["Fresh Juice", "RS-JUI", "0", "#E24B4A"],
+    ],
+    dashboardProducts: [
+      ["Chicken Burger", "42", "#5DCAA5"],
+      ["French Fries", "18", "#5DCAA5"],
+      ["Chicken Meal", "Out of Stock", "#E24B4A"],
+    ],
+    urlName: "restaurant",
+  },
+
+  retail: {
+    productLabel: "Product",
+    codeLabel: "Product Code",
+    products: [
+      ["Premium T-Shirt", "RT-TS", "42", "#5DCAA5"],
+      ["Sports Shoes", "RT-SH", "18", "#5DCAA5"],
+      ["Backpack", "RT-BAG", "3", "#EF9F27"],
+      ["Smart Watch", "RT-WAT", "0", "#E24B4A"],
+    ],
+    dashboardProducts: [
+      ["Premium T-Shirt", "42", "#5DCAA5"],
+      ["Sports Shoes", "18", "#5DCAA5"],
+      ["Backpack", "Out of Stock", "#E24B4A"],
+    ],
+    urlName: "retail",
+  },
+
+  general: {
+    productLabel: "Product",
+    codeLabel: "Product Code",
+    products: [
+      ["Product A", "PR-A01", "42", "#5DCAA5"],
+      ["Product B", "PR-B02", "18", "#5DCAA5"],
+      ["Product C", "PR-C03", "3", "#EF9F27"],
+      ["Product D", "PR-D04", "0", "#E24B4A"],
+    ],
+    dashboardProducts: [
+      ["Product A", "42", "#5DCAA5"],
+      ["Product B", "18", "#5DCAA5"],
+      ["Product C", "Out of Stock", "#E24B4A"],
+    ],
+    urlName: "dashboard",
+  },
+};
 
 function ScreenFrame({
   url,
@@ -41,6 +157,7 @@ function ScreenFrame({
             />
           ))}
         </div>
+
         <div
           className="flex-1 mx-3 h-5 rounded flex items-center px-2"
           style={{ background: "#111C2E" }}
@@ -56,12 +173,13 @@ function ScreenFrame({
           </span>
         </div>
       </div>
+
       <div style={{ background: "#0A1220", minHeight: 220 }}>{children}</div>
     </div>
   );
 }
 
-function DashboardMock() {
+function DashboardMock({ data }: { data: ActivityMockData }) {
   const { t } = useLang();
 
   return (
@@ -78,7 +196,11 @@ function DashboardMock() {
             className="rounded-lg p-2.5"
             style={{
               background: w ? "rgba(200,169,110,0.08)" : "#111C2E",
-              border: `0.5px solid ${w ? "rgba(200,169,110,0.2)" : "rgba(30,144,255,0.06)"}`,
+              border: `0.5px solid ${
+                w
+                  ? "rgba(200,169,110,0.2)"
+                  : "rgba(30,144,255,0.06)"
+              }`,
             }}
           >
             <div
@@ -90,6 +212,7 @@ function DashboardMock() {
             >
               {l as string}
             </div>
+
             <div
               style={{
                 color: w ? "#C8A96E" : "#E8EDF5",
@@ -103,17 +226,17 @@ function DashboardMock() {
           </div>
         ))}
       </div>
+
       <div
         className="rounded-lg overflow-hidden"
-        style={{ background: "#111C2E", border: "0.5px solid rgba(30,144,255,0.06)" }}
+        style={{
+          background: "#111C2E",
+          border: "0.5px solid rgba(30,144,255,0.06)",
+        }}
       >
-        {[
-          [t("Air Filter", "فلتر هواء"), "42", "#5DCAA5"],
-          [t("Spark Plug", "شمعة إشعال"), "3", "#EF9F27"],
-          [t("Brake Pads", "تيل فرامل"), t("Out of Stock", "نافد"), "#E24B4A"],
-        ].map(([n, q, c]) => (
+        {data.dashboardProducts.map(([n, q, c]) => (
           <div
-            key={n as string}
+            key={n}
             className="flex justify-between px-3 py-2 border-b"
             style={{ borderColor: "rgba(30,144,255,0.05)" }}
           >
@@ -124,17 +247,18 @@ function DashboardMock() {
                 fontFamily: "'Cairo', sans-serif",
               }}
             >
-              {n as string}
+              {n}
             </span>
+
             <span
               style={{
-                color: c as string,
+                color: c,
                 fontSize: "0.72rem",
                 fontWeight: 600,
                 fontFamily: "'Cairo', sans-serif",
               }}
             >
-              {q as string}
+              {q}
             </span>
           </div>
         ))}
@@ -143,7 +267,7 @@ function DashboardMock() {
   );
 }
 
-function InventoryMock() {
+function InventoryMock({ data }: { data: ActivityMockData }) {
   const { t } = useLang();
 
   return (
@@ -151,22 +275,41 @@ function InventoryMock() {
       <div className="flex gap-2 mb-3">
         <div
           className="flex-1 h-7 rounded-lg flex items-center px-3"
-          style={{ background: "#111C2E", border: "0.5px solid rgba(30,144,255,0.1)" }}
+          style={{
+            background: "#111C2E",
+            border: "0.5px solid rgba(30,144,255,0.1)",
+          }}
         >
-          <span style={{ color: "#3A4E66", fontSize: "0.7rem", fontFamily: "'Cairo'" }}>
+          <span
+            style={{
+              color: "#3A4E66",
+              fontSize: "0.7rem",
+              fontFamily: "'Cairo'",
+            }}
+          >
             {t("🔍 Search...", "🔍 بحث...")}
           </span>
         </div>
+
         <div
           className="h-7 px-3 rounded-lg flex items-center"
-          style={{ background: "#1E90FF", fontSize: "0.7rem", color: "#fff", fontFamily: "'Cairo'" }}
+          style={{
+            background: "#1E90FF",
+            fontSize: "0.7rem",
+            color: "#fff",
+            fontFamily: "'Cairo'",
+          }}
         >
           {t("+ Add", "+ إضافة")}
         </div>
       </div>
+
       <div
         className="rounded-lg overflow-hidden"
-        style={{ background: "#111C2E", border: "0.5px solid rgba(30,144,255,0.06)" }}
+        style={{
+          background: "#111C2E",
+          border: "0.5px solid rgba(30,144,255,0.06)",
+        }}
       >
         <div
           className="grid px-3 py-1.5"
@@ -178,42 +321,66 @@ function InventoryMock() {
         >
           {[
             t("Product", "المنتج"),
-            t("Part No.", "الرقم"),
+            t(data.codeLabel, data.codeLabel === "Part No." ? "رقم القطعة" : "رقم المنتج"),
             t("Quantity", "الكمية"),
             t("Price", "السعر"),
           ].map((h) => (
             <span
               key={h}
-              style={{ color: "#3A4E66", fontSize: "0.6rem", fontFamily: "'Cairo'" }}
+              style={{
+                color: "#3A4E66",
+                fontSize: "0.6rem",
+                fontFamily: "'Cairo'",
+              }}
             >
               {h}
             </span>
           ))}
         </div>
-        {[
-          [t("Toyota Air Filter", "فلتر هواء تويوتا"), "TY-AF", "42", "#5DCAA5"],
-          [t("Kia Spark Plug", "شمعة إشعال كيا"), "KI-SP", "3", "#EF9F27"],
-          [t("Nissan Brake Pads", "تيل فرامل نيسان"), "NI-BF", "0", "#E24B4A"],
-          [t("Timing Belt", "حزام توقيت"), "HY-TB", "18", "#5DCAA5"],
-        ].map(([n, r, q, c]) => (
+
+        {data.products.map(([n, r, q, c]) => (
           <div
-            key={n as string}
+            key={n}
             className="grid px-3 py-2 border-b"
             style={{
               gridTemplateColumns: "2fr 1fr 1fr 1fr",
               borderColor: "rgba(30,144,255,0.04)",
             }}
           >
-            <span style={{ color: "#7A8BA8", fontSize: "0.68rem", fontFamily: "'Cairo'" }}>
-              {n as string}
+            <span
+              style={{
+                color: "#7A8BA8",
+                fontSize: "0.68rem",
+                fontFamily: "'Cairo'",
+              }}
+            >
+              {n}
             </span>
-            <span style={{ color: "#3A4E66", fontSize: "0.62rem", fontFamily: "monospace" }}>
-              {r as string}
+
+            <span
+              style={{
+                color: "#3A4E66",
+                fontSize: "0.62rem",
+                fontFamily: "monospace",
+              }}
+            >
+              {r}
             </span>
-            <span style={{ color: c as string, fontSize: "0.68rem", fontWeight: 600 }}>
-              {q as string}
+
+            <span
+              style={{
+                color: c,
+                fontSize: "0.68rem",
+                fontWeight: 600,
+              }}
+            >
+              {q}
             </span>
-            <div className="h-2.5 rounded w-8" style={{ background: "#162035" }} />
+
+            <div
+              className="h-2.5 rounded w-8"
+              style={{ background: "#162035" }}
+            />
           </div>
         ))}
       </div>
@@ -254,13 +421,17 @@ function OrdersMock() {
           </div>
         ))}
       </div>
+
       <div
         className="rounded-lg overflow-hidden"
-        style={{ background: "#111C2E", border: "0.5px solid rgba(30,144,255,0.06)" }}
+        style={{
+          background: "#111C2E",
+          border: "0.5px solid rgba(30,144,255,0.06)",
+        }}
       >
         {statuses.map(([num, status, bg, col]) => (
           <div
-            key={num as string}
+            key={num}
             className="flex items-center justify-between px-3 py-2.5 border-b"
             style={{ borderColor: "rgba(30,144,255,0.04)" }}
           >
@@ -272,20 +443,25 @@ function OrdersMock() {
                 fontWeight: 600,
               }}
             >
-              {num as string}
+              {num}
             </span>
+
             <span
               className="rounded-full px-2 py-0.5 text-xs"
               style={{
-                background: bg as string,
-                color: col as string,
+                background: bg,
+                color: col,
                 fontSize: "0.6rem",
                 fontFamily: "'Cairo'",
               }}
             >
-              {status as string}
+              {status}
             </span>
-            <div className="h-2 rounded w-16" style={{ background: "#162035" }} />
+
+            <div
+              className="h-2 rounded w-16"
+              style={{ background: "#162035" }}
+            />
           </div>
         ))}
       </div>
@@ -300,9 +476,9 @@ function ShopsMock() {
     <div className="p-4" dir="rtl">
       <div className="grid grid-cols-2 gap-2">
         {[
-          [t("Riyadh — Branch 1", "الرياض — شعبة 1"), t("5 users", "5 مستخدمين"), true],
-          [t("Jeddah — Branch 2", "جدة — شعبة 2"), t("3 users", "3 مستخدمين"), false],
-          [t("Dammam — Branch 1", "الدمام — شعبة 1"), t("4 users", "4 مستخدمين"), false],
+          [t("Riyadh — Branch 1", "الرياض — فرع 1"), t("5 users", "5 مستخدمين"), true],
+          [t("Jeddah — Branch 2", "جدة — فرع 2"), t("3 users", "3 مستخدمين"), false],
+          [t("Dammam — Branch 1", "الدمام — فرع 1"), t("4 users", "4 مستخدمين"), false],
           [t("+ Add Branch", "+ إضافة فرع"), "", false],
         ].map(([name, users, active]) => (
           <div
@@ -310,7 +486,11 @@ function ShopsMock() {
             className="rounded-xl p-3 flex flex-col gap-1"
             style={{
               background: active ? "rgba(30,144,255,0.08)" : "#111C2E",
-              border: `0.5px solid ${active ? "rgba(30,144,255,0.3)" : "rgba(30,144,255,0.06)"}`,
+              border: `0.5px solid ${
+                active
+                  ? "rgba(30,144,255,0.3)"
+                  : "rgba(30,144,255,0.06)"
+              }`,
             }}
           >
             <span
@@ -323,8 +503,15 @@ function ShopsMock() {
             >
               {name as string}
             </span>
+
             {users && (
-              <span style={{ color: "#3A4E66", fontSize: "0.6rem", fontFamily: "'Cairo'" }}>
+              <span
+                style={{
+                  color: "#3A4E66",
+                  fontSize: "0.6rem",
+                  fontFamily: "'Cairo'",
+                }}
+              >
                 {users as string}
               </span>
             )}
@@ -335,22 +522,26 @@ function ShopsMock() {
   );
 }
 
-export default function ScreenshotsSection() {
+export default function ScreenshotsSection({
+  activity = "general",
+}: ScreenshotsSectionProps) {
   const { t } = useLang();
   const [active, setActive] = useState(0);
+
+  const data = ACTIVITY_DATA[activity];
 
   const screens = [
     {
       id: "dashboard",
       label: t("Dashboard", "لوحة التحكم"),
-      url: "app.mihwar.sa/dashboard",
-      content: <DashboardMock />,
+      url: `app.mihwar.sa/${data.urlName}`,
+      content: <DashboardMock data={data} />,
     },
     {
       id: "inventory",
       label: t("Inventory", "المخزون"),
       url: "app.mihwar.sa/inventory",
-      content: <InventoryMock />,
+      content: <InventoryMock data={data} />,
     },
     {
       id: "orders",
@@ -360,7 +551,7 @@ export default function ScreenshotsSection() {
     },
     {
       id: "shops",
-      label: t("Shops", "المحلات"),
+      label: t("Branches", "الفروع"),
       url: "app.mihwar.sa/shops",
       content: <ShopsMock />,
     },
@@ -389,8 +580,9 @@ export default function ScreenshotsSection() {
               letterSpacing: "0.14em",
             }}
           >
-            {t("Live Preview", "مثال حقيقي")}
+            {t("Live Preview", "معاينة حية")}
           </span>
+
           <h2
             className="mt-3 font-black"
             style={{
@@ -401,6 +593,7 @@ export default function ScreenshotsSection() {
           >
             {t("See the System in Action", "شوف النظام بنفسك")}
           </h2>
+
           <p
             className="mt-2"
             style={{
@@ -408,11 +601,13 @@ export default function ScreenshotsSection() {
               fontFamily: "'Cairo', sans-serif",
             }}
           >
-            {t("An interface built for speed and clarity", "واجهة مصممة للسرعة والوضوح")}
+            {t(
+              "An interface built for speed and clarity",
+              "واجهة مصممة للسرعة والوضوح"
+            )}
           </p>
         </div>
 
-        {/* Tab selector */}
         <div className="flex justify-center gap-2 mb-8 flex-wrap">
           {screens.map((s, i) => (
             <button
@@ -420,12 +615,19 @@ export default function ScreenshotsSection() {
               onClick={() => setActive(i)}
               className="px-5 py-2 rounded-xl text-sm font-semibold transition-all duration-200"
               style={{
-                background: active === i ? "#1E90FF" : "rgba(30,144,255,0.07)",
+                background:
+                  active === i ? "#1E90FF" : "rgba(30,144,255,0.07)",
                 color: active === i ? "#fff" : "#5A6E8A",
-                border: `0.5px solid ${active === i ? "#1E90FF" : "rgba(30,144,255,0.15)"}`,
+                border: `0.5px solid ${
+                  active === i
+                    ? "#1E90FF"
+                    : "rgba(30,144,255,0.15)"
+                }`,
                 fontFamily: "'Cairo', sans-serif",
                 boxShadow:
-                  active === i ? "0 0 16px rgba(30,144,255,0.3)" : "none",
+                  active === i
+                    ? "0 0 16px rgba(30,144,255,0.3)"
+                    : "none",
               }}
             >
               {s.label}
@@ -433,7 +635,6 @@ export default function ScreenshotsSection() {
           ))}
         </div>
 
-        {/* Active screen */}
         <div style={{ transition: "opacity 0.3s ease" }}>
           <ScreenFrame url={screens[active].url}>
             {screens[active].content}

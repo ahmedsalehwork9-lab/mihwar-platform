@@ -13,7 +13,7 @@ import {
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-type VisibilityScope = 'public' | 'group' | 'private';
+type VisibilityScope = 'public' | 'group' | 'specific' | 'private';
 
 type Product = {
   id: number;
@@ -55,6 +55,11 @@ type FormState = {
   selling_price: string;
 };
 
+type ShopOption = {
+  id: number;
+  name: string;
+};
+
 // ── Import summary returned after a completed sync ──────────────────────────
 type ImportSummary = {
   totalRows: number;
@@ -93,7 +98,7 @@ function getStatus(qty: number): FilterStatus {
 }
 
 function safeVisibilityScope(val: string | undefined | null): VisibilityScope {
-  if (val === 'public' || val === 'group' || val === 'private') return val;
+  if (val === 'public' || val === 'group' || val === 'specific' || val === 'private') return val;
   return 'public';
 }
 
@@ -259,6 +264,8 @@ function VisibilityBadge({ scope, t }: VisibilityBadgeProps) {
       ? { cls: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400', label: t('Public Marketplace', 'السوق العام'), Icon: Globe }
       : safe === 'group'
       ? { cls: 'bg-amber-500/10 border-amber-500/20 text-amber-400', label: t('Group Only', 'داخل المجموعة'), Icon: Users }
+      : safe === 'specific'
+      ? { cls: 'bg-violet-500/10 border-violet-500/20 text-violet-400', label: t('Selected Shops', 'فروع محددة'), Icon: Users }
       : { cls: 'bg-blue-500/10 border-blue-500/20 text-blue-400', label: t('Shop Only', 'داخل الفرع'), Icon: Lock };
 
   return (
@@ -572,6 +579,13 @@ export default function InventoryPage() {
   const [marginSaving, setMarginSaving]       = useState(false);
   const [marginError, setMarginError]         = useState<string | null>(null);
 
+  // ── Specific-shop product visibility ───────────────────────────────────────
+  // When visibility_scope = 'specific', only these shops may see the product.
+  const [groupShops, setGroupShops] = useState<ShopOption[]>([]);
+  const [groupShopsLoading, setGroupShopsLoading] = useState(false);
+  const [allowedShopIds, setAllowedShopIds] = useState<number[]>([]);
+  const [allowedShopsLoading, setAllowedShopsLoading] = useState(false);
+
   const importRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -662,6 +676,104 @@ export default function InventoryPage() {
   useEffect(() => {
     console.log(`[MIHWAR STATE] products.length updated → ${products.length}`);
   }, [products]);
+
+  // ── Load shops belonging to the current shop's group ───────────────────────
+  // We intentionally read the shop row first and then filter the shop list in
+  // memory so this page remains compatible with the existing schema whether
+  // the group key is exposed as group_id or organization_group_id.
+  const fetchGroupShops = useCallback(async () => {
+    if (!ownedShopId) {
+      setGroupShops([]);
+      return;
+    }
+
+    setGroupShopsLoading(true);
+    try {
+      const { data: currentShop, error: currentShopErr } = await supabase
+        .from('shops')
+        .select('*')
+        .eq('id', ownedShopId)
+        .maybeSingle();
+
+      if (currentShopErr) throw currentShopErr;
+
+      const current = (currentShop ?? {}) as Record<string, unknown>;
+      const currentGroupId =
+        current.group_id ??
+        current.organization_group_id ??
+        current.groupId ??
+        null;
+      const currentOrganizationId =
+        current.organization_id ??
+        current.organizationId ??
+        null;
+
+      const { data: shops, error: shopsErr } = await supabase
+        .from('shops')
+        .select('*')
+        .order('id', { ascending: true });
+
+      if (shopsErr) throw shopsErr;
+
+      const visibleShops = (shops ?? [])
+        .map(row => row as Record<string, unknown>)
+        .filter(shop => {
+          const shopId = Number(shop.id);
+          if (!Number.isFinite(shopId)) return false;
+
+          const shopGroupId =
+            shop.group_id ??
+            shop.organization_group_id ??
+            shop.groupId ??
+            null;
+
+          // If both shops expose a group id, enforce the same group strictly.
+          if (currentGroupId != null && shopGroupId != null) {
+            return String(shopGroupId) === String(currentGroupId);
+          }
+
+          // Backward-compatible fallback for installations where group_id is
+          // not populated: organization_id acts as the existing group boundary.
+          const shopOrganizationId =
+            shop.organization_id ??
+            shop.organizationId ??
+            null;
+
+          if (currentOrganizationId != null && shopOrganizationId != null) {
+            return String(shopOrganizationId) === String(currentOrganizationId);
+          }
+
+          // Never expose unrelated shops if neither grouping key is available.
+          return shopId === ownedShopId;
+        })
+        .map(shop => ({
+          id: Number(shop.id),
+          name: String(
+            shop.shop_name ??
+            shop.name ??
+            shop.title ??
+            `Shop ${shop.id}`
+          ),
+        }));
+
+      setGroupShops(visibleShops);
+    } catch (e: any) {
+      console.error('[MIHWAR visibility] Failed to load group shops:', e);
+      setGroupShops([]);
+      setError(
+        t(
+          'Failed to load group branches.',
+          'فشل تحميل فروع المجموعة.'
+        )
+      );
+    } finally {
+      setGroupShopsLoading(false);
+    }
+  }, [ownedShopId, t]);
+
+  useEffect(() => {
+    fetchGroupShops();
+  }, [fetchGroupShops]);
 
   // ── Fetch the shop's current default margin percentage ────────────────────
   const fetchDefaultMargin = useCallback(async () => {
@@ -777,6 +889,30 @@ export default function InventoryPage() {
       parsedSellingPrice = sp;
     }
 
+    if (safeVisibilityScope(form.visibility_scope) === 'specific' && allowedShopIds.length === 0) {
+      setFormError(t(
+        'Select at least one branch for Specific Shops visibility.',
+        'اختر فرعًا واحدًا على الأقل عند تحديد الظهور لفروع محددة.'
+      ));
+      return;
+    }
+
+    const validAllowedShopIds = Array.from(
+      new Set(
+        allowedShopIds
+          .map(Number)
+          .filter(id => groupShops.some(shop => shop.id === id))
+      )
+    );
+
+    if (safeVisibilityScope(form.visibility_scope) === 'specific' && validAllowedShopIds.length === 0) {
+      setFormError(t(
+        'The selected branches are not valid members of this group.',
+        'الفروع المحددة ليست فروعًا صالحة داخل هذه المجموعة.'
+      ));
+      return;
+    }
+
     setSaving(true);
     try {
       const basePayload = {
@@ -830,6 +966,27 @@ export default function InventoryPage() {
           .update({ product_image_url: finalImageUrl })
           .eq('id', productId);
         if (imgUpdateErr) throw imgUpdateErr;
+      }
+
+      // Keep the selected-shop relation synchronized with the product scope.
+      // Non-specific scopes must not retain stale selected-shop rows.
+      const { error: deleteVisibilityErr } = await supabase
+        .from('product_visibility_shops')
+        .delete()
+        .eq('product_id', productId);
+      if (deleteVisibilityErr) throw deleteVisibilityErr;
+
+      if (safeVisibilityScope(form.visibility_scope) === 'specific') {
+        const visibilityRows = validAllowedShopIds.map(shop_id => ({
+          product_id: productId,
+          shop_id,
+        }));
+
+        const { error: insertVisibilityErr } = await supabase
+          .from('product_visibility_shops')
+          .insert(visibilityRows);
+
+        if (insertVisibilityErr) throw insertVisibilityErr;
       }
 
       showSuccess(editItem ? t('Updated ✓', 'تم التعديل ✓') : t('Added ✓', 'تمت الإضافة ✓'));
@@ -1224,6 +1381,7 @@ export default function InventoryPage() {
   const openAdd = useCallback(() => {
     setEditItem(null);
     setForm(EMPTY_FORM);
+    setAllowedShopIds([]);
     setFormError(null);
     setImageError(null);
     setPendingImageFile(null);
@@ -1231,7 +1389,7 @@ export default function InventoryPage() {
     setShowModal(true);
   }, []);
 
-  const openEdit = useCallback((p: Product) => {
+  const openEdit = useCallback(async (p: Product) => {
     setEditItem(p);
     setForm({
       product_code:        p.product_code,
@@ -1245,12 +1403,41 @@ export default function InventoryPage() {
       margin_percent:     p.margin_percent != null ? String(p.margin_percent) : '',
       selling_price:      p.selling_price != null ? String(p.selling_price) : '',
     });
+    setAllowedShopIds([]);
+    setAllowedShopsLoading(true);
     setFormError(null);
     setImageError(null);
     setPendingImageFile(null);
     setImageRemoved(false);
     setShowModal(true);
-  }, []);
+
+    if (safeVisibilityScope(p.visibility_scope) === 'specific') {
+      try {
+        const { data, error: visibilityErr } = await supabase
+          .from('product_visibility_shops')
+          .select('shop_id')
+          .eq('product_id', p.id);
+
+        if (visibilityErr) throw visibilityErr;
+
+        setAllowedShopIds(
+          (data ?? [])
+            .map(row => Number(row.shop_id))
+            .filter(id => Number.isFinite(id))
+        );
+      } catch (e) {
+        console.error('[MIHWAR visibility] Failed to load selected shops:', e);
+        setFormError(t(
+          'Failed to load selected branches.',
+          'فشل تحميل الفروع المحددة.'
+        ));
+      } finally {
+        setAllowedShopsLoading(false);
+      }
+    } else {
+      setAllowedShopsLoading(false);
+    }
+  }, [t]);
 
   const closeModal = useCallback(() => setShowModal(false), []);
 
@@ -1313,6 +1500,7 @@ export default function InventoryPage() {
     const visibilityLabelAr = (scope: VisibilityScope): string =>
       scope === 'public' ? 'السوق العام'
       : scope === 'group' ? 'داخل المجموعة'
+      : scope === 'specific' ? 'فروع محددة'
       : 'داخل الفرع';
 
     const now      = new Date();
@@ -1552,9 +1740,10 @@ export default function InventoryPage() {
 
   // ── Visibility scope options ───────────────────────────────────────────────
   const visibilityOptions: { value: VisibilityScope; labelEn: string; labelAr: string; Icon: React.ElementType; cls: string }[] = [
-    { value: 'public',  labelEn: 'Public Marketplace', labelAr: 'السوق العام',     Icon: Globe, cls: 'text-emerald-400 border-emerald-500/30 bg-emerald-500/5' },
-    { value: 'group',   labelEn: 'Group Only',          labelAr: 'داخل المجموعة',  Icon: Users, cls: 'text-amber-400 border-amber-500/30 bg-amber-500/5' },
-    { value: 'private', labelEn: 'Shop Only',           labelAr: 'داخل الفرع',     Icon: Lock,  cls: 'text-blue-400 border-blue-500/30 bg-blue-500/5' },
+    { value: 'public',   labelEn: 'Public Marketplace', labelAr: 'السوق العام',       Icon: Globe, cls: 'text-emerald-400 border-emerald-500/30 bg-emerald-500/5' },
+    { value: 'group',    labelEn: 'Group Only',          labelAr: 'داخل المجموعة',    Icon: Users, cls: 'text-amber-400 border-amber-500/30 bg-amber-500/5' },
+    { value: 'specific', labelEn: 'Selected Shops',      labelAr: 'فروع محددة',       Icon: Users, cls: 'text-violet-400 border-violet-500/30 bg-violet-500/5' },
+    { value: 'private',  labelEn: 'Shop Only',           labelAr: 'داخل الفرع',       Icon: Lock,  cls: 'text-blue-400 border-blue-500/30 bg-blue-500/5' },
   ];
 
   // ── Shared pagination UI ──────────────────────────────────────────────────
@@ -2147,7 +2336,7 @@ export default function InventoryPage() {
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">
                     {t('Visibility Scope', 'نطاق الظهور')}
                   </label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {visibilityOptions.map(opt => {
                       const isActive = form.visibility_scope === opt.value;
                       return (
@@ -2170,6 +2359,83 @@ export default function InventoryPage() {
                       );
                     })}
                   </div>
+
+                  {form.visibility_scope === 'specific' && (
+                    <div className="mt-3 rounded-2xl border border-violet-500/20 bg-violet-500/5 p-4">
+                      <div className="flex items-center justify-between gap-3 mb-3">
+                        <div>
+                          <p className="text-xs font-black text-violet-300">
+                            {t('Visible to selected branches', 'يظهر للفروع المحددة')}
+                          </p>
+                          <p className="text-[10px] text-slate-500 mt-1">
+                            {t(
+                              'Only branches in the same group can be selected.',
+                              'يمكن اختيار الفروع الموجودة داخل نفس المجموعة فقط.'
+                            )}
+                          </p>
+                        </div>
+                        <span className="text-[10px] font-bold text-violet-300 bg-violet-500/10 px-2 py-1 rounded-full">
+                          {allowedShopIds.length}
+                        </span>
+                      </div>
+
+                      {groupShopsLoading || allowedShopsLoading ? (
+                        <div className="flex items-center justify-center gap-2 py-5 text-xs text-slate-500">
+                          <RefreshCw size={14} className="animate-spin text-violet-400" />
+                          {t('Loading branches…', 'جاري تحميل الفروع…')}
+                        </div>
+                      ) : groupShops.length === 0 ? (
+                        <div className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">
+                          {t(
+                            'No branches were found in the current group.',
+                            'لم يتم العثور على فروع داخل المجموعة الحالية.'
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+                          {groupShops.map(shop => {
+                            const checked = allowedShopIds.includes(shop.id);
+                            const isOwner = shop.id === ownedShopId;
+
+                            return (
+                              <label
+                                key={shop.id}
+                                className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                                  checked
+                                    ? 'border-violet-500/40 bg-violet-500/10'
+                                    : 'border-slate-700 bg-slate-800/50 hover:border-slate-600'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => {
+                                    setAllowedShopIds(prev =>
+                                      prev.includes(shop.id)
+                                        ? prev.filter(id => id !== shop.id)
+                                        : [...prev, shop.id]
+                                    );
+                                  }}
+                                  className="accent-violet-500 w-4 h-4 shrink-0"
+                                />
+                                <span className="flex-1 min-w-0">
+                                  <span className="block text-xs font-bold text-slate-200 truncate">
+                                    {shop.name}
+                                  </span>
+                                  <span className="block text-[9px] text-slate-500 mt-0.5">
+                                    {isOwner
+                                      ? t('Product owner', 'صاحب المنتج')
+                                      : t('Same group', 'داخل نفس المجموعة')}
+                                  </span>
+                                </span>
+                                {checked && <Check size={15} className="text-violet-400 shrink-0" />}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 

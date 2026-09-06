@@ -329,6 +329,7 @@ export function canViewProductByScope(
     visibilityScope,
     requesterOrganizationId,
     supplierOrganizationId,
+    allowedShopIds,
   } = context;
  
   // null/undefined scope mirrors the database default of 'public'.
@@ -355,6 +356,16 @@ export function canViewProductByScope(
       return isSameGroup(requesterGroupId, supplierGroupId);
     }
  
+    case 'specific': {
+      // Owner/supplier shop can always see its own product.
+      if (isSameShop(requesterShopId, supplierShopId)) return true;
+
+      // Other shops can see it only when explicitly selected.
+      if (requesterShopId == null) return false;
+      if (!Array.isArray(allowedShopIds) || allowedShopIds.length === 0) return false;
+      return allowedShopIds.includes(requesterShopId);
+    }
+
     case 'private':
       return isSameShop(requesterShopId, supplierShopId);
  
@@ -691,3 +702,4 @@ export function filterMarketplaceProductsByAccess<T>(
     }
   });
 }
+

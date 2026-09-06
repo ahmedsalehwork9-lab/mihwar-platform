@@ -51,6 +51,7 @@ type Product = {
   price: number;
   shop_id: number;
   visibility_scope?: ProductVisibilityScope | null;
+  allowed_shop_ids?: number[];
   organization_id?: number | null;
   group_id?: number | null;
   product_image_url?: string | null;
@@ -197,12 +198,25 @@ function effectiveScope(
   productScope: ProductVisibilityScope | null | undefined,
   shopMode: string | null | undefined,
 ): ProductVisibilityScope {
-  const rank: Record<string, number> = { private: 2, group: 1, public: 0 };
   const pScope = productScope ?? 'public';
+
+  // specific is an explicit product-level restriction.
+  // It must never be downgraded to group/private/public.
+  if (pScope === 'specific') {
+    return 'specific';
+  }
+
+  const rank: Record<string, number> = {
+    private: 2,
+    group: 1,
+    public: 0,
+  };
+
   const sScope: ProductVisibilityScope =
     shopMode === 'private' ? 'private'
-    : shopMode === 'group'  ? 'group'
+    : shopMode === 'group' ? 'group'
     : 'public';
+
   return rank[pScope] >= rank[sScope] ? pScope : sScope;
 }
 
@@ -213,12 +227,14 @@ function effectiveScope(
 const SCOPE_ICON: Record<ProductVisibilityScope, React.ElementType> = {
   public:  Globe,
   group:   Users,
+  specific: Users,
   private: Lock,
 };
 
 const SCOPE_COLOR: Record<ProductVisibilityScope, string> = {
   public:  'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
   group:   'bg-amber-500/10 text-amber-400 border-amber-500/20',
+  specific: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
   private: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
 };
 
@@ -1031,7 +1047,37 @@ export default function SearchPage() {
 
     const { data, error } = await q;
     if (error) throw error;
-    return (data as Product[]) || [];
+
+    const fetchedProducts = (data as Product[]) || [];
+
+    const specificProductIds = fetchedProducts
+      .filter(product => (product.visibility_scope ?? 'public') === 'specific')
+      .map(product => product.id);
+
+    if (specificProductIds.length === 0) {
+      return fetchedProducts;
+    }
+
+    const { data: visibilityRows, error: visibilityError } = await supabase
+      .from('product_visibility_shops')
+      .select('product_id, shop_id')
+      .in('product_id', specificProductIds);
+
+    if (visibilityError) throw visibilityError;
+
+    const allowedShopsByProduct: Record<number, number[]> = {};
+
+    (visibilityRows || []).forEach((row: { product_id: number; shop_id: number }) => {
+      if (!allowedShopsByProduct[row.product_id]) {
+        allowedShopsByProduct[row.product_id] = [];
+      }
+      allowedShopsByProduct[row.product_id].push(row.shop_id);
+    });
+
+    return fetchedProducts.map(product => ({
+      ...product,
+      allowed_shop_ids: allowedShopsByProduct[product.id] ?? [],
+    }));
   }, []);
 
   const fetchData = useCallback(async () => {
@@ -1131,6 +1177,7 @@ export default function SearchPage() {
         visibilityScope:         product.visibility_scope ?? null,
         requesterOrganizationId: reqOrgId,
         supplierOrganizationId:  supOrgId,
+        allowedShopIds:          product.allowed_shop_ids ?? null,
       };
     },
     [ownedShopId, requesterShop, shopMap]
@@ -1211,7 +1258,7 @@ export default function SearchPage() {
   // DO NOT merge with Marketplace Access Layer or Procurement Layer.
   // ══════════════════════════════════════════════════════════════
 
-  const VALID_SCOPES = new Set<string>(['public', 'group', 'private']);
+  const VALID_SCOPES = new Set<string>(['public', 'group', 'specific', 'private']);
 
   const visibleProducts = useMemo<EnrichedProduct[]>(() => {
     // FIX 3 belt-and-suspenders: exclude any product whose resolved
@@ -1733,3 +1780,10 @@ export default function SearchPage() {
     </div>
   );
 }
+
+
+
+
+
+
+

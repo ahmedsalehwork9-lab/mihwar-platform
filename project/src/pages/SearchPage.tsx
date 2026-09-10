@@ -997,7 +997,6 @@ export default function SearchPage() {
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [activeShopIds, setActiveShopIds] = useState<number[]>([]);
-  const [shopsReady, setShopsReady] = useState(false);
 
   const fetchShopsAndRequester = useCallback(async (): Promise<number[]> => {
     let shopsQuery = supabase
@@ -1007,8 +1006,19 @@ export default function SearchPage() {
 
     if (ownedShopId) shopsQuery = shopsQuery.neq('id', ownedShopId);
 
-    const { data: shopsData, error: shopsError } = await shopsQuery;
+    const requesterShopPromise = ownedShopId
+      ? supabase
+          .from('shops')
+          .select('id, shop_name, phone, whatsapp, google_maps_url, logo_url, group_id, organization_id, visibility_mode, can_view_public_market, default_margin_percent')
+          .eq('id', ownedShopId)
+          .single()
+      : Promise.resolve({ data: null, error: null });
+
+    const [{ data: shopsData, error: shopsError }, { data: ownData, error: ownShopError }] =
+      await Promise.all([shopsQuery, requesterShopPromise]);
+
     if (shopsError) throw shopsError;
+    if (ownShopError) throw ownShopError;
 
     const fetchedShops: Shop[] = shopsData || [];
     const visibleShops = fetchedShops.filter(s => VALID_SHOP_VISIBILITY_MODES.has(s.visibility_mode));
@@ -1016,15 +1026,7 @@ export default function SearchPage() {
 
     setShops(visibleShops);
     setActiveShopIds(ids);
-
-    if (ownedShopId) {
-      const { data: ownData } = await supabase
-        .from('shops')
-        .select('id, shop_name, phone, whatsapp, google_maps_url, logo_url, group_id, organization_id, visibility_mode, can_view_public_market, default_margin_percent')
-        .eq('id', ownedShopId)
-        .single();
-      setRequesterShop((ownData as Shop) ?? null);
-    }
+    setRequesterShop((ownData as Shop) ?? null);
 
     return ids;
   }, [ownedShopId]);
@@ -1087,42 +1089,35 @@ export default function SearchPage() {
       setFetchError(null);
       setProducts([]);
       setHasMore(false);
-      setShopsReady(false);
+      setActiveShopIds([]);
+      setRequesterShop(null);
 
       const shopIds = await fetchShopsAndRequester();
+      setActiveShopIds(shopIds);
 
       if (shopIds.length === 0) {
-        setShopsReady(true);
-        return;
-      }
-
-      setActiveShopIds(shopIds);
-      setShopsReady(true);
-    } catch (err: any) {
-      console.error('[SearchPage] fetchData error:', err);
-      setFetchError(err?.message ?? t('Failed to load products', 'فشل تحميل المنتجات'));
-      setShopsReady(false);
-      setLoading(false);
-    }
-  }, [ownedShopId, fetchShopsAndRequester, t]);
-
-  // Initial product fetch runs only after the shop/requester state has
-  // committed. This prevents the first 50 products from being filtered
-  // against an empty shopMap/requesterShop, which previously made the
-  // page look empty until "Load More" triggered a second render.
-  useEffect(() => {
-    if (!shopsReady || activeShopIds.length === 0) {
-      if (shopsReady && activeShopIds.length === 0) {
         setLoading(false);
       }
-      return;
+    } catch (err: any) {
+      console.error('[SearchPage] fetchData error:', err);
+      setFetchError(err?.message ?? 'فشل تحميل المنتجات');
+      setLoading(false);
     }
+  }, [ownedShopId, fetchShopsAndRequester]);
+
+  // IMPORTANT: wait until shops/requester state has committed before
+  // fetching products. This keeps visibility calculations from running
+  // against an empty shopMap on the first render.
+  useEffect(() => {
+    if (activeShopIds.length === 0) return;
 
     let cancelled = false;
 
     const loadInitialProducts = async () => {
       try {
         setLoading(true);
+        setFetchError(null);
+
         const data = await fetchProducts(activeShopIds, query, 0);
 
         if (cancelled) return;
@@ -1133,7 +1128,7 @@ export default function SearchPage() {
         if (cancelled) return;
 
         console.error('[SearchPage] initial product fetch error:', err);
-        setFetchError(err?.message ?? t('Failed to load products', 'فشل تحميل المنتجات'));
+        setFetchError(err?.message ?? 'فشل تحميل المنتجات');
         setProducts([]);
         setHasMore(false);
       } finally {
@@ -1148,13 +1143,15 @@ export default function SearchPage() {
     return () => {
       cancelled = true;
     };
-  }, [shopsReady, activeShopIds, query, fetchProducts, t]);
+  }, [activeShopIds, query, fetchProducts, t]);
 
   const loadMore = useCallback(async () => {
-    if (loadingMore || !hasMore) return;
+    if (loadingMore || !hasMore || activeShopIds.length === 0) return;
+
     try {
       setLoadingMore(true);
       const more = await fetchProducts(activeShopIds, query, products.length);
+
       setProducts(prev => [...prev, ...more]);
       setHasMore(more.length === PAGE_LIMIT);
     } catch (err: any) {
@@ -1334,6 +1331,37 @@ export default function SearchPage() {
       (p) => (p.visibility_scope ?? 'public') !== 'public'
     );
   }, [enrichedProducts, buildVisibilityContext, canViewPublicMarket]);
+
+  // When the server's first page contains only products hidden by the
+  // current shop's visibility rules, automatically load the next page.
+  // This runs only after visibleProducts has been computed, so there is
+  // no temporal-dead-zone access to the memoized value.
+  useEffect(() => {
+    if (
+      loading ||
+      loadingMore ||
+      fetchError ||
+      query.trim() ||
+      products.length === 0 ||
+      visibleProducts.length > 0 ||
+      !hasMore ||
+      activeShopIds.length === 0
+    ) {
+      return;
+    }
+
+    loadMore();
+  }, [
+    loading,
+    loadingMore,
+    fetchError,
+    query,
+    products.length,
+    visibleProducts.length,
+    hasMore,
+    activeShopIds.length,
+    loadMore,
+  ]);
 
   // ─────────────────────────────────────────────────────────────
   // Phase 7: KPI COUNTS — include unique visible suppliers

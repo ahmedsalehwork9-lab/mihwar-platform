@@ -997,6 +997,7 @@ export default function SearchPage() {
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [activeShopIds, setActiveShopIds] = useState<number[]>([]);
+  const [shopsReady, setShopsReady] = useState(false);
 
   const fetchShopsAndRequester = useCallback(async (): Promise<number[]> => {
     let shopsQuery = supabase
@@ -1085,20 +1086,69 @@ export default function SearchPage() {
       setLoading(true);
       setFetchError(null);
       setProducts([]);
+      setHasMore(false);
+      setShopsReady(false);
 
       const shopIds = await fetchShopsAndRequester();
-      if (shopIds.length === 0) return;
 
-      const data = await fetchProducts(shopIds, query);
-      setProducts(data);
-      setHasMore(data.length === PAGE_LIMIT);
+      if (shopIds.length === 0) {
+        setShopsReady(true);
+        return;
+      }
+
+      setActiveShopIds(shopIds);
+      setShopsReady(true);
     } catch (err: any) {
       console.error('[SearchPage] fetchData error:', err);
       setFetchError(err?.message ?? t('Failed to load products', 'فشل تحميل المنتجات'));
-    } finally {
+      setShopsReady(false);
       setLoading(false);
     }
-  }, [ownedShopId, query, fetchShopsAndRequester, fetchProducts, t]);
+  }, [ownedShopId, fetchShopsAndRequester, t]);
+
+  // Initial product fetch runs only after the shop/requester state has
+  // committed. This prevents the first 50 products from being filtered
+  // against an empty shopMap/requesterShop, which previously made the
+  // page look empty until "Load More" triggered a second render.
+  useEffect(() => {
+    if (!shopsReady || activeShopIds.length === 0) {
+      if (shopsReady && activeShopIds.length === 0) {
+        setLoading(false);
+      }
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadInitialProducts = async () => {
+      try {
+        setLoading(true);
+        const data = await fetchProducts(activeShopIds, query, 0);
+
+        if (cancelled) return;
+
+        setProducts(data);
+        setHasMore(data.length === PAGE_LIMIT);
+      } catch (err: any) {
+        if (cancelled) return;
+
+        console.error('[SearchPage] initial product fetch error:', err);
+        setFetchError(err?.message ?? t('Failed to load products', 'فشل تحميل المنتجات'));
+        setProducts([]);
+        setHasMore(false);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadInitialProducts();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [shopsReady, activeShopIds, query, fetchProducts, t]);
 
   const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore) return;

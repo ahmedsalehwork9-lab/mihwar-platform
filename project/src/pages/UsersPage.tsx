@@ -12,7 +12,9 @@ import {
   ShieldCheck,
   MoreHorizontal,
   UserX,
-  Smartphone
+  Smartphone,
+  Pencil,
+  X
 } from 'lucide-react';
 
 // تعريف أنواع البيانات بدقة
@@ -34,6 +36,9 @@ export default function UsersPage() {
   const [users, setUsers] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [editingUser, setEditingUser] = useState<Profile | null>(null);
+  const [newEmail, setNewEmail] = useState('');
+  const [savingEmail, setSavingEmail] = useState(false);
 
   // حساب الإحصائيات
   const stats = {
@@ -78,6 +83,101 @@ export default function UsersPage() {
       user.phone?.includes(search)
     );
   });
+
+  const handleEditEmail = (user: Profile) => {
+    setEditingUser(user);
+    setNewEmail(user.email || '');
+  };
+
+  const handleSaveEmail = async () => {
+    if (!editingUser) return;
+
+    const email = newEmail.trim().toLowerCase();
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      alert('يرجى إدخال بريد إلكتروني صحيح');
+      return;
+    }
+
+    if (email === editingUser.email.trim().toLowerCase()) {
+      setEditingUser(null);
+      setNewEmail('');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `هل تريد تغيير إيميل تسجيل الدخول إلى:\n${email}\n\nسيبقى نفس الحساب وكلمة المرور والصلاحيات.`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setSavingEmail(true);
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+
+      if (!accessToken) {
+        throw new Error('انتهت جلسة تسجيل الدخول، يرجى تسجيل الدخول مرة أخرى');
+      }
+
+      const { data, error } = await supabase.functions.invoke(
+        'update-user-email',
+        {
+          body: {
+            userId: editingUser.id,
+            newEmail: email,
+          },
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+
+      if (error) {
+        let message = error.message || 'تعذر تحديث البريد الإلكتروني';
+
+        try {
+          const context = (error as any).context;
+          if (context && typeof context.json === 'function') {
+            const responseBody = await context.json();
+            if (responseBody?.error) {
+              message = responseBody.error;
+            }
+          }
+        } catch {
+          // Keep the original error message if the response cannot be parsed.
+        }
+
+        throw new Error(message);
+      }
+
+      if (!data?.success) {
+        throw new Error(data?.error || 'تعذر تحديث البريد الإلكتروني');
+      }
+
+      setUsers(currentUsers =>
+        currentUsers.map(user =>
+          user.id === editingUser.id
+            ? { ...user, email }
+            : user
+        )
+      );
+
+      setEditingUser(null);
+      setNewEmail('');
+      alert('تم تحديث البريد الإلكتروني بنجاح');
+    } catch (error) {
+      console.error('Error updating user email:', error);
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'حدث خطأ أثناء تحديث البريد الإلكتروني'
+      );
+    } finally {
+      setSavingEmail(false);
+    }
+  };
 
   return (
     <div className="p-1 space-y-6 animate-in fade-in duration-500 text-right" dir="rtl">
@@ -148,12 +248,13 @@ export default function UsersPage() {
                 <th className="px-6 py-5">الدور</th>
                 <th className="px-6 py-5 text-center">نوع الحساب</th>
                 <th className="px-6 py-5 text-center">الحالة</th>
+                <th className="px-6 py-5 text-center">الإجراءات</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/40">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-20 text-center">
+                  <td colSpan={7} className="px-6 py-20 text-center">
                     <div className="flex flex-col items-center gap-4">
                       <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
                       <span className="text-slate-500 font-medium text-sm">جاري جلب سجلات المستخدمين...</span>
@@ -162,7 +263,7 @@ export default function UsersPage() {
                 </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-20 text-center">
+                  <td colSpan={7} className="px-6 py-20 text-center">
                     <div className="flex flex-col items-center gap-2 opacity-40">
                       <UserX size={48} className="text-slate-500 mb-2" />
                       <span className="text-slate-400 font-medium">لا توجد بيانات مستخدمين تتوافق مع بحثك</span>
@@ -232,12 +333,103 @@ export default function UsersPage() {
                         {user.is_active ? 'نشط' : 'موقوف'}
                       </span>
                     </td>
+                    <td className="px-6 py-5 text-center">
+                      <button
+                        type="button"
+                        onClick={() => handleEditEmail(user)}
+                        className="inline-flex items-center justify-center p-2 rounded-xl bg-slate-800 hover:bg-blue-600/20 text-slate-400 hover:text-blue-400 border border-slate-700/60 hover:border-blue-500/30 transition-all"
+                        title="تغيير إيميل تسجيل الدخول"
+                        aria-label="تغيير إيميل تسجيل الدخول"
+                      >
+                        <Pencil size={16} />
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
         </div>
+
+        {editingUser && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+            <div
+              className="w-full max-w-md rounded-[2rem] border border-slate-700 bg-slate-900 p-6 shadow-2xl"
+              dir="rtl"
+            >
+              <div className="flex items-start justify-between gap-4 mb-6">
+                <div>
+                  <h2 className="text-xl font-black text-white">تغيير إيميل تسجيل الدخول</h2>
+                  <p className="text-sm text-slate-400 mt-1">
+                    الحساب: {editingUser.full_name || editingUser.email}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!savingEmail) {
+                      setEditingUser(null);
+                      setNewEmail('');
+                    }
+                  }}
+                  disabled={savingEmail}
+                  className="p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-white transition-all disabled:opacity-50"
+                  title="إغلاق"
+                  aria-label="إغلاق"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-300 mb-2">
+                    الإيميل الجديد
+                  </label>
+                  <input
+                    type="email"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    placeholder="مثل: madina_loco@gmail.com"
+                    dir="ltr"
+                    autoFocus
+                    disabled={savingEmail}
+                    className="w-full rounded-2xl bg-slate-950 border border-slate-700 px-4 py-3 text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                  />
+                  <p className="text-[11px] text-slate-500 mt-2">
+                    سيتم تغيير إيميل الدخول فقط، مع الاحتفاظ بنفس الحساب وكلمة المرور والصلاحيات.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!savingEmail) {
+                        setEditingUser(null);
+                        setNewEmail('');
+                      }
+                    }}
+                    disabled={savingEmail}
+                    className="flex-1 px-4 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold transition-all disabled:opacity-50"
+                  >
+                    إلغاء
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSaveEmail}
+                    disabled={savingEmail || !newEmail.trim()}
+                    className="flex-1 px-4 py-3 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-black transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {savingEmail ? 'جاري الحفظ...' : 'حفظ الإيميل'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Footer info */}
         <div className="p-4 bg-slate-950/30 border-t border-slate-800 text-center text-slate-600 text-[10px] font-bold uppercase tracking-widest">

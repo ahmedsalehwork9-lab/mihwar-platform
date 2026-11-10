@@ -3,9 +3,11 @@
 //
 // Coordinator page. Wires useAuth/useLang with useOrders,
 // useOrderDetails, useOrderApproval, and useCreateOrder, then
-// renders the extracted presentational components. Contains no
-// large templates, no print HTML, no approval business logic —
-// those all live in hooks/, components/, print/, and utils/.
+// renders the extracted presentational components.
+//
+// NOTE: ميزة "تعديل الطلب" (useEditOrder) معطّلة مؤقتًا لأن ملف الهوك
+// غير موجود في هذه النسخة. سيُعاد بناؤها لاحقًا. زر التعديل (إن وُجد)
+// يعمل كـ no-op حاليًا.
 // =============================================================
 
 import { useState, useCallback } from "react";
@@ -138,6 +140,8 @@ export default function OrdersPage() {
       {detailOrder && (
         <OrderDetailsDrawer
           detailOrder={detailOrder}
+          ownedShopId={ownedShopId}
+          isAdmin={isAdmin}
           detailItems={detailItems}
           detailLoading={detailLoading}
           approvedQtyMap={approvedQtyMap}
@@ -148,6 +152,7 @@ export default function OrdersPage() {
           canAct={canActOnOrder(detailOrder)}
           onClose={closeDetail}
           onPrint={handlePrint}
+          onEdit={() => {}}
           onSetApprovedQty={setApprovedQty}
           onReject={() => handleReject(detailOrder.id)}
           onOpenPartialEditor={() => setShowPartialEditor(true)}
@@ -164,6 +169,7 @@ export default function OrdersPage() {
 
       {createOrder.showModal && (
         <CreateOrderModal
+          mode="create"
           shops={shops}
           ownedShopId={ownedShopId}
           supplierShopId={createOrder.supplierShopId}

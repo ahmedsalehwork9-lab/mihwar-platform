@@ -1,13 +1,3 @@
-/**
- * MIHWAR | مِحور — Landing Page
- * ─────────────────────────────
- * File: src/pages/LandingPage.tsx
- * 
- * Integration:
- * In App.tsx, render this component when page === 'landing':
- * <LandingPage onLogin={() => setPage('login')} />
- */
-
 import LandingNav from "../components/landing/LandingNav";
 import HeroSection from "../components/landing/HeroSection";
 import ProblemSection from "../components/landing/ProblemSection";
@@ -19,52 +9,93 @@ import FaqSection from "../components/landing/FaqSection";
 import CtaSection from "../components/landing/CtaSection";
 import LandingFooter from "../components/landing/LandingFooter";
 
+type ActivityType =
+  | "spare-parts"
+  | "grocery"
+  | "cafe"
+  | "restaurant"
+  | "retail"
+  | "general";
+
 type LandingPageProps = {
   onLogin?: () => void;
 };
 
+function getActivityFromPath(): ActivityType {
+  const path = window.location.pathname.toLowerCase();
+
+  if (
+    path === "/spare-parts" ||
+    path.startsWith("/spare-parts/")
+  ) {
+    return "spare-parts";
+  }
+
+  if (
+    path === "/grocery" ||
+    path.startsWith("/grocery/")
+  ) {
+    return "grocery";
+  }
+
+  if (
+    path === "/cafe" ||
+    path.startsWith("/cafe/")
+  ) {
+    return "cafe";
+  }
+
+  if (
+    path === "/restaurant" ||
+    path.startsWith("/restaurant/")
+  ) {
+    return "restaurant";
+  }
+
+  if (
+    path === "/retail" ||
+    path.startsWith("/retail/")
+  ) {
+    return "retail";
+  }
+
+  return "general";
+}
+
 export default function LandingPage({ onLogin }: LandingPageProps) {
-  // Navigation wrapper to ensure it only fires if the prop is provided
   const handleNavigation = () => {
     onLogin?.();
   };
+
+  const activity = getActivityFromPath();
 
   return (
     <div
       dir="rtl"
       className="min-h-screen overflow-x-hidden"
-      style={{ background: "#0A1220", color: "#E8EDF5" }}
+      style={{
+        background: "#0A1220",
+        color: "#E8EDF5",
+      }}
     >
-      {/* Navigation Bar */}
       <LandingNav onLogin={handleNavigation} />
 
       <main>
-        {/* Hero Section */}
-        <HeroSection onStart={handleNavigation} onLogin={handleNavigation} />
+        <HeroSection
+          activity={activity}
+          onStart={handleNavigation}
+          onLogin={handleNavigation}
+        />
 
-        {/* Problem Description */}
         <ProblemSection />
-
-        {/* Core Features */}
         <FeaturesSection />
-
-        {/* Workflow Steps */}
         <HowItWorksSection />
-
-        {/* App Preview / Screenshots */}
         <ScreenshotsSection />
-
-        {/* Subscription Plans */}
         <PricingSection onStart={handleNavigation} />
-
-        {/* Frequently Asked Questions */}
         <FaqSection />
-
-        {/* Final Call to Action */}
         <CtaSection onStart={handleNavigation} />
       </main>
 
-      {/* Footer */}
       <LandingFooter />
     </div>
   );

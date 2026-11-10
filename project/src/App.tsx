@@ -1,36 +1,44 @@
 import { useState, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
 import { NotificationProvider } from './context/NotificationContext';
+
 import LoginPage from './pages/LoginPage';
 import LandingPage from './pages/LandingPage';
+
 import Layout, { Page } from './components/Layout';
 
-// ── Public pages — loaded immediately (no auth, on critical path) ─────────
+// ── Public pages ────────────────────────────────────────────────────────────
+
 const VerifyInvoicePage = lazy(() => import('./pages/VerifyInvoicePage'));
-const ShopPublicPage    = lazy(() => import('./pages/ShopPublicPage'));
+const ShopPublicPage = lazy(() => import('./pages/ShopPublicPage'));
 
-// ── Shop user pages ───────────────────────────────────────────────────────
-const DashboardPage     = lazy(() => import('./pages/DashboardPage'));
-const SearchPage        = lazy(() => import('./pages/SearchPage'));
-const InventoryPage     = lazy(() => import('./pages/InventoryPage'));
-const OrdersPage        = lazy(() => import('./pages/orders/OrdersPage'));
-const ReportsPage       = lazy(() => import('./pages/ReportsPage'));
-const AlertsPage        = lazy(() => import('./pages/AlertsPage'));
-const ShopSettingsPage  = lazy(() => import('./pages/ShopSettingsPage'));
+// ── Shop user pages ────────────────────────────────────────────────────────
 
-// ── Admin pages — only downloaded when an admin logs in ──────────────────
-const AdminDashboardPage  = lazy(() => import('./pages/AdminDashboardPage'));
-const ShopsPage           = lazy(() => import('./pages/ShopsPage'));
-const CreateShopPage      = lazy(() => import('./pages/CreateShopPage'));
-const UsersPage           = lazy(() => import('./pages/UsersPage'));
-const PermissionsPage     = lazy(() => import('./pages/PermissionsPage'));
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const SearchPage = lazy(() => import('./pages/SearchPage'));
+const InventoryPage = lazy(() => import('./pages/InventoryPage'));
+const OrdersPage = lazy(() => import('./pages/orders/OrdersPage'));
+const ReportsPage = lazy(() => import('./pages/ReportsPage'));
+const AlertsPage = lazy(() => import('./pages/AlertsPage'));
+const ShopSettingsPage = lazy(() => import('./pages/ShopSettingsPage'));
+const SalesReconciliationPage = lazy(() => import('./pages/sales/SalesReconciliationPage'));
+
+// ── Admin pages ─────────────────────────────────────────────────────────────
+
+const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
+const ShopsPage = lazy(() => import('./pages/ShopsPage'));
+const CreateShopPage = lazy(() => import('./pages/CreateShopPage'));
+const UsersPage = lazy(() => import('./pages/UsersPage'));
+const PermissionsPage = lazy(() => import('./pages/PermissionsPage'));
 const GlobalInventoryPage = lazy(() => import('./pages/GlobalInventoryPage'));
-const GlobalOrdersPage    = lazy(() => import('./pages/GlobalOrdersPage'));
-const OrganizationsPage   = lazy(() => import('./pages/OrganizationsPage'));
+const GlobalOrdersPage = lazy(() => import('./pages/GlobalOrdersPage'));
+const OrganizationsPage = lazy(() => import('./pages/OrganizationsPage'));
 
-// ── Shared loading fallback ───────────────────────────────────────────────
+// ── Shared loading fallback ─────────────────────────────────────────────────
+
 function PageLoader() {
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center">
@@ -41,28 +49,34 @@ function PageLoader() {
   );
 }
 
-// ══════════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════════════
 // ACCESS DENIED
-// ══════════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════════════
 
 function AccessDenied() {
   return (
     <div className="flex items-center justify-center h-[70vh]">
       <div className="bg-red-500/10 border border-red-500/20 rounded-3xl p-10 text-center max-w-md">
-        <h2 className="text-2xl font-bold text-red-400 mb-3">غير مصرح</h2>
-        <p className="text-slate-400">ليس لديك صلاحية الوصول إلى هذه المنطقة الإدارية</p>
+        <h2 className="text-2xl font-bold text-red-400 mb-3">
+          غير مصرح
+        </h2>
+
+        <p className="text-slate-400">
+          ليس لديك صلاحية الوصول إلى هذه المنطقة الإدارية
+        </p>
       </div>
     </div>
   );
 }
 
-// ══════════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════════════
 // APP CONTENT
-// ══════════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════════════
 
 function AppContent() {
   const { session, loading, isAdmin } = useAuth();
-  const [page, setPage]               = useState<Page>('dashboard');
+
+  const [page, setPage] = useState<Page>('dashboard');
   const [showLanding, setShowLanding] = useState(true);
 
   if (loading) {
@@ -75,16 +89,26 @@ function AppContent() {
 
   if (!session) {
     if (showLanding) {
-      return <LandingPage onLogin={() => setShowLanding(false)} />;
+      return (
+        <LandingPage
+          onLogin={() => setShowLanding(false)}
+        />
+      );
     }
+
     return <LoginPage />;
   }
 
   const renderAdminPlaceholder = (title: string) => (
     <div className="flex items-center justify-center h-[70vh]">
       <div className="bg-blue-500/10 border border-blue-500/20 rounded-3xl p-10 text-center">
-        <h2 className="text-2xl font-bold text-blue-400 mb-3">{title}</h2>
-        <p className="text-slate-400">هذه الصفحة تحت التطوير</p>
+        <h2 className="text-2xl font-bold text-blue-400 mb-3">
+          {title}
+        </h2>
+
+        <p className="text-slate-400">
+          هذه الصفحة تحت التطوير
+        </p>
       </div>
     </div>
   );
@@ -94,16 +118,19 @@ function AppContent() {
       <Layout page={page} setPage={setPage}>
         <Suspense fallback={<PageLoader />}>
 
-          {/* ══ USER PAGES ══════════════════════════════════════════════ */}
-          {page === 'dashboard'     && <DashboardPage />}
-          {page === 'search'        && <SearchPage />}
-          {page === 'inventory'     && <InventoryPage />}
-          {page === 'orders'        && <OrdersPage />}
-          {page === 'reports'       && <ReportsPage />}
-          {page === 'alerts'        && <AlertsPage />}
-          {page === 'shop-settings' && <ShopSettingsPage />}
+          {/* USER PAGES */}
 
-          {/* ══ ADMIN ════════════════════════════════════════════════════ */}
+          {page === 'dashboard' && <DashboardPage />}
+          {page === 'search' && <SearchPage />}
+          {page === 'inventory' && <InventoryPage />}
+          {page === 'orders' && <OrdersPage />}
+          {page === 'reports' && <ReportsPage />}
+          {page === 'alerts' && <AlertsPage />}
+          {page === 'shop-settings' && <ShopSettingsPage />}
+          {page === 'sales-reconciliation' && <SalesReconciliationPage />}
+
+          {/* ADMIN */}
+
           {page === 'admin' &&
             (isAdmin ? <AdminDashboardPage /> : <AccessDenied />)}
 
@@ -139,15 +166,41 @@ function AppContent() {
   );
 }
 
-// ══════════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════════════
+// ACTIVITY LANDING
+// ═════════════════════════════════════════════════════════════════════════════
+
+function ActivityLanding() {
+  const [showLanding, setShowLanding] = useState(true);
+
+  if (!showLanding) {
+    return (
+      <LanguageProvider>
+        <AuthProvider>
+          <LoginPage />
+        </AuthProvider>
+      </LanguageProvider>
+    );
+  }
+
+  return (
+    <LanguageProvider>
+      <LandingPage onLogin={() => setShowLanding(false)} />
+    </LanguageProvider>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // ROOT APP
-// ══════════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════════════
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* ── Public routes — no auth required ──────────────────────── */}
+
+        {/* ── Invoice verification ─────────────────────────────────────── */}
+
         <Route
           path="/verify/:orderId"
           element={
@@ -157,7 +210,8 @@ export default function App() {
           }
         />
 
-        {/* ── Shop public page — numeric ID ────────────────────────── */}
+        {/* ── Shop public page — numeric ID ───────────────────────────── */}
+
         <Route
           path="/shop/:shopId"
           element={
@@ -169,7 +223,8 @@ export default function App() {
           }
         />
 
-        {/* ── Shop public page — custom slug ────────────────────────── */}
+        {/* ── Shop public page — custom slug ──────────────────────────── */}
+
         <Route
           path="/s/:slug"
           element={
@@ -181,7 +236,35 @@ export default function App() {
           }
         />
 
-        {/* ── Main app ──────────────────────────────────────────────── */}
+        {/* ── Activity Landing Pages ──────────────────────────────────── */}
+
+        <Route
+          path="/spare-parts"
+          element={<ActivityLanding />}
+        />
+
+        <Route
+          path="/grocery"
+          element={<ActivityLanding />}
+        />
+
+        <Route
+          path="/cafe"
+          element={<ActivityLanding />}
+        />
+
+        <Route
+          path="/restaurant"
+          element={<ActivityLanding />}
+        />
+
+        <Route
+          path="/retail"
+          element={<ActivityLanding />}
+        />
+
+        {/* ── Main application ────────────────────────────────────────── */}
+
         <Route
           path="*"
           element={
@@ -192,6 +275,7 @@ export default function App() {
             </LanguageProvider>
           }
         />
+
       </Routes>
     </BrowserRouter>
   );

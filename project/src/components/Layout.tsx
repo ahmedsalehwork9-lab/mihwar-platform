@@ -41,6 +41,7 @@ export type Page =
   | 'inventory'
   | 'orders'
   | 'reports'
+  | 'sales-reconciliation'
   | 'alerts'
   | 'shop-settings'       // ← إعدادات المحل + QR
   | 'admin'
@@ -63,6 +64,7 @@ const pageTitles: Record<Page, { en: string; ar: string }> = {
   'inventory':       { en: 'Inventory',        ar: 'المخزون'         },
   'orders':          { en: 'Orders',           ar: 'الطلبات'         },
   'reports':         { en: 'Reports',          ar: 'التقارير'        },
+  'sales-reconciliation': { en: 'Sales Reconciliation', ar: 'تسوية المبيعات' },
   'alerts':          { en: 'Alerts',           ar: 'التنبيهات'       },
   'shop-settings':   { en: 'Shop Settings',    ar: 'إعدادات المحل'   },
   'admin':           { en: 'Admin Dashboard',  ar: 'لوحة الأدمن'     },
@@ -142,6 +144,7 @@ const navSections: NavSection[] = [
       { id: 'inventory',     icon: <Package size={17} />,         label: 'Inventory',      labelAr: 'المخزون',        adminOnly: false },
       { id: 'orders',        icon: <ShoppingCart size={17} />,    label: 'Orders',         labelAr: 'الطلبات',        adminOnly: false },
       { id: 'reports',       icon: <TrendingUp size={17} />,      label: 'Reports',        labelAr: 'التقارير',       adminOnly: false },
+      { id: 'sales-reconciliation', icon: <TrendingUp size={17} />, label: 'Sales Reconciliation', labelAr: 'تسوية المبيعات', adminOnly: false },
       { id: 'alerts',        icon: <Bell size={17} />,            label: 'Alerts',         labelAr: 'التنبيهات',      adminOnly: false },
       { id: 'shop-settings', icon: <QrCode size={17} />,          label: 'Shop Settings',  labelAr: 'إعدادات المحل',  adminOnly: false },
     ],

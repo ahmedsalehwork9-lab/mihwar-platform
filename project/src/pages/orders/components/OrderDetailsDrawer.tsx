@@ -2,16 +2,23 @@
 // src/pages/orders/components/OrderDetailsDrawer.tsx
 //
 // The order detail modal. Composes:
-//   - Header (doc title/number, status badge, print/close buttons)
+//   - Header (doc title/number, status badge, edit/print/close buttons)
 //   - Party cards (requester / supplier)
 //   - OrderProgressPanel (item list with qty badges)
 //   - Notes
 //   - Live total
 //   - OrderApprovalPanel (status-driven footer actions)
+//
+// Edit support (this pass):
+//   - New `ownedShopId` / `isAdmin` props to compute `canEdit`
+//     locally: the requester can edit their own order while it's
+//     still pending supplier confirmation.
+//   - New `onEdit` prop, wired to an Edit button shown next to
+//     Print only when `canEdit` is true.
 // =============================================================
 
 import { memo } from "react";
-import { RefreshCw, X, Printer } from "lucide-react";
+import { RefreshCw, X, Printer, Pencil } from "lucide-react";
 import type { ApprovedQtyMap, Order, OrderItem } from "../types";
 import { calculateApprovedTotal } from "../utils/calculateApprovedTotal";
 import { buildDocumentNumber } from "../utils/buildDocumentNumber";
@@ -21,6 +28,8 @@ import { OrderApprovalPanel } from "./OrderApprovalPanel";
 
 type OrderDetailsDrawerProps = {
   detailOrder: Order;
+  ownedShopId: number | null | undefined;
+  isAdmin: boolean;
   detailItems: OrderItem[];
   detailLoading: boolean;
   approvedQtyMap: ApprovedQtyMap;
@@ -31,6 +40,7 @@ type OrderDetailsDrawerProps = {
   canAct: boolean;
   onClose: () => void;
   onPrint: () => void;
+  onEdit: () => void;
   onSetApprovedQty: (itemId: number, value: number, maxRequested: number, stockQty: number) => void;
   onReject: () => void;
   onOpenPartialEditor: () => void;
@@ -45,17 +55,11 @@ type OrderDetailsDrawerProps = {
 };
 
 function OrderDetailsDrawerBase({
-  detailOrder, detailItems, detailLoading, approvedQtyMap, showPartialEditor, partialSaving,
-  actionId, creatingMissingOrder, canAct, onClose, onPrint, onSetApprovedQty, onReject,
+  detailOrder, ownedShopId, isAdmin, detailItems, detailLoading, approvedQtyMap, showPartialEditor, partialSaving,
+  actionId, creatingMissingOrder, canAct, onClose, onPrint, onEdit, onSetApprovedQty, onReject,
   onOpenPartialEditor, onCancelPartialEditor, onConfirmPartialApprove, onApproveAll,
   onApproveRemaining, onRejectRemaining, onCreateMissingOrder, isRTL, t,
 }: OrderDetailsDrawerProps) {
-  console.log("================================");
-  console.log("ORDER ID:", detailOrder.id);
-  console.log("REQUEST TYPE:", detailOrder.request_type);
-  console.log("FULL ORDER:", detailOrder);
-  console.log("================================");
-
   const detailDocTitle = detailOrder.request_type === "TRANSFER"
     ? t("Transfer Order", "طلب تحويل")
     : t("Purchase Order", "أمر شراء");
@@ -67,6 +71,10 @@ function OrderDetailsDrawerBase({
   const showOriginal = liveTotal !== detailOrder.total_amount && detailItems.length > 0;
 
   const isProcessing = partialSaving || actionId === detailOrder.id;
+
+  // The requester (from_shop) can edit their own order for as long as
+  // the supplier (to_shop) hasn't acted on it yet.
+  const canEdit = !isAdmin && ownedShopId === detailOrder.from_shop_id && detailOrder.status === "pending";
 
   return (
     <div className="fixed inset-0 z-[110] flex items-end lg:items-center justify-center lg:p-4 animate-in fade-in duration-200" role="dialog" aria-modal="true">
@@ -93,6 +101,11 @@ function OrderDetailsDrawerBase({
             <p className="text-slate-500 text-[11px] mt-0.5">{new Date(detailOrder.created_at).toLocaleString()}</p>
           </div>
           <div className="flex items-center gap-2 shrink-0 ml-3">
+            {canEdit && (
+              <button onClick={onEdit} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all active:scale-95">
+                <Pencil size={15} /><span className="hidden sm:inline">{t("Edit", "تعديل")}</span>
+              </button>
+            )}
             <button onClick={onPrint} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white text-xs font-bold transition-all active:scale-95">
               <Printer size={15} /><span className="hidden sm:inline">{t("Print", "طباعة")}</span>
             </button>

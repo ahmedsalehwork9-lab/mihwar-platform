@@ -9,6 +9,8 @@ import {
   Globe,
   Shield,
   ShoppingCart,
+  ShoppingBag,
+  Landmark,
   Bell,
   Store,
   Users,
@@ -24,6 +26,7 @@ import {
   X,
   Building2,
   QrCode,
+  FileBarChart,
 } from 'lucide-react';
 
 import { supabase } from '../pages/lib/supabase';
@@ -42,6 +45,10 @@ export type Page =
   | 'inventory'
   | 'orders'
   | 'reports'
+  | 'sales-reconciliation'
+  | 'purchases'
+  | 'fixed-expenses'
+  | 'financial-report'
   | 'alerts'
   | 'shop-settings'       // ← إعدادات المحل + QR
   | 'admin'
@@ -64,6 +71,10 @@ const pageTitles: Record<Page, { en: string; ar: string }> = {
   'inventory':       { en: 'Inventory',        ar: 'المخزون'         },
   'orders':          { en: 'Orders',           ar: 'الطلبات'         },
   'reports':         { en: 'Reports',          ar: 'التقارير'        },
+  'sales-reconciliation': { en: 'Sales Reconciliation', ar: 'تسوية المبيعات' },
+  purchases: { en: 'Purchases', ar: 'المشتريات' },
+  'fixed-expenses': { en: 'Fixed Expenses', ar: 'المصروفات الثابتة' },
+  'financial-report': { en: 'Financial Report', ar: 'التقرير المالي' },
   'alerts':          { en: 'Alerts',           ar: 'التنبيهات'       },
   'shop-settings':   { en: 'Shop Settings',    ar: 'إعدادات المحل'   },
   'admin':           { en: 'Admin Dashboard',  ar: 'لوحة الأدمن'     },
@@ -143,6 +154,10 @@ const navSections: NavSection[] = [
       { id: 'inventory',     icon: <Package size={17} />,         label: 'Inventory',      labelAr: 'المخزون',        adminOnly: false },
       { id: 'orders',        icon: <ShoppingCart size={17} />,    label: 'Orders',         labelAr: 'الطلبات',        adminOnly: false },
       { id: 'reports',       icon: <TrendingUp size={17} />,      label: 'Reports',        labelAr: 'التقارير',       adminOnly: false },
+      { id: 'sales-reconciliation', icon: <TrendingUp size={17} />, label: 'Sales Reconciliation', labelAr: 'تسوية المبيعات', adminOnly: false },
+      { id: 'purchases', icon: <ShoppingBag size={17} />, label: 'Purchases', labelAr: 'المشتريات', adminOnly: false },
+      { id: 'fixed-expenses', icon: <Landmark size={17} />, label: 'Fixed Expenses', labelAr: 'المصروفات الثابتة', adminOnly: false },
+      { id: 'financial-report', icon: <FileBarChart size={17} />, label: 'Financial Report', labelAr: 'التقرير المالي', adminOnly: false },
       { id: 'alerts',        icon: <Bell size={17} />,            label: 'Alerts',         labelAr: 'التنبيهات',      adminOnly: false },
       { id: 'shop-settings', icon: <QrCode size={17} />,          label: 'Shop Settings',  labelAr: 'إعدادات المحل',  adminOnly: false },
     ],
@@ -218,7 +233,7 @@ const NavButton = ({
 // ══════════════════════════════════════════════════════════════════════
 
 export default function Layout({ page, setPage, children }: LayoutProps) {
-  const { signOut, isAdmin, ownedShopId } = useAuth();
+  const { signOut, isAdmin, ownedShopId, permissions } = useAuth();
   const { lang, setLang, t, isRTL }       = useLang();
   const [sidebarOpen, setSidebarOpen]     = useState(false);
   const [showMore,    setShowMore]         = useState(false);
@@ -237,6 +252,12 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
     };
     fetchNotifications();
   }, [ownedShopId]);
+
+  useEffect(() => {
+    if (!isAdmin && permissions && !permissions.includes(page)) {
+      if (permissions[0]) setPage(permissions[0] as Page);
+    }
+  }, [permissions, isAdmin, page]);
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
   const bottomItems = isAdmin ? adminBottomItems : shopBottomItems;
@@ -273,7 +294,7 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
           {visibleSections.map((section, idx) => {
             const visibleItems = isAdmin
               ? section.items.filter((item) => item.adminOnly)
-              : section.items.filter((item) => !item.adminOnly);
+              : section.items.filter((item) => !item.adminOnly && (!permissions || permissions.includes(item.id)));
             if (visibleItems.length === 0) return null;
             return (
               <div key={section.titleEn}>

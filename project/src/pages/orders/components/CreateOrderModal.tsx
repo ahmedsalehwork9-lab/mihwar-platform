@@ -3,9 +3,16 @@
 //
 // "New Order" creation modal: supplier select, product catalog
 // with visibility/eligibility filtering, cart, notes, submit.
-// Extracted out of OrdersPage.tsx (not in the originally requested
-// file list, but required to keep the coordinator within the
-// 300-500 line target — this modal alone was ~250 lines of JSX).
+//
+// Edit-mode support (this pass):
+//   - New `mode` prop ("create" | "edit", default "create").
+//   - In edit mode: supplier select is locked (an existing order's
+//     supplier can't change — that would be a different order),
+//     header title and submit button copy swap to "Edit Order" /
+//     "Save Changes", and `onSupplierChange` becomes optional since
+//     it's never called while locked.
+//   - Everything else (catalog, cart, notes) is unchanged and
+//     reused as-is for both modes.
 // =============================================================
 
 import { memo } from "react";
@@ -19,7 +26,7 @@ type CreateOrderModalProps = {
   shops: Shop[];
   ownedShopId: number | null | undefined;
   supplierShopId: number | "";
-  onSupplierChange: (id: number | "") => void;
+  onSupplierChange?: (id: number | "") => void; // unused/optional in edit mode
   requestTypeLabel: string;
   modalError: string | null;
   productSearch: string;
@@ -40,6 +47,7 @@ type CreateOrderModalProps = {
   onSubmit: () => void;
   isRTL: boolean;
   t: (en: string, ar: string) => string;
+  mode?: "create" | "edit";
 };
 
 function CreateOrderModalBase({
@@ -47,7 +55,10 @@ function CreateOrderModalBase({
   productSearch, onProductSearchChange, loadingProducts, filteredSupplierProducts,
   visibleSupplierProductsCount, getProductEligibility, cart, cartTotal, onAddToCart,
   onUpdateQty, onRemoveFromCart, orderNotes, onOrderNotesChange, saving, onClose, onSubmit, isRTL, t,
+  mode = "create",
 }: CreateOrderModalProps) {
+  const isEdit = mode === "edit";
+
   return (
     <div className="fixed inset-0 z-[110] flex items-end lg:items-center justify-center lg:p-4 animate-in fade-in duration-200" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-sm" onClick={onClose} />
@@ -57,7 +68,7 @@ function CreateOrderModalBase({
           <div className="min-w-0 flex-1">
             <h2 className="text-lg font-black text-white flex items-center gap-2">
               <Plus className="text-blue-400 shrink-0" size={20} />
-              {t("Create Purchase Order", "إنشاء طلب شراء جديد")}
+              {isEdit ? t("Edit Order", "تعديل الطلب") : t("Create Purchase Order", "إنشاء طلب شراء جديد")}
             </h2>
             {supplierShopId && (
               <p className="text-[10px] text-slate-500 mt-0.5 font-bold tracking-wide">
@@ -79,12 +90,16 @@ function CreateOrderModalBase({
             <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest">{t("Select Supplier", "اختر المحل المورد")}</label>
             <select
               value={supplierShopId}
-              onChange={e => onSupplierChange(Number(e.target.value) || "")}
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3.5 text-white focus:border-blue-500 outline-none transition-all cursor-pointer text-sm"
+              onChange={e => onSupplierChange?.(Number(e.target.value) || "")}
+              disabled={isEdit}
+              className={`w-full bg-slate-800 border border-slate-700 rounded-xl p-3.5 text-white outline-none transition-all text-sm ${isEdit ? "opacity-60 cursor-not-allowed" : "focus:border-blue-500 cursor-pointer"}`}
             >
               <option value="">{t("-- Select Supplier --", "-- اختر المورد --")}</option>
               {shops.filter(s => s.id !== ownedShopId).map(s => <option key={s.id} value={s.id}>{s.shop_name}</option>)}
             </select>
+            {isEdit && (
+              <p className="text-[10px] text-slate-600">{t("Supplier can't be changed after the order is created.", "لا يمكن تغيير المورد بعد إنشاء الطلب.")}</p>
+            )}
           </div>
 
           {supplierShopId && (
@@ -188,7 +203,7 @@ function CreateOrderModalBase({
             className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-black rounded-2xl shadow-xl shadow-blue-900/20 active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50 text-sm"
           >
             {saving ? <RefreshCw className="animate-spin" size={18} /> : <Save size={18} />}
-            {t("Confirm & Send", "تأكيد وإرسال")}
+            {isEdit ? t("Save Changes", "حفظ التعديلات") : t("Confirm & Send", "تأكيد وإرسال")}
             {cart.length > 0 && <span className="bg-white/20 px-2 py-0.5 rounded-lg text-xs font-bold">{cartTotal.toLocaleString()} ر.س</span>}
           </button>
         </div>

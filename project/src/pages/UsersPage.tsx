@@ -1,5 +1,7 @@
 ﻿import { useEffect, useState } from 'react';
 import { supabase } from './lib/supabase';
+import PagePermissionsModal from "../components/PagePermissionsModal";
+import CreateUserModal from "../components/CreateUserModal";
 import { 
   Users, 
   UserCheck, 
@@ -14,7 +16,8 @@ import {
   UserX,
   Smartphone,
   Pencil,
-  X
+  X,
+  KeyRound
 } from 'lucide-react';
 
 // تعريف أنواع البيانات بدقة
@@ -30,6 +33,7 @@ interface Profile {
   shops: {
     shop_name: string;
   } | null;
+  page_permissions?: string[] | null;
 }
 
 export default function UsersPage() {
@@ -37,6 +41,8 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [editingUser, setEditingUser] = useState<Profile | null>(null);
+  const [permUser, setPermUser] = useState<Profile | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
   const [newEmail, setNewEmail] = useState('');
   const [savingEmail, setSavingEmail] = useState(false);
 
@@ -191,6 +197,10 @@ export default function UsersPage() {
           </h1>
           <p className="text-slate-400 text-sm mt-1">التحكم في حسابات الموظفين ومدراء المحلات وصلاحياتهم</p>
         </div>
+        <div className="flex items-center gap-3">
+        <button onClick={() => setShowCreate(true)} className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-2xl transition-all shadow-lg">
+          + إضافة موظف
+        </button>
         <button 
           onClick={fetchUsers}
           className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-5 py-2.5 rounded-2xl transition-all border border-slate-700 shadow-lg"
@@ -198,6 +208,7 @@ export default function UsersPage() {
           <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
           تحديث البيانات
         </button>
+        </div>
       </div>
 
       {/* STATS CARDS */}
@@ -334,6 +345,9 @@ export default function UsersPage() {
                       </span>
                     </td>
                     <td className="px-6 py-5 text-center">
+                      <button type="button" onClick={() => setPermUser(user)} title="صلاحيات الصفحات" className="inline-flex items-center justify-center p-2 rounded-xl bg-slate-800 hover:bg-emerald-600/20 text-slate-400 hover:text-emerald-400 border border-slate-700/60 hover:border-emerald-500/30 transition-all mr-1">
+                        <KeyRound size={16} />
+                      </button>
                       <button
                         type="button"
                         onClick={() => handleEditEmail(user)}
@@ -436,6 +450,19 @@ export default function UsersPage() {
           مجموع السجلات المعروضة: {filteredUsers.length} من أصل {users.length}
         </div>
       </div>
+      {permUser && (
+        <PagePermissionsModal
+          userId={permUser.id}
+          userName={permUser.full_name || permUser.email}
+          initial={permUser.page_permissions ?? null}
+          isAr={true}
+          onClose={() => setPermUser(null)}
+          onSaved={(perms) => setUsers((us) => us.map((u) => (u.id === permUser.id ? { ...u, page_permissions: perms } : u)))}
+        />
+      )}
+      {showCreate && (
+        <CreateUserModal isAr={true} onClose={() => setShowCreate(false)} onCreated={() => fetchUsers()} />
+      )}
     </div>
   );
 }

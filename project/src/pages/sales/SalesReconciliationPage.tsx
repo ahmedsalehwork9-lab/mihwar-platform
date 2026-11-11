@@ -27,7 +27,6 @@ const CHANNEL_CATALOG: Channel[] = [
   { id: "trans",  icon: "🏦", nm: "تحويل بنكي" },
   { id: "refund", icon: "↩️", nm: "مرتجع (−)", sign: -1 },
 ];
-const catOf = (id: string) => CHANNEL_CATALOG.find((c) => c.id === id)!;
 
 const SHIFTS: { id: ShiftId; nm: string; bar: string }[] = [
   { id: "am", nm: "الشفت الصباحي", bar: "bg-amber-500" },
@@ -48,6 +47,7 @@ type Reason = { id: number; shift: string; employees: string; reason: string; am
 
 type SavedEntry = {
   branchId: number | null; branch: string; date: string; channels: string[];
+  customChannels?: Channel[];
   vals: Record<string, string>; reasons: Reason[]; note: string;
   gSys: number; gAct: number; net: number; err: number;
   perChannelActual: Record<string, number>;
@@ -60,6 +60,25 @@ const newReason = (): Reason => ({ id: Date.now() + Math.random(), shift: "", em
 
 function loadAll(): SavedEntry[] { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); } catch { return []; } }
 function saveAll(list: SavedEntry[]) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(list)); } catch { /* ignore */ } }
+
+// ── إعداد القنوات ثابت لكل فرع (يُضاف مرة واحدة ويبقى دائمًا، لا يتأثر بتغيير التاريخ) ──
+const CH_KEY = "mihwar_sales_channels";
+type ChannelConfig = { activeIds: string[]; customChannels: Channel[] };
+function loadChannelConfig(branchId: number | null): ChannelConfig {
+  try {
+    const all = JSON.parse(localStorage.getItem(CH_KEY) || "{}");
+    const c = all[String(branchId)];
+    if (c && Array.isArray(c.activeIds) && c.activeIds.length) return { activeIds: c.activeIds, customChannels: c.customChannels ?? [] };
+  } catch { /* ignore */ }
+  return { activeIds: ["cash", "net"], customChannels: [] };
+}
+function saveChannelConfig(branchId: number | null, cfg: ChannelConfig) {
+  try {
+    const all = JSON.parse(localStorage.getItem(CH_KEY) || "{}");
+    all[String(branchId)] = cfg;
+    localStorage.setItem(CH_KEY, JSON.stringify(all));
+  } catch { /* ignore */ }
+}
 
 export default function SalesReconciliationPage() {
   const { ownedShopId } = (useAuth() as any) ?? {};
@@ -80,17 +99,60 @@ export default function SalesReconciliationPage() {
   // ── إدخال اليوم ──
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [activeIds, setActiveIds] = useState<string[]>(["cash", "net"]);
+  const [customChannels, setCustomChannels] = useState<Channel[]>([]);
   const [vals, setVals] = useState<Record<string, string>>({});
   const [reasons, setReasons] = useState<Reason[]>([newReason()]);
   const [note, setNote] = useState("");
 
-  const activeChannels = activeIds.map(catOf);
-  const availableToAdd = CHANNEL_CATALOG.filter((c) => !activeIds.includes(c.id));
+  const allCatalog = useMemo(() => [...CHANNEL_CATALOG, ...customChannels], [customChannels]);
+  const resolveChannel = (id: string): Channel => allCatalog.find((c) => c.id === id) ?? { id, icon: "🏷️", nm: id };
+  const activeChannels = activeIds.map(resolveChannel);
+  const availableToAdd = allCatalog.filter((c) => !activeIds.includes(c.id));
+
+  // القنوات ثابتة للفرع: تُحمَّل مرة عند دخول الفرع وتبقى في كل الأيام
+  useEffect(() => {
+    const cfg = loadChannelConfig(ownedShopId ?? null);
+    setActiveIds(cfg.activeIds);
+    setCustomChannels(cfg.customChannels);
+  }, [ownedShopId]);
+
+  // تغيير التاريخ يغيّر بيانات الإدخال فقط (الأرقام والأسباب والملاحظة) — لا يمسّ القنوات
+  useEffect(() => {
+    const e = loadAll().find((x) => x.branchId === (ownedShopId ?? null) && x.date === date);
+    if (e) {
+      setVals(e.vals ?? {});
+      setReasons(e.reasons?.length ? e.reasons : [newReason()]);
+      setNote(e.note ?? "");
+    } else {
+      setVals({});
+      setReasons([newReason()]);
+      setNote("");
+    }
+  }, [date, ownedShopId]);
 
   const setVal = (sh: ShiftId, c: string, f: "sys" | "act", v: string) => setVals((p) => ({ ...p, [`${sh}-${c}-${f}`]: v }));
   const getVal = (sh: ShiftId, c: string, f: "sys" | "act") => vals[`${sh}-${c}-${f}`] ?? "";
-  const addChannel = (id: string) => { if (id) setActiveIds((p) => [...p, id]); };
-  const removeChannel = (id: string) => setActiveIds((p) => p.filter((x) => x !== id));
+  const persistChannels = (ids: string[], customs: Channel[]) =>
+    saveChannelConfig(ownedShopId ?? null, { activeIds: ids, customChannels: customs });
+  const addChannel = (id: string) => {
+    if (!id) return;
+    if (id === "__custom__") {
+      const name = (window.prompt("اسم القناة الجديدة (مثال: مرسول، نون، تطبيق خاص):") || "").trim();
+      if (!name) return;
+      const cid = "custom-" + Date.now();
+      const nc = [...customChannels, { id: cid, icon: "🏷️", nm: name }];
+      const ni = [...activeIds, cid];
+      setCustomChannels(nc); setActiveIds(ni); persistChannels(ni, nc);
+      return;
+    }
+    const ni = [...activeIds, id];
+    setActiveIds(ni); persistChannels(ni, customChannels);
+  };
+  const removeChannel = (id: string) => {
+    const ni = activeIds.filter((x) => x !== id);
+    const nc = id.startsWith("custom-") ? customChannels.filter((c) => c.id !== id) : customChannels;
+    setActiveIds(ni); setCustomChannels(nc); persistChannels(ni, nc);
+  };
   const addReason = () => setReasons((p) => [...p, newReason()]);
   const delReason = (id: number) => setReasons((p) => p.filter((r) => r.id !== id));
   const editReason = (id: number, patch: Partial<Reason>) => setReasons((p) => p.map((r) => (r.id === id ? { ...r, ...patch } : r)));
@@ -130,7 +192,7 @@ export default function SalesReconciliationPage() {
 
   const save = () => {
     const entry: SavedEntry = {
-      branchId: ownedShopId ?? null, branch, date, channels: activeIds, vals, reasons, note,
+      branchId: ownedShopId ?? null, branch, date, channels: activeIds, customChannels, vals, reasons, note,
       gSys: calc.gSys, gAct: calc.gAct, net: calc.net, err: calc.err, perChannelActual: calc.perChannelActual,
     };
     const all = loadAll().filter((e) => !(e.branchId === (ownedShopId ?? null) && e.date === date));
@@ -149,32 +211,117 @@ export default function SalesReconciliationPage() {
     const all = loadAll().filter((e) => e.branchId === (ownedShopId ?? null) && e.date >= from && e.date <= to);
     all.sort((a, b) => a.date.localeCompare(b.date));
     const used = new Set<string>(); all.forEach((e) => e.channels.forEach((c) => used.add(c)));
-    const cols = CHANNEL_CATALOG.filter((c) => used.has(c.id));
+    const customMap = new Map<string, Channel>();
+    all.forEach((e) => (e.customChannels ?? []).forEach((c) => customMap.set(c.id, c)));
+    const cols = [...CHANNEL_CATALOG, ...customMap.values()].filter((c) => used.has(c.id));
     const acts = all.map((e) => e.gAct);
     const max = acts.length ? Math.max(...acts) : 0;
     const min = acts.length ? Math.min(...acts) : 0;
     const avg = acts.length ? acts.reduce((s, n) => s + n, 0) / acts.length : 0;
-    return { rows: all, cols, max, min, avg };
+    const grandActual = all.reduce((s, e) => s + e.gAct, 0);
+    const grandSystem = all.reduce((s, e) => s + e.gSys, 0);
+    const colTotals: Record<string, number> = {};
+    cols.forEach((c) => { colTotals[c.id] = all.reduce((s, e) => s + (e.perChannelActual[c.id] || 0), 0); });
+    return { rows: all, cols, max, min, avg, grandActual, grandSystem, colTotals };
   }, [from, to, reloadKey, tab, ownedShopId]);
+  const grandDiff = report.grandActual - report.grandSystem;
+  const grandErr = report.grandSystem !== 0 ? (grandDiff / report.grandSystem) * 100 : 0;
+  const pctOfTotal = (v: number) => (report.grandActual > 0 ? (v / report.grandActual) * 100 : 0);
 
   // ── تصدير ──
   const buildExportHTML = () => {
-    const head = `
-      <div style="border-bottom:2px solid #1f3a5f;padding-bottom:8px;margin-bottom:12px;">
-        <div style="font-size:20px;font-weight:800;color:#1f3a5f;">تقرير تسوية المبيعات</div>
-        <div style="font-size:12px;color:#444;">الفرع: <b>${branch || "—"}</b> · الفترة: ${from} إلى ${to}</div>
-        <div style="font-size:11px;color:#888;">أُنشئ: ${new Date().toLocaleString("ar-SA")}</div>
+    const rows = report.rows, cols = report.cols;
+    const n = rows.length;
+    const grandActual = rows.reduce((s, e) => s + e.gAct, 0);
+    const grandSystem = rows.reduce((s, e) => s + e.gSys, 0);
+    const grandDiff = grandActual - grandSystem;
+    const grandErr = grandSystem !== 0 ? (grandDiff / grandSystem) * 100 : 0;
+    const colTotals: Record<string, number> = {};
+    cols.forEach((c) => { colTotals[c.id] = rows.reduce((s, e) => s + (e.perChannelActual[c.id] || 0), 0); });
+    const pct = (v: number) => (grandActual > 0 ? (v / grandActual) * 100 : 0);
+    const now = new Date().toLocaleString("ar-SA");
+
+    const card = (label: string, value: string, green = false) =>
+      `<div style="flex:1;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;padding:10px 14px;">
+         <div style="font-size:10px;color:#6b7280;font-weight:700;">${label}</div>
+         <div style="font-size:17px;font-weight:800;margin-top:3px;color:${green ? "#15a06a" : "#111827"};">${value}</div>
+       </div>`;
+
+    const header = `
+      <div style="background:#0f1b2b;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;">
+        <div style="text-align:left;">
+          <div style="font-size:20px;font-weight:800;color:#34d399;">تقرير تسوية المبيعات</div>
+          <div style="font-size:12px;color:#9fb3c8;">الفترة: ${from} إلى ${to} — ${now}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="text-align:right;">
+            <div style="font-size:18px;font-weight:800;color:#ffffff;">محور</div>
+            <div style="font-size:9px;letter-spacing:3px;color:#9fb3c8;">MIHWAR PLATFORM</div>
+          </div>
+          <div style="width:42px;height:42px;border-radius:11px;background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.4);color:#34d399;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;">م</div>
+        </div>
       </div>`;
-    const ths = ["التاريخ", ...report.cols.map((c) => c.nm), "الفعلي", "السيستم", "الفرق", "الخطأ %", "الحالة", "ملاحظات"];
-    const header = `<tr>${ths.map((h) => `<th style="border:1px solid #bbb;padding:6px 8px;background:#1f3a5f;color:#fff;font-size:11px;">${h}</th>`).join("")}</tr>`;
-    const body = report.rows.map((e) => {
+
+    const cards = `
+      <div style="display:flex;gap:10px;padding:14px 20px;background:#f8fafc;">
+        ${card("الفرع", branch || "—")}
+        ${card("عدد الأيام", String(n))}
+        ${card("إجمالي التحصيل الفعلي", fmt(grandActual) + " ر.س", true)}
+        ${card("متوسط اليوم", fmt(report.avg) + " ر.س")}
+      </div>`;
+
+    const ths = ["التاريخ", ...cols.map((c) => c.nm), "الفعلي", "السيستم", "الفرق", "الخطأ %", "الحالة", "ملاحظات"];
+    const thead = `<tr>${ths.map((h) => `<th style="border:1px solid #d1d5db;padding:7px 8px;background:#14304d;color:#fff;font-size:11px;font-weight:700;white-space:nowrap;">${h}</th>`).join("")}</tr>`;
+
+    const body = rows.map((e, idx) => {
       const warn = Math.abs(e.err) > 5;
-      const cells = [e.date, ...report.cols.map((c) => fmt(e.perChannelActual[c.id] || 0)), fmt(e.gAct), fmt(e.gSys),
-        (e.net > 0 ? "+" : "") + fmt(e.net), (e.err > 0 ? "+" : "") + e.err.toFixed(1) + "%", warn ? "مراجعة" : "OK", (e.note || "").replace(/</g, "&lt;")];
-      return `<tr>${cells.map((v, i) => `<td style="border:1px solid #ccc;padding:5px 8px;font-size:11px;text-align:${i === cells.length - 1 ? "right" : "center"};">${v}</td>`).join("")}</tr>`;
+      const bg = idx % 2 ? "#ffffff" : "#f9fafb";
+      const cells = [
+        e.date,
+        ...cols.map((c) => (e.perChannelActual[c.id] ? fmt(e.perChannelActual[c.id]) : "—")),
+        `<b style="color:#15a06a;">${fmt(e.gAct)}</b>`,
+        fmt(e.gSys),
+        (e.net > 0 ? "+" : "") + fmt(e.net),
+        (e.err > 0 ? "+" : "") + e.err.toFixed(1) + "%",
+        warn ? "⚠️ مراجعة" : "OK",
+        (e.note || "").replace(/</g, "&lt;"),
+      ];
+      return `<tr style="background:${bg};">${cells.map((v, i) =>
+        `<td style="border:1px solid #e5e7eb;padding:5px 8px;font-size:11px;text-align:${i === cells.length - 1 ? "right" : "center"};">${v}</td>`
+      ).join("")}</tr>`;
     }).join("");
-    const summary = `<div style="margin-top:10px;font-size:12px;color:#333;">أعلى يوم: <b>${fmt(report.max)}</b> · المتوسط: <b>${fmt(report.avg)}</b> · أقل يوم: <b>${fmt(report.min)}</b> · عدد الأيام: <b>${report.rows.length}</b></div>`;
-    return `<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;">${head}<table style="border-collapse:collapse;width:100%;">${header}${body}</table>${summary}</div>`;
+
+    // صف الإجماليات
+    const totalCells = ["الإجمالي", ...cols.map((c) => fmt(colTotals[c.id])), fmt(grandActual), fmt(grandSystem),
+      (grandDiff > 0 ? "+" : "") + fmt(grandDiff), (grandErr > 0 ? "+" : "") + grandErr.toFixed(1) + "%", "", ""];
+    const totalRow = `<tr>${totalCells.map((v, i) =>
+      `<td style="border:1px solid #cbd5e1;padding:6px 8px;font-size:11px;font-weight:800;text-align:${i === 0 ? "right" : "center"};background:#eef2f7;color:#0f1b2b;">${v}</td>`
+    ).join("")}</tr>`;
+
+    // صف نسبة كل قناة من إجمالي المبيعات
+    const pctCells = ["نسبة القناة %", ...cols.map((c) => pct(colTotals[c.id]).toFixed(1) + "%"), "100%", "", "", "", "", ""];
+    const pctRow = `<tr>${pctCells.map((v, i) =>
+      `<td style="border:1px solid #cbd5e1;padding:6px 8px;font-size:11px;font-weight:800;text-align:${i === 0 ? "right" : "center"};background:#15a06a;color:#ffffff;">${v}</td>`
+    ).join("")}</tr>`;
+
+    const table = `
+      <div style="padding:6px 20px 14px;">
+        <table style="border-collapse:collapse;width:100%;">
+          <thead>${thead}</thead>
+          <tbody>${body}${totalRow}${pctRow}</tbody>
+        </table>
+        <div style="margin-top:10px;font-size:11px;color:#374151;">
+          أعلى يوم: <b style="color:#15a06a;">${fmt(report.max)}</b> · المتوسط: <b>${fmt(report.avg)}</b> · أقل يوم: <b style="color:#dc2626;">${fmt(report.min)}</b> · عدد الأيام: <b>${n}</b>
+        </div>
+      </div>`;
+
+    const footer = `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 20px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:10px;">
+        <div>تم إنشاء هذا التقرير آليًا من صفحة تسوية المبيعات</div>
+        <div>منصة محور — MIHWAR B2B Marketplace</div>
+      </div>`;
+
+    return `<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;color:#1f2937;background:#fff;">${header}${cards}${table}${footer}</div>`;
   };
   const exportPDF = () => {
     const w = window.open("", "_blank", "width=1000,height=900"); if (!w) return;
@@ -222,15 +369,14 @@ export default function SalesReconciliationPage() {
               <label className="text-[10px] text-slate-500 font-bold">التاريخ</label>
               <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark]" />
             </div>
-            {availableToAdd.length > 0 && (
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] text-slate-500 font-bold">إضافة قناة</label>
-                <select value="" onChange={(e) => addChannel(e.target.value)} className="bg-blue-600/10 border border-dashed border-blue-500 rounded-xl text-blue-300 px-3 py-2 text-sm">
-                  <option value="">+ اختر قناة…</option>
-                  {availableToAdd.map((c) => <option key={c.id} value={c.id}>{c.icon} {c.nm}</option>)}
-                </select>
-              </div>
-            )}
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] text-slate-500 font-bold">إضافة قناة</label>
+              <select value="" onChange={(e) => addChannel(e.target.value)} className="bg-blue-600/10 border border-dashed border-blue-500 rounded-xl text-blue-300 px-3 py-2 text-sm">
+                <option value="">+ اختر قناة…</option>
+                {availableToAdd.map((c) => <option key={c.id} value={c.id}>{c.icon} {c.nm}</option>)}
+                <option value="__custom__">➕ قناة مخصصة (اكتب الاسم)…</option>
+              </select>
+            </div>
           </div>
 
           {SHIFTS.map((sh) => (
@@ -371,6 +517,23 @@ export default function SalesReconciliationPage() {
                       );
                     })}
                   </tbody>
+                  <tfoot>
+                    <tr className="bg-[#0b1220] font-bold">
+                      <td className="px-2 py-2.5 text-xs text-right text-slate-200 whitespace-nowrap border-t border-slate-600">الإجمالي</td>
+                      {report.cols.map((c) => <td key={c.id} className="px-2 py-2.5 text-xs text-center font-mono text-slate-200 [direction:ltr] border-t border-slate-600">{fmt(report.colTotals[c.id] || 0)}</td>)}
+                      <td className="px-2 py-2.5 text-xs text-center font-mono text-emerald-400 [direction:ltr] border-t border-slate-600">{fmt(report.grandActual)}</td>
+                      <td className="px-2 py-2.5 text-xs text-center font-mono text-white [direction:ltr] border-t border-slate-600">{fmt(report.grandSystem)}</td>
+                      <td className="px-2 py-2.5 text-xs text-center font-mono [direction:ltr] border-t border-slate-600">{(grandDiff > 0 ? "+" : "") + fmt(grandDiff)}</td>
+                      <td className="px-2 py-2.5 text-xs text-center font-mono [direction:ltr] border-t border-slate-600">{(grandErr > 0 ? "+" : "") + grandErr.toFixed(1)}%</td>
+                      <td className="border-t border-slate-600" /><td className="border-t border-slate-600" />
+                    </tr>
+                    <tr className="bg-emerald-600/15">
+                      <td className="px-2 py-2.5 text-xs text-right font-extrabold text-emerald-300 whitespace-nowrap">نسبة القناة %</td>
+                      {report.cols.map((c) => <td key={c.id} className="px-2 py-2.5 text-xs text-center font-mono font-bold text-emerald-300 [direction:ltr]">{pctOfTotal(report.colTotals[c.id] || 0).toFixed(1)}%</td>)}
+                      <td className="px-2 py-2.5 text-xs text-center font-mono font-bold text-emerald-300 [direction:ltr]">100%</td>
+                      <td /><td /><td /><td /><td />
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             )}

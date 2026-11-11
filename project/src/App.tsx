@@ -25,6 +25,9 @@ const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 const AlertsPage = lazy(() => import('./pages/AlertsPage'));
 const ShopSettingsPage = lazy(() => import('./pages/ShopSettingsPage'));
 const SalesReconciliationPage = lazy(() => import('./pages/sales/SalesReconciliationPage'));
+const PurchasesPage = lazy(() => import('./pages/purchases/PurchasesPage'));
+const FixedExpensesPage = lazy(() => import('./pages/expenses/FixedExpensesPage'));
+const FinancialReportPage = lazy(() => import('./pages/finance/FinancialReportPage'));
 
 // ── Admin pages ─────────────────────────────────────────────────────────────
 
@@ -128,6 +131,9 @@ function AppContent() {
           {page === 'alerts' && <AlertsPage />}
           {page === 'shop-settings' && <ShopSettingsPage />}
           {page === 'sales-reconciliation' && <SalesReconciliationPage />}
+          {page === 'purchases' && <PurchasesPage />}
+          {page === 'fixed-expenses' && <FixedExpensesPage />}
+          {page === 'financial-report' && <FinancialReportPage />}
 
           {/* ADMIN */}
 

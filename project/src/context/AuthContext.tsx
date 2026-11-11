@@ -19,6 +19,7 @@ type AuthType = {
   ownedShopId: number | null;
   role: string | null;
   isAdmin: boolean;
+  permissions: string[] | null; // null = وصول كامل لكل الصفحات؛ قائمة = الصفحات المسموحة فقط
   loading: boolean;
   signOut: () => Promise<void>;
 };
@@ -31,6 +32,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [ownedShopId, setOwnedShopId] = useState<number | null>(null);
   const [role, setRole] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [permissions, setPermissions] = useState<string[] | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -48,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setOwnedShopId(null);
           setRole(null);
           setIsAdmin(false);
+          setPermissions(null);
         }
       }
     );
@@ -60,9 +63,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const getInitialSession = async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
-
-      // 🔍 Debug
-      console.log("AUTH USER:", session?.user?.id);
 
       setSession(session);
       setUser(session?.user ?? null);
@@ -82,7 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { data, error } = await supabase
         .from("profiles")
-        .select("role, is_admin")
+        .select("role, is_admin, page_permissions")
         .eq("id", userId)
         .single();
 
@@ -90,13 +90,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error("PROFILE ERROR", error);
         return;
       }
-      console.log("PROFILE DATA:", data);
-      console.log("IS ADMIN VALUE:", data?.is_admin);
-      // 🔍 Debug
-      console.log("PROFILE:", data);
 
       setRole(data?.role || null);
       setIsAdmin(data?.is_admin === true);
+
+      const perms = (data as any)?.page_permissions;
+      setPermissions(Array.isArray(perms) && perms.length > 0 ? perms : null);
     } catch (err) {
       console.error("LOAD PROFILE FAILED", err);
     }
@@ -104,25 +103,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loadShop = async (userId: string) => {
     try {
-      const { data, error } = await supabase
+      // 1) مالك محل؟
+      const { data: owned } = await supabase
         .from("shops")
         .select("id")
         .eq("owner_id", userId)
         .maybeSingle();
 
-      // 🔍 Debug — هذا هو المفتاح
-      console.log("LOAD SHOP — userId:", userId);
-      console.log("LOAD SHOP — raw data:", data);
-      console.log("LOAD SHOP — error:", error);
+      if (owned?.id) { setOwnedShopId(Number(owned.id)); return; }
 
-      if (data?.id) {
-        const shopId = Number(data.id);
-        console.log("OWNED SHOP ID:", shopId);
-        setOwnedShopId(shopId);
-      } else {
-        console.warn("OWNED SHOP ID: null — no shop found for this user");
-        setOwnedShopId(null);
-      }
+      // 2) عضو في فرع عبر store_id في ملفه الشخصي
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("store_id")
+        .eq("id", userId)
+        .maybeSingle();
+
+      setOwnedShopId(prof?.store_id ? Number(prof.store_id) : null);
     } catch (err) {
       console.error("LOAD SHOP FAILED", err);
       setOwnedShopId(null);
@@ -137,6 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setOwnedShopId(null);
       setRole(null);
       setIsAdmin(false);
+      setPermissions(null);
       window.location.reload();
     } catch (err) {
       console.error(err);
@@ -151,6 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ownedShopId,
         role,
         isAdmin,
+        permissions,
         loading,
         signOut,
       }}

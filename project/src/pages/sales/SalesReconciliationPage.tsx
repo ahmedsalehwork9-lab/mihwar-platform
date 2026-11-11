@@ -1,21 +1,18 @@
 // =============================================================
 // src/pages/sales/SalesReconciliationPage.tsx
 //
-// تسوية المبيعات اليومية — مطابقة مبيعات السيستم بالتحصيل الفعلي
-// لكل شفت × قناة، مع احتساب الفرق ونسبة الخطأ والحالة وسجل الأسباب.
-//
-// • الفرع يُؤخذ تلقائيًا من حساب المستخدم (الفرع الذي سجّل دخوله به).
-// • عند وجود فروقات: يلزم تحديد الشفت واسم الموظف (أو أكثر) لكل سبب.
-// • التخزين محلي (localStorage) مؤقتًا، والتقرير يُبنى من الأيام المحفوظة
-//   للفرع الحالي فقط، مع فلتر مدى تاريخ وتصدير PDF/Excel.
-//   الربط بـ Supabase لاحقًا (نفس شكل البيانات).
-// • الجدول داخل محور كما هو (أرقام واضحة)، وأعمدة قبل/الضريبة/شامل
-//   الضريبة (ض.ق.م 15%) تظهر في ملف الـ PDF/Excel المُصدَّر فقط.
+// تسوية المبيعات اليومية — مطابقة مبيعات السيستم بالتحصيل الفعلي.
+// التخزين الآن على Supabase (cafeDb) فيتزامن بين كل المتصفحات والأجهزة.
+// الجدول داخل محور كما هو، وأعمدة قبل/الضريبة/شامل الضريبة في PDF/Excel.
 // =============================================================
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../lib/supabase";
+import {
+  fetchSalesWithMigration, upsertSale,
+  getSettingWithMigration, setSetting, SETTING_KEYS, LOCAL_KEYS,
+} from "../lib/cafeDb";
 
 type ShiftId = "am" | "pm";
 type Channel = { id: string; icon: string; nm: string; base?: boolean; sign?: number };
@@ -55,34 +52,11 @@ type SavedEntry = {
   perChannelActual: Record<string, number>;
 };
 
-const STORAGE_KEY = "mihwar_sales_reconciliation";
 const VAT_RATE = 15; // ضريبة القيمة المضافة % (تظهر في الـ PDF)
 const fmt = (n: number) => (Math.round(n * 100) / 100).toLocaleString("en-US", { maximumFractionDigits: 2 });
 const num = (v: string) => parseFloat(v) || 0;
 const netOf = (gross: number) => gross / (1 + VAT_RATE / 100); // قبل الضريبة
 const newReason = (): Reason => ({ id: Date.now() + Math.random(), shift: "", employees: "", reason: REASON_OPTS[0], amount: "", note: "" });
-
-function loadAll(): SavedEntry[] { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); } catch { return []; } }
-function saveAll(list: SavedEntry[]) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(list)); } catch { /* ignore */ } }
-
-// ── إعداد القنوات ثابت لكل فرع (يُضاف مرة واحدة ويبقى دائمًا، لا يتأثر بتغيير التاريخ) ──
-const CH_KEY = "mihwar_sales_channels";
-type ChannelConfig = { activeIds: string[]; customChannels: Channel[] };
-function loadChannelConfig(branchId: number | null): ChannelConfig {
-  try {
-    const all = JSON.parse(localStorage.getItem(CH_KEY) || "{}");
-    const c = all[String(branchId)];
-    if (c && Array.isArray(c.activeIds) && c.activeIds.length) return { activeIds: c.activeIds, customChannels: c.customChannels ?? [] };
-  } catch { /* ignore */ }
-  return { activeIds: ["cash", "net"], customChannels: [] };
-}
-function saveChannelConfig(branchId: number | null, cfg: ChannelConfig) {
-  try {
-    const all = JSON.parse(localStorage.getItem(CH_KEY) || "{}");
-    all[String(branchId)] = cfg;
-    localStorage.setItem(CH_KEY, JSON.stringify(all));
-  } catch { /* ignore */ }
-}
 
 export default function SalesReconciliationPage() {
   const { ownedShopId } = (useAuth() as any) ?? {};
@@ -100,6 +74,16 @@ export default function SalesReconciliationPage() {
 
   const [tab, setTab] = useState<"entry" | "report">("entry");
 
+  // ── كل تسويات الفرع (من Supabase) ──
+  const [allEntries, setAllEntries] = useState<SavedEntry[]>([]);
+  const reloadEntries = useCallback(async () => {
+    const rows = await fetchSalesWithMigration(ownedShopId ?? null);
+    setAllEntries(rows as SavedEntry[]);
+  }, [ownedShopId]);
+  useEffect(() => { reloadEntries(); }, [reloadEntries]);
+  // عند الدخول لتبويب التقرير نعيد الجلب لنضمن أحدث بيانات (من أي جهاز)
+  useEffect(() => { if (tab === "report") reloadEntries(); }, [tab, reloadEntries]);
+
   // ── إدخال اليوم ──
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [activeIds, setActiveIds] = useState<string[]>(["cash", "net"]);
@@ -113,16 +97,18 @@ export default function SalesReconciliationPage() {
   const activeChannels = activeIds.map(resolveChannel);
   const availableToAdd = allCatalog.filter((c) => !activeIds.includes(c.id));
 
-  // القنوات ثابتة للفرع: تُحمَّل مرة عند دخول الفرع وتبقى في كل الأيام
+  // القنوات ثابتة للفرع (إعداد مخزّن على Supabase): تُحمَّل مرة وتبقى
   useEffect(() => {
-    const cfg = loadChannelConfig(ownedShopId ?? null);
-    setActiveIds(cfg.activeIds);
-    setCustomChannels(cfg.customChannels);
+    (async () => {
+      const cfg = await getSettingWithMigration(ownedShopId ?? null, SETTING_KEYS.salesChannels, LOCAL_KEYS.CH_LKEY, { activeIds: ["cash", "net"], customChannels: [] });
+      setActiveIds(Array.isArray(cfg?.activeIds) && cfg.activeIds.length ? cfg.activeIds : ["cash", "net"]);
+      setCustomChannels(Array.isArray(cfg?.customChannels) ? cfg.customChannels : []);
+    })();
   }, [ownedShopId]);
 
-  // تغيير التاريخ يغيّر بيانات الإدخال فقط (الأرقام والأسباب والملاحظة) — لا يمسّ القنوات
+  // تغيير التاريخ (أو تحديث البيانات) يحمّل تسوية اليوم من القائمة
   useEffect(() => {
-    const e = loadAll().find((x) => x.branchId === (ownedShopId ?? null) && x.date === date);
+    const e = allEntries.find((x) => x.date === date);
     if (e) {
       setVals(e.vals ?? {});
       setReasons(e.reasons?.length ? e.reasons : [newReason()]);
@@ -132,12 +118,12 @@ export default function SalesReconciliationPage() {
       setReasons([newReason()]);
       setNote("");
     }
-  }, [date, ownedShopId]);
+  }, [date, allEntries]);
 
   const setVal = (sh: ShiftId, c: string, f: "sys" | "act", v: string) => setVals((p) => ({ ...p, [`${sh}-${c}-${f}`]: v }));
   const getVal = (sh: ShiftId, c: string, f: "sys" | "act") => vals[`${sh}-${c}-${f}`] ?? "";
   const persistChannels = (ids: string[], customs: Channel[]) =>
-    saveChannelConfig(ownedShopId ?? null, { activeIds: ids, customChannels: customs });
+    setSetting(ownedShopId ?? null, SETTING_KEYS.salesChannels, { activeIds: ids, customChannels: customs });
   const addChannel = (id: string) => {
     if (!id) return;
     if (id === "__custom__") {
@@ -182,7 +168,6 @@ export default function SalesReconciliationPage() {
     const need = Math.abs(net);
     const left = Math.max(0, need - reasonsSum);
     const covered = need < 0.01 || left < 0.01;
-    // عند وجود فرق: كل سبب له مبلغ لازم يحدد الشفت واسم الموظف
     const hasDiff = need >= 0.01;
     const badReasons = hasDiff ? reasons.filter((r) => num(r.amount) !== 0 && (!r.shift || !r.employees.trim())) : [];
     const justified = covered && badReasons.length === 0;
@@ -192,16 +177,17 @@ export default function SalesReconciliationPage() {
   const diffColor = (v: number) => (v > 0.009 ? "text-emerald-400" : v < -0.009 ? "text-red-400" : "text-slate-500");
   const diffTxt = (v: number) => (v > 0 ? "+" : "") + fmt(v);
 
-  const [reloadKey, setReloadKey] = useState(0);
-
-  const save = () => {
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
     const entry: SavedEntry = {
       branchId: ownedShopId ?? null, branch, date, channels: activeIds, customChannels, vals, reasons, note,
       gSys: calc.gSys, gAct: calc.gAct, net: calc.net, err: calc.err, perChannelActual: calc.perChannelActual,
     };
-    const all = loadAll().filter((e) => !(e.branchId === (ownedShopId ?? null) && e.date === date));
-    all.push(entry); all.sort((a, b) => a.date.localeCompare(b.date));
-    saveAll(all); setReloadKey((k) => k + 1);
+    setSaving(true);
+    const ok = await upsertSale(ownedShopId ?? null, entry);
+    setSaving(false);
+    if (!ok) { alert("تعذّر حفظ التسوية — تأكد من اتصالك بالإنترنت وأن لديك صلاحية على هذا الفرع."); return; }
+    await reloadEntries();
     alert("✓ تم حفظ تسوية اليوم");
   };
   const clearForm = () => { setVals({}); setReasons([newReason()]); setNote(""); };
@@ -212,9 +198,9 @@ export default function SalesReconciliationPage() {
   const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10));
 
   const report = useMemo(() => {
-    const all = loadAll().filter((e) => e.branchId === (ownedShopId ?? null) && e.date >= from && e.date <= to);
+    const all = allEntries.filter((e) => e.date >= from && e.date <= to).slice();
     all.sort((a, b) => a.date.localeCompare(b.date));
-    const used = new Set<string>(); all.forEach((e) => e.channels.forEach((c) => used.add(c)));
+    const used = new Set<string>(); all.forEach((e) => (e.channels || []).forEach((c) => used.add(c)));
     const customMap = new Map<string, Channel>();
     all.forEach((e) => (e.customChannels ?? []).forEach((c) => customMap.set(c.id, c)));
     const cols = [...CHANNEL_CATALOG, ...customMap.values()].filter((c) => used.has(c.id));
@@ -227,7 +213,7 @@ export default function SalesReconciliationPage() {
     const colTotals: Record<string, number> = {};
     cols.forEach((c) => { colTotals[c.id] = all.reduce((s, e) => s + (e.perChannelActual[c.id] || 0), 0); });
     return { rows: all, cols, max, min, avg, grandActual, grandSystem, colTotals };
-  }, [from, to, reloadKey, tab, ownedShopId]);
+  }, [from, to, allEntries]);
   const grandDiff = report.grandActual - report.grandSystem;
   const grandErr = report.grandSystem !== 0 ? (grandDiff / report.grandSystem) * 100 : 0;
   const pctOfTotal = (v: number) => (report.grandActual > 0 ? (v / report.grandActual) * 100 : 0);
@@ -303,7 +289,6 @@ export default function SalesReconciliationPage() {
       ).join("")}</tr>`;
     }).join("");
 
-    // صف الإجماليات
     const totalCells = ["الإجمالي", ...cols.map((c) => fmt(colTotals[c.id])), fmt(grandActual), fmt(grandSystem),
       (grandDiff > 0 ? "+" : "") + fmt(grandDiff), fmt(grandBefore), fmt(grandVat), fmt(grandActual),
       (grandErr > 0 ? "+" : "") + grandErr.toFixed(1) + "%", "", ""];
@@ -311,7 +296,6 @@ export default function SalesReconciliationPage() {
       `<td style="border:1px solid #cbd5e1;padding:6px 8px;font-size:11px;font-weight:800;text-align:${i === 0 ? "right" : "center"};background:#eef2f7;color:#0f1b2b;">${v}</td>`
     ).join("")}</tr>`;
 
-    // صف نسبة كل قناة من إجمالي المبيعات
     const pctCells = ["نسبة القناة %", ...cols.map((c) => pct(colTotals[c.id]).toFixed(1) + "%"), "100%", "", "", "", "", "", "", ""];
     const pctRow = `<tr>${pctCells.map((v, i) =>
       `<td style="border:1px solid #cbd5e1;padding:6px 8px;font-size:11px;font-weight:800;text-align:${i === 0 ? "right" : "center"};background:#15a06a;color:#ffffff;">${v}</td>`
@@ -348,9 +332,6 @@ export default function SalesReconciliationPage() {
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
     a.download = `تسوية_${branch || "فرع"}_${from}_${to}.xls`; a.click(); URL.revokeObjectURL(a.href);
   };
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { setReloadKey((k) => k + 1); }, [tab]);
 
   // ================= UI =================
   return (
@@ -482,7 +463,7 @@ export default function SalesReconciliationPage() {
 
           <div className="flex gap-3 justify-end flex-wrap">
             <button onClick={clearForm} className="px-6 py-3 rounded-xl bg-slate-900 border border-slate-700 text-slate-400 font-bold text-sm">تفريغ</button>
-            <button onClick={save} disabled={!calc.justified} className="px-6 py-3 rounded-xl bg-emerald-500 text-emerald-950 font-extrabold text-sm disabled:opacity-40 disabled:cursor-not-allowed">💾 حفظ تسوية اليوم</button>
+            <button onClick={save} disabled={!calc.justified || saving} className="px-6 py-3 rounded-xl bg-emerald-500 text-emerald-950 font-extrabold text-sm disabled:opacity-40 disabled:cursor-not-allowed">{saving ? "جاري الحفظ…" : "💾 حفظ تسوية اليوم"}</button>
           </div>
         </>
       )}

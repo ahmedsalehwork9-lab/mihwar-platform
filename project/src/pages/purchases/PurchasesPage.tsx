@@ -2,17 +2,16 @@
 // src/pages/purchases/PurchasesPage.tsx
 //
 // صفحة المشتريات — تسجيل فواتير الشراء للمقهى/الفرع.
-// • الفرع يُؤخذ تلقائيًا من حساب المستخدم.
-// • إضافة الأصناف بطريقتين: صنف صنف (يدوي)، أو دفعة واحدة من ملف إكسيل.
-// • تقرير مشتريات بفلتر تاريخ + تصدير PDF/Excel بتصميم تقارير محور،
-//   مع نسبة كل تصنيف من إجمالي المشتريات، وتنبيه تغيّر أسعار الأصناف.
-// • التخزين محلي (localStorage) مؤقتًا — الربط بـ Supabase لاحقًا.
+// التخزين الآن على Supabase (cafeDb) فيتزامن بين كل المتصفحات.
+// • إضافة صنف صنف أو دفعة إكسيل · ضريبة 15% · منع تكرار رقم الفاتورة.
+// • تقرير PDF/Excel + نسبة كل تصنيف + تنبيه تغيّر أسعار الأصناف.
 // =============================================================
 
-import { useMemo, useRef, useState, useEffect } from "react";
+import { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import * as XLSX from "xlsx";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../lib/supabase";
+import { fetchPurchasesWithMigration, upsertPurchase, deletePurchase } from "../lib/cafeDb";
 
 type PItem = { id: number; name: string; category: string; qty: string; unit: string; price: string };
 type Purchase = {
@@ -22,29 +21,23 @@ type Purchase = {
   items: PItem[]; total: number;
 };
 
-// سجل تغيّر سعر صنف واحد عبر الفترة
 type PriceChange = {
   name: string; unit: string;
-  seq: number[];            // تسلسل الأسعار بالترتيب الزمني (بدون تكرار متتالٍ)
+  seq: number[];
   first: number; last: number; minP: number; maxP: number;
-  change: number;           // % التغيّر من أول سعر لآخر سعر
+  change: number;
   history: { date: string; supplier: string; price: number; qty: number }[];
 };
 
 const CAT_OPTS = ["مواد خام", "مشروبات", "مخبوزات", "سلطة", "سندوتشات", "تغليف وتعبئة", "مستهلكات", "صيانة", "أخرى"];
 const UNIT_OPTS = ["قطعة", "كجم", "جرام", "لتر", "مل", "كرتون", "علبة", "كيس", "حبة", "باكت", "صينية"];
 const PAY_OPTS = ["نقدي", "شبكة (مدى)", "آجل (على الحساب)", "تحويل بنكي"];
-const VAT_RATE = 15; // ضريبة القيمة المضافة (السعودية)
+const VAT_RATE = 15;
 
-const STORAGE_KEY = "mihwar_purchases";
 const fmt = (n: number) => (Math.round(n * 100) / 100).toLocaleString("en-US", { maximumFractionDigits: 2 });
 const num = (v: string) => parseFloat(v) || 0;
-// توحيد اسم الصنف للمطابقة (يتجاهل المسافات الزائدة والهمزات والتشكيل)
 const normName = (s: string) => (s || "").trim().replace(/\s+/g, " ").replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").replace(/[ً-ْ]/g, "").toLowerCase();
 const newItem = (): PItem => ({ id: Date.now() + Math.random(), name: "", category: CAT_OPTS[0], qty: "", unit: UNIT_OPTS[0], price: "" });
-
-function loadAll(): Purchase[] { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); } catch { return []; } }
-function saveAll(list: Purchase[]) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(list)); } catch { /* ignore */ } }
 
 export default function PurchasesPage() {
   const { ownedShopId } = (useAuth() as any) ?? {};
@@ -62,6 +55,15 @@ export default function PurchasesPage() {
 
   const [tab, setTab] = useState<"entry" | "report">("entry");
 
+  // ── كل مشتريات الفرع (من Supabase) ──
+  const [allPurchases, setAllPurchases] = useState<Purchase[]>([]);
+  const reloadPurchases = useCallback(async () => {
+    const rows = await fetchPurchasesWithMigration(ownedShopId ?? null);
+    setAllPurchases(rows as Purchase[]);
+  }, [ownedShopId]);
+  useEffect(() => { reloadPurchases(); }, [reloadPurchases]);
+  useEffect(() => { if (tab === "report") reloadPurchases(); }, [tab, reloadPurchases]);
+
   // ── فاتورة جديدة ──
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [supplier, setSupplier] = useState("");
@@ -70,7 +72,7 @@ export default function PurchasesPage() {
   const [taxable, setTaxable] = useState(true);
   const [note, setNote] = useState("");
   const [items, setItems] = useState<PItem[]>([newItem()]);
-  const [reloadKey, setReloadKey] = useState(0);
+  const [saving, setSaving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const addItem = () => setItems((p) => [...p, newItem()]);
@@ -82,27 +84,25 @@ export default function PurchasesPage() {
   const grandTotal = subtotal + vat;
   const filledItems = items.filter((r) => r.name.trim() && num(r.qty) > 0);
   const invoiceExists = (no: string) =>
-    no.trim() !== "" && loadAll().some((p) => p.branchId === (ownedShopId ?? null) && (p.invoiceNo || "").trim() === no.trim());
+    no.trim() !== "" && allPurchases.some((p) => (p.invoiceNo || "").trim() === no.trim());
   const dupInvoice = invoiceExists(invoiceNo);
 
-  // اقتراح الموردين من الفواتير السابقة
   const supplierSuggest = useMemo(() => {
     const set = new Set<string>();
-    loadAll().forEach((p) => p.supplier && set.add(p.supplier));
+    allPurchases.forEach((p) => p.supplier && set.add(p.supplier));
     return [...set];
-  }, [reloadKey, tab]);
+  }, [allPurchases]);
 
-  // اقتراح أسماء الأصناف من الفواتير السابقة (يضمن إعادة استخدام نفس الاسم)
   const itemSuggest = useMemo(() => {
-    const map = new Map<string, string>(); // مفتاح موحّد -> أول تهجئة ظهرت
-    loadAll().forEach((p) => p.items.forEach((it) => {
+    const map = new Map<string, string>();
+    allPurchases.forEach((p) => (p.items || []).forEach((it) => {
       const n = (it.name || "").trim();
       if (!n) return;
       const k = normName(n);
       if (!map.has(k)) map.set(k, n);
     }));
     return [...map.values()].sort((a, b) => a.localeCompare(b, "ar"));
-  }, [reloadKey, tab]);
+  }, [allPurchases]);
 
   // ── تنزيل نموذج إكسيل ──
   const downloadTemplate = () => {
@@ -135,7 +135,6 @@ export default function PurchasesPage() {
         const ws = wb.Sheets[wb.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json<any>(ws, { defval: "" });
 
-        // بيانات الفاتورة (من أول صف يحتوي عليها)
         const info = rows.find((r) => pick(r, ["المورّد", "المورد", "Supplier"]) || pick(r, ["رقم الفاتورة", "Invoice", "Invoice No"]) || pick(r, ["نوع الفاتورة", "Type"]) || pick(r, ["طريقة الدفع", "الدفع", "Payment"])) || rows[0] || {};
         const impSupplier = String(pick(info, ["المورّد", "المورد", "Supplier"])).trim();
         const impInvoice = String(pick(info, ["رقم الفاتورة", "Invoice", "Invoice No"])).trim();
@@ -143,7 +142,6 @@ export default function PurchasesPage() {
         const impType = String(pick(info, ["نوع الفاتورة", "Type"])).trim();
         const impPay = String(pick(info, ["طريقة الدفع", "الدفع", "Payment"])).trim();
 
-        // منع استيراد نفس رقم الفاتورة
         if (impInvoice && invoiceExists(impInvoice)) {
           alert(`رقم الفاتورة «${impInvoice}» مسجّل من قبل لنفس الفرع — لن يتم الاستيراد.`); return;
         }
@@ -158,7 +156,6 @@ export default function PurchasesPage() {
         })).filter((x) => x.name);
         if (!mapped.length) { alert("لم يتم العثور على أصناف صالحة في الملف. تأكد من أسماء الأعمدة في النموذج."); return; }
 
-        // تطبيق بيانات الفاتورة
         if (impSupplier) setSupplier(impSupplier);
         if (impInvoice) setInvoiceNo(impInvoice);
         if (impDate) setDate(impDate);
@@ -176,7 +173,7 @@ export default function PurchasesPage() {
   };
 
   const canSave = supplier.trim() !== "" && filledItems.length > 0;
-  const save = () => {
+  const save = async () => {
     if (!supplier.trim()) { alert("اكتب اسم المورّد أولًا"); return; }
     if (filledItems.length === 0) { alert("أضف صنفًا واحدًا على الأقل (اسم الصنف + الكمية)"); return; }
     if (invoiceExists(invoiceNo)) { alert(`رقم الفاتورة «${invoiceNo.trim()}» مسجّل من قبل لنفس الفرع. غيّر الرقم أو احذف الفاتورة القديمة.`); return; }
@@ -188,8 +185,11 @@ export default function PurchasesPage() {
       taxable, vatRate: taxable ? VAT_RATE : 0, subtotal: sub, vat: v,
       items: filledItems, total: sub + v,
     };
-    const all = loadAll(); all.push(entry); all.sort((a, b) => a.date.localeCompare(b.date));
-    saveAll(all); setReloadKey((k) => k + 1);
+    setSaving(true);
+    const ok = await upsertPurchase(ownedShopId ?? null, entry);
+    setSaving(false);
+    if (!ok) { alert("تعذّر حفظ الفاتورة — تأكد من اتصالك بالإنترنت وصلاحيتك على الفرع."); return; }
+    await reloadPurchases();
     clearForm();
     alert("✓ تم حفظ الفاتورة");
   };
@@ -201,24 +201,22 @@ export default function PurchasesPage() {
   const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10));
 
   const report = useMemo(() => {
-    const all = loadAll().filter((e) => e.branchId === (ownedShopId ?? null) && e.date >= from && e.date <= to);
+    const all = allPurchases.filter((e) => e.date >= from && e.date <= to).slice();
     all.sort((a, b) => a.date.localeCompare(b.date));
     const total = all.reduce((s, e) => s + e.total, 0);
     const totalVat = all.reduce((s, e) => s + (e.vat || 0), 0);
     const count = all.length;
     const avg = count ? total / count : 0;
-    // نسبة كل تصنيف
     const catTotals: Record<string, number> = {};
-    all.forEach((e) => e.items.forEach((it) => {
+    all.forEach((e) => (e.items || []).forEach((it) => {
       const t = num(it.qty) * num(it.price);
       catTotals[it.category || "أخرى"] = (catTotals[it.category || "أخرى"] || 0) + t;
     }));
     const cats = Object.entries(catTotals).sort((a, b) => b[1] - a[1]);
 
-    // ── تتبّع تغيّر أسعار الأصناف ──
-    // نجمّع كل مرّة اشتُري فيها الصنف (بالاسم) عبر الفواتير مرتّبة زمنيًا
+    // تتبّع تغيّر أسعار الأصناف (توحيد الاسم)
     const itemMap: Record<string, { name: string; unit: string; hist: { date: string; supplier: string; price: number; qty: number }[] }> = {};
-    all.forEach((e) => e.items.forEach((it) => {
+    all.forEach((e) => (e.items || []).forEach((it) => {
       const nm = (it.name || "").trim();
       const price = num(it.price);
       if (!nm || price <= 0) return;
@@ -230,7 +228,6 @@ export default function PurchasesPage() {
     const priceChanges: PriceChange[] = Object.values(itemMap).map((g) => {
       const history = g.hist.slice().sort((a, b) => a.date.localeCompare(b.date));
       const prices = history.map((x) => x.price);
-      // تسلسل الأسعار مع دمج التكرار المتتالي
       const seq: number[] = [];
       history.forEach((x) => { const r = Math.round(x.price * 100) / 100; if (seq[seq.length - 1] !== r) seq.push(r); });
       const first = prices[0];
@@ -240,15 +237,17 @@ export default function PurchasesPage() {
       const change = first > 0 ? ((last - first) / first) * 100 : 0;
       return { name: g.name, unit: g.unit, seq, first, last, minP, maxP, change, history };
     })
-      .filter((x) => x.seq.length > 1)                 // فقط الأصناف التي تغيّر سعرها
+      .filter((x) => x.seq.length > 1)
       .sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
 
     return { rows: all, total, totalVat, count, avg, cats, priceChanges };
-  }, [from, to, reloadKey, tab, ownedShopId]);
+  }, [from, to, allPurchases]);
 
-  const delPurchase = (id: string) => {
+  const delPurchaseRow = async (id: string) => {
     if (!window.confirm("حذف هذه الفاتورة؟")) return;
-    saveAll(loadAll().filter((e) => e.id !== id)); setReloadKey((k) => k + 1);
+    const ok = await deletePurchase(id);
+    if (ok) await reloadPurchases();
+    else alert("تعذّر حذف الفاتورة.");
   };
 
   // ── تصدير (بتصميم تقارير محور) ──
@@ -285,7 +284,7 @@ export default function PurchasesPage() {
     const thead = `<tr>${ths.map((h) => `<th style="border:1px solid #d1d5db;padding:7px 8px;background:#14304d;color:#fff;font-size:11px;font-weight:700;white-space:nowrap;">${h}</th>`).join("")}</tr>`;
     const body = report.rows.map((e, idx) => {
       const bg = idx % 2 ? "#fff" : "#f9fafb";
-      const cells = [e.date, e.supplier, e.invoiceNo || "—", e.taxable ? "ضريبية" : "غير ضريبية", String(e.items.length),
+      const cells = [e.date, e.supplier, e.invoiceNo || "—", e.taxable ? "ضريبية" : "غير ضريبية", String((e.items || []).length),
         fmt(e.vat || 0), `<b style="color:#15a06a;">${fmt(e.total)}</b>`, e.payment, (e.note || "").replace(/</g, "&lt;")];
       return `<tr style="background:${bg};">${cells.map((v, i) =>
         `<td style="border:1px solid #e5e7eb;padding:5px 8px;font-size:11px;text-align:${i === 1 || i === 8 ? "right" : "center"};">${v}</td>`).join("")}</tr>`;
@@ -296,7 +295,6 @@ export default function PurchasesPage() {
         <td style="border:1px solid #cbd5e1;padding:6px 8px;font-size:12px;font-weight:800;text-align:center;background:#eef2f7;color:#15a06a;">${fmt(report.total)}</td>
         <td colspan="2" style="border:1px solid #cbd5e1;background:#eef2f7;"></td>
       </tr>`;
-    // نسبة كل تصنيف من إجمالي المشتريات
     const catBlock = report.cats.length ? `
       <div style="padding:4px 20px 14px;">
         <div style="font-size:13px;font-weight:800;color:#0f1b2b;margin:6px 0;">نسبة كل تصنيف من إجمالي المشتريات</div>
@@ -309,7 +307,6 @@ export default function PurchasesPage() {
           </tr>`).join("")}
         </table>
       </div>` : "";
-    // تنبيه تغيّر أسعار الأصناف (الأصناف التي اشتُريت بأكثر من سعر)
     const priceBlock = report.priceChanges.length ? `
       <div style="padding:4px 20px 14px;">
         <div style="font-size:13px;font-weight:800;color:#0f1b2b;margin:6px 0;">تنبيه تغيّر أسعار الأصناف (${report.priceChanges.length} صنف)</div>
@@ -375,7 +372,6 @@ export default function PurchasesPage() {
       {/* ENTRY */}
       {tab === "entry" && (
         <>
-          {/* بيانات الفاتورة */}
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
             <div className="flex flex-col gap-1">
               <label className="text-[10px] text-slate-500 font-bold">التاريخ</label>
@@ -404,7 +400,6 @@ export default function PurchasesPage() {
             </div>
           </div>
 
-          {/* شريط الإكسيل */}
           <div className="flex flex-wrap items-center gap-2 mb-3 bg-slate-900/60 border border-slate-800 rounded-xl p-2.5">
             <span className="text-xs text-slate-400 font-bold mr-1">إضافة دفعة من إكسيل:</span>
             <button onClick={downloadTemplate} className="px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-xs">⬇ تنزيل نموذج إكسيل</button>
@@ -413,7 +408,6 @@ export default function PurchasesPage() {
             <span className="text-[11px] text-slate-500">بيانات الفاتورة (المورّد · الرقم · التاريخ · نوع الفاتورة · الدفع) في الصف الأول، ثم الأصناف. الأسعار بدون ضريبة = صافي التكلفة.</span>
           </div>
 
-          {/* جدول الأصناف */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden mb-4">
             <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-blue-500" /><h2 className="text-sm font-bold text-white">أصناف الفاتورة</h2><span className="text-[11px] text-slate-500 mr-auto">{filledItems.length} صنف</span></div>
             <div className="overflow-x-auto">
@@ -446,7 +440,6 @@ export default function PurchasesPage() {
             <button onClick={addItem} className="m-3.5 bg-blue-600/10 border border-dashed border-blue-500 text-blue-300 py-2.5 rounded-xl w-[calc(100%-28px)] font-bold text-xs">+ إضافة صنف</button>
           </div>
 
-          {/* ملخص + ملاحظة */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-4">
             <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-3.5">
               <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="ملاحظات الفاتورة…" className="w-full bg-[#0b1220] border border-slate-700 rounded-xl text-white p-2.5 text-sm resize-y min-h-[72px]" />
@@ -461,7 +454,7 @@ export default function PurchasesPage() {
           <div className="flex items-center gap-3 justify-end flex-wrap">
             {!canSave && <span className="text-[11px] text-amber-400/80 mr-auto">لإتمام الحفظ: اكتب اسم المورّد وأضف صنفًا واحدًا على الأقل (اسم + كمية)</span>}
             <button onClick={clearForm} className="px-6 py-3 rounded-xl bg-slate-900 border border-slate-700 text-slate-400 font-bold text-sm">تفريغ</button>
-            <button onClick={save} className={`px-6 py-3 rounded-xl font-extrabold text-sm transition-all ${canSave ? "bg-emerald-500 text-emerald-950" : "bg-emerald-500/40 text-emerald-100"}`}>💾 حفظ الفاتورة</button>
+            <button onClick={save} disabled={saving} className={`px-6 py-3 rounded-xl font-extrabold text-sm transition-all ${canSave && !saving ? "bg-emerald-500 text-emerald-950" : "bg-emerald-500/40 text-emerald-100"}`}>{saving ? "جاري الحفظ…" : "💾 حفظ الفاتورة"}</button>
           </div>
         </>
       )}
@@ -500,12 +493,12 @@ export default function PurchasesPage() {
                         <td className="px-2 py-2 text-xs text-right text-slate-200 border-b border-slate-800">{e.supplier}</td>
                         <td className="px-2 py-2 text-xs text-center text-slate-400 border-b border-slate-800">{e.invoiceNo || "—"}</td>
                         <td className="px-2 py-2 text-center border-b border-slate-800"><span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${e.taxable ? "bg-blue-500/15 text-blue-300" : "bg-slate-500/15 text-slate-400"}`}>{e.taxable ? "ضريبية" : "غير ضريبية"}</span></td>
-                        <td className="px-2 py-2 text-xs text-center text-slate-300 border-b border-slate-800">{e.items.length}</td>
+                        <td className="px-2 py-2 text-xs text-center text-slate-300 border-b border-slate-800">{(e.items || []).length}</td>
                         <td className="px-2 py-2 text-xs text-center font-mono text-amber-400 [direction:ltr] border-b border-slate-800">{e.vat ? fmt(e.vat) : "—"}</td>
                         <td className="px-2 py-2 text-xs text-center font-mono font-bold text-emerald-400 [direction:ltr] border-b border-slate-800">{fmt(e.total)}</td>
                         <td className="px-2 py-2 text-[11px] text-center text-slate-400 border-b border-slate-800 whitespace-nowrap">{e.payment}</td>
                         <td className="px-2 py-2 text-[11px] text-right text-slate-400 max-w-[200px] border-b border-slate-800">{e.note || ""}</td>
-                        <td className="px-2 py-2 text-center border-b border-slate-800"><button onClick={() => delPurchase(e.id)} className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400">✕</button></td>
+                        <td className="px-2 py-2 text-center border-b border-slate-800"><button onClick={() => delPurchaseRow(e.id)} className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400">✕</button></td>
                       </tr>
                     ))}
                   </tbody>
@@ -522,7 +515,6 @@ export default function PurchasesPage() {
             )}
           </div>
 
-          {/* تنبيه تغيّر أسعار الأصناف — الأصناف التي اشتُريت بأكثر من سعر */}
           {report.priceChanges.length > 0 && (
             <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden mb-4">
               <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2">
@@ -554,7 +546,6 @@ export default function PurchasesPage() {
             </div>
           )}
 
-          {/* نسبة كل تصنيف */}
           {report.cats.length > 0 && (
             <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
               <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-emerald-500" /><h2 className="text-sm font-bold text-white">نسبة كل تصنيف من إجمالي المشتريات</h2></div>

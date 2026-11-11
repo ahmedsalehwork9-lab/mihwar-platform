@@ -1,31 +1,21 @@
 // =============================================================
 // src/pages/finance/FinancialReportPage.tsx
 //
-// التقرير المالي الشهري — يجمّع تلقائيًا من كل صفحات محور:
-//   • المبيعات (تسوية المبيعات) — الإجمالي + مبيعات تطبيقات التوصيل
-//   • المشتريات (صافي) + التحويلات الواردة/الصادرة (طلبات Supabase)
-//   • عمولات التطبيقات (نسبة لكل تطبيق)
-//   • المصروفات الثابتة + الرواتب
-// ويطلع: قائمة الربح والخسارة بمقارنة شهرين، نقطة التعادل، وتصدير PDF.
-//
-// المعادلات (مطابقة لنموذج العميل):
-//   صافي المبيعات بعد الضريبة = الإجمالي ÷ 1.15
-//   تكلفة COGS = مشتريات + تحويل وارد − تحويل صادر
-//   عمولة التطبيقات = مبيعات كل تطبيق × نسبته
-//   صافي الربح = صافي المبيعات − (COGS + العمولات + الثابتة)
-//   هامش الربح = صافي الربح ÷ إجمالي المبيعات
-//   نقطة التعادل: الأساس = صافي المبيعات، المتغيرة = COGS + العمولات
+// التقرير المالي الشهري — يجمّع تلقائيًا من كل صفحات محور.
+// التخزين الآن على Supabase (cafeDb): المبيعات + المشتريات + المصروفات
+// الثابتة + عمولات التطبيقات، فيتزامن بين كل المتصفحات.
+// يطلع: قائمة الربح والخسارة بمقارنة شهرين، نقطة التعادل، وتصدير PDF/Excel.
 // =============================================================
 
 import { useMemo, useState, useEffect } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../lib/supabase";
+import {
+  fetchSalesWithMigration, fetchPurchasesWithMigration,
+  getSettingWithMigration, setSetting, SETTING_KEYS, LOCAL_KEYS,
+} from "../lib/cafeDb";
 
 const VAT_DIV = 1.15;
-const SALES_KEY = "mihwar_sales_reconciliation";
-const PURCH_KEY = "mihwar_purchases";
-const FE_KEY = "mihwar_fixed_expenses";
-const COMM_KEY = "mihwar_app_commissions";
 
 const fmt = (n: number) => (Math.round(n * 100) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmt0 = (n: number) => Math.round(n).toLocaleString("en-US");
@@ -51,50 +41,32 @@ const monthLabel = (ym: string) => {
 
 const BASE_CH: Record<string, string> = { cash: "نقدي", net: "شبكة (مدى)", keeta: "كيتا", hunger: "هنقرستيشن", jahez: "جاهز", trans: "تحويل بنكي", refund: "مرتجع" };
 const DEFAULT_RATE: Record<string, string> = { keeta: "25", hunger: "25", jahez: "25" };
-const NON_COMM = new Set(["cash", "net", "trans", "refund"]); // قنوات غير خاضعة لعمولة
+const NON_COMM = new Set(["cash", "net", "trans", "refund"]);
 
-function readArr(key: string): any[] { try { return JSON.parse(localStorage.getItem(key) || "[]"); } catch { return []; } }
-
-function salesMonth(branchId: number | null, ym: string) {
-  const rows = readArr(SALES_KEY).filter((e: any) => e.branchId === branchId && (e.date || "").slice(0, 7) === ym);
-  const gross = rows.reduce((s: number, e: any) => s + (e.gAct || 0), 0);
+// ── مساعدات تحسب من الصفوف المحمّلة (بدل localStorage) ──
+function salesMonthFrom(rows: any[], ym: string) {
+  const r = rows.filter((e: any) => (e.date || "").slice(0, 7) === ym);
+  const gross = r.reduce((s: number, e: any) => s + (e.gAct || 0), 0);
   const perCh: Record<string, number> = {};
-  rows.forEach((e: any) => Object.entries(e.perChannelActual || {}).forEach(([k, v]) => { perCh[k] = (perCh[k] || 0) + (v as number); }));
+  r.forEach((e: any) => Object.entries(e.perChannelActual || {}).forEach(([k, v]) => { perCh[k] = (perCh[k] || 0) + (v as number); }));
   return { gross, perCh };
 }
-function purchMonth(branchId: number | null, ym: string) {
-  return readArr(PURCH_KEY).filter((e: any) => e.branchId === branchId && (e.date || "").slice(0, 7) === ym).reduce((s: number, e: any) => s + ((e.subtotal ?? e.total) || 0), 0);
+function purchMonthFrom(rows: any[], ym: string) {
+  return rows.filter((e: any) => (e.date || "").slice(0, 7) === ym).reduce((s: number, e: any) => s + ((e.subtotal ?? e.total) || 0), 0);
 }
-function channelName(id: string) {
+function channelNameFrom(salesRows: any[], id: string) {
   if (BASE_CH[id]) return BASE_CH[id];
-  for (const e of readArr(SALES_KEY)) { const c = (e.customChannels || []).find((x: any) => x.id === id); if (c) return c.nm; }
+  for (const e of salesRows) { const c = (e.customChannels || []).find((x: any) => x.id === id); if (c) return c.nm; }
   return id;
-}
-function availableMonths(branchId: number | null): string[] {
-  const set = new Set<string>();
-  readArr(SALES_KEY).filter((e: any) => e.branchId === branchId).forEach((e: any) => e.date && set.add(e.date.slice(0, 7)));
-  readArr(PURCH_KEY).filter((e: any) => e.branchId === branchId).forEach((e: any) => e.date && set.add(e.date.slice(0, 7)));
-  return [...set].sort().reverse();
-}
-function loadFE(branchId: number | null) {
-  try { const all = JSON.parse(localStorage.getItem(FE_KEY) || "{}"); const c = all[String(branchId)]; if (c && Array.isArray(c.salaries)) return { salaries: c.salaries, items: c.items || [] }; } catch { /* ignore */ }
-  return { salaries: [], items: [] };
-}
-function loadComm(branchId: number | null): Record<string, string> {
-  try { const all = JSON.parse(localStorage.getItem(COMM_KEY) || "{}"); const c = all[String(branchId)]; if (c && typeof c === "object") return { ...DEFAULT_RATE, ...c }; } catch { /* ignore */ }
-  return { ...DEFAULT_RATE };
-}
-function saveComm(branchId: number | null, c: any) {
-  try { const all = JSON.parse(localStorage.getItem(COMM_KEY) || "{}"); all[String(branchId)] = c; localStorage.setItem(COMM_KEY, JSON.stringify(all)); } catch { /* ignore */ }
 }
 
 type Comm = Record<string, string>;
 
-function buildFin(branchId: number | null, ym: string, orders: any[], comm: Comm, fe: { salaries: any[]; items: any[] }) {
-  const s = salesMonth(branchId, ym);
+function buildFin(branchId: number | null, ym: string, orders: any[], comm: Comm, fe: { salaries: any[]; items: any[] }, salesRows: any[], purchRows: any[]) {
+  const s = salesMonthFrom(salesRows, ym);
   const gross = s.gross;
   const net = gross / VAT_DIV;
-  const purchases = purchMonth(branchId, ym);
+  const purchases = purchMonthFrom(purchRows, ym);
   const inMonth = orders.filter((o) => (o.created_at || "").slice(0, 7) === ym && (o.status === "completed" || o.status === "partially_approved"));
   const transIn = inMonth.filter((o) => o.to_shop_id === branchId).reduce((a, o) => a + (o.total_amount || 0), 0);
   const transOut = inMonth.filter((o) => o.from_shop_id === branchId).reduce((a, o) => a + (o.total_amount || 0), 0);
@@ -104,7 +76,7 @@ function buildFin(branchId: number | null, ym: string, orders: any[], comm: Comm
     if (NON_COMM.has(id) || (v as number) <= 0) return;
     const rate = num(comm[id] ?? DEFAULT_RATE[id] ?? "0");
     if (rate <= 0) return;
-    commByCh.push({ id, name: channelName(id), sales: v as number, rate, amount: (v as number) * rate / 100 });
+    commByCh.push({ id, name: channelNameFrom(salesRows, id), sales: v as number, rate, amount: (v as number) * rate / 100 });
   });
   const commission = commByCh.reduce((a, c) => a + c.amount, 0);
   const appSales = commByCh.reduce((a, c) => a + c.sales, 0);
@@ -115,7 +87,6 @@ function buildFin(branchId: number | null, ym: string, orders: any[], comm: Comm
   const totalCosts = cogs + commission + totalFixed;
   const netProfit = net - totalCosts;
   const margin = gross > 0 ? (netProfit / gross) * 100 : 0;
-  // نقطة التعادل (أساس = صافي المبيعات، متغيرة = COGS + العمولات)
   const variable = cogs + commission;
   const varPct = net > 0 ? (variable / net) * 100 : 0;
   const cm = 100 - varPct;
@@ -157,17 +128,43 @@ export default function FinancialReportPage() {
     return () => { active = false; };
   }, [ownedShopId]);
 
+  // بيانات الفرع من Supabase
+  const [salesRows, setSalesRows] = useState<any[]>([]);
+  const [purchRows, setPurchRows] = useState<any[]>([]);
+  const [fe, setFe] = useState<{ salaries: any[]; items: any[] }>({ salaries: [], items: [] });
   const [comm, setComm] = useState<Comm>({ ...DEFAULT_RATE });
   const [ready, setReady] = useState(false);
-  useEffect(() => { setComm(loadComm(ownedShopId ?? null)); setReady(true); }, [ownedShopId]);
-  useEffect(() => { if (ready) saveComm(ownedShopId ?? null, comm); }, [comm, ready, ownedShopId]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const [s, p, feCfg, commCfg] = await Promise.all([
+        fetchSalesWithMigration(ownedShopId ?? null),
+        fetchPurchasesWithMigration(ownedShopId ?? null),
+        getSettingWithMigration(ownedShopId ?? null, SETTING_KEYS.fixedExpenses, LOCAL_KEYS.FE_LKEY, { salaries: [], items: [] }),
+        getSettingWithMigration(ownedShopId ?? null, SETTING_KEYS.appCommissions, LOCAL_KEYS.COMM_LKEY, { ...DEFAULT_RATE }),
+      ]);
+      if (!active) return;
+      setSalesRows(s || []);
+      setPurchRows(p || []);
+      setFe(feCfg && Array.isArray(feCfg.salaries) ? { salaries: feCfg.salaries, items: feCfg.items || [] } : { salaries: [], items: [] });
+      setComm({ ...DEFAULT_RATE, ...(commCfg || {}) });
+      setReady(true);
+    })();
+    return () => { active = false; };
+  }, [ownedShopId]);
+  useEffect(() => { if (ready) setSetting(ownedShopId ?? null, SETTING_KEYS.appCommissions, comm); }, [comm, ready, ownedShopId]);
 
   const months = useMemo(() => {
-    const list = availableMonths(ownedShopId ?? null);
+    const set = new Set<string>();
+    salesRows.forEach((e) => e.date && set.add(e.date.slice(0, 7)));
+    purchRows.forEach((e) => e.date && set.add(e.date.slice(0, 7)));
+    const list = [...set].sort().reverse();
     const now = new Date().toISOString().slice(0, 7);
     if (!list.includes(now)) list.unshift(now);
     return list;
-  }, [ownedShopId]);
+  }, [salesRows, purchRows]);
+
   const [month, setMonth] = useState("");
   const [compare, setCompare] = useState(false);
   const [cmpMonth, setCmpMonth] = useState("");
@@ -176,10 +173,11 @@ export default function FinancialReportPage() {
     setMonth(first); setCmpMonth(months[1] || prevMonth(first));
   }, [months]);
   const pm = cmpMonth || prevMonth(month || new Date().toISOString().slice(0, 7));
-  const fe = useMemo(() => loadFE(ownedShopId ?? null), [ownedShopId, month]);
 
-  const cur: Fin = useMemo(() => buildFin(ownedShopId ?? null, month, orders, comm, fe), [ownedShopId, month, orders, comm, fe]);
-  const prev: Fin = useMemo(() => buildFin(ownedShopId ?? null, pm, orders, comm, fe), [ownedShopId, pm, orders, comm, fe]);
+  const chName = (id: string) => channelNameFrom(salesRows, id);
+
+  const cur: Fin = useMemo(() => buildFin(ownedShopId ?? null, month, orders, comm, fe, salesRows, purchRows), [ownedShopId, month, orders, comm, fe, salesRows, purchRows]);
+  const prev: Fin = useMemo(() => buildFin(ownedShopId ?? null, pm, orders, comm, fe, salesRows, purchRows), [ownedShopId, pm, orders, comm, fe, salesRows, purchRows]);
   const commChannels = useMemo(() => {
     const ids = new Set<string>([...Object.keys(cur.perCh), ...Object.keys(prev.perCh)]);
     ["keeta", "hunger", "jahez"].forEach((x) => ids.add(x));
@@ -221,7 +219,7 @@ export default function FinancialReportPage() {
     const appRows = commIds.map((id) => {
       const cc = cur.commByCh.find((c) => c.id === id); const pc = prev.commByCh.find((c) => c.id === id);
       const rate = cc ? cc.rate : (pc ? pc.rate : num(comm[id] || "0"));
-      return `<tr>${tdL(channelName(id))}${tdN(fmt(cc ? cc.sales : 0), "#334155")}${compare ? tdN(fmt(pc ? pc.sales : 0), "#334155") : ""}${tdNote("نسبة العمولة " + rate + "%")}</tr>`;
+      return `<tr>${tdL(chName(id))}${tdN(fmt(cc ? cc.sales : 0), "#334155")}${compare ? tdN(fmt(pc ? pc.sales : 0), "#334155") : ""}${tdNote("نسبة العمولة " + rate + "%")}</tr>`;
     }).join("");
     const appTable = commIds.length ? `<table style="border-collapse:collapse;width:100%;margin-top:6px;">
       <tr>${th("مدخلات عمولة التطبيقات", "#14304d")}${th(monthLabel(month), "#14304d")}${compare ? th(monthLabel(pm), "#14304d") : ""}${th("ملاحظة", "#14304d")}</tr>
@@ -308,7 +306,7 @@ export default function FinancialReportPage() {
         <div className="flex flex-wrap gap-3">
           {commChannels.map((id) => (
             <div key={id} className="flex items-center gap-2 bg-[#0b1220] border border-slate-700 rounded-xl px-3 py-2">
-              <span className="text-xs text-slate-300 font-bold">{channelName(id)}</span>
+              <span className="text-xs text-slate-300 font-bold">{chName(id)}</span>
               <input type="number" value={comm[id] ?? ""} placeholder="0" onChange={(e) => setComm((p) => ({ ...p, [id]: e.target.value }))} className="w-16 bg-slate-900 border border-slate-700 rounded-lg text-white px-2 py-1 text-center font-mono text-xs [direction:ltr]" />
               <span className="text-xs text-slate-500">%</span>
             </div>

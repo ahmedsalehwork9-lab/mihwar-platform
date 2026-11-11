@@ -2,18 +2,18 @@
 // src/pages/expenses/FixedExpensesPage.tsx
 //
 // المصروفات الثابتة + نقطة التعادل — لكل فرع.
-// • قسم رواتب تفصيلي: اسم الموظف، الوظيفة، نوع الراتب (يومي/أسبوعي/شهري)،
-//   القيمة، والمستحق الشهري يُحسب تلقائيًا.
-// • قسم مصروفات ثابتة أخرى (إيجار، كهرباء، إنترنت…) مع الاستحقاق وطريقة الدفع
-//   وخيار «يدخل في التعادل؟».
-// • تبويب نقطة التعادل: يسحب المبيعات الفعلية من تسوية المبيعات والتكاليف
-//   المتغيرة من المشتريات للشهر المختار (قابلة للتعديل)، ويحسب التعادل والمستهدف.
-// • التخزين محلي (localStorage) لكل فرع — الربط بـ Supabase لاحقًا.
+// التخزين الآن على Supabase (cafeDb) فيتزامن بين كل المتصفحات.
+// • رواتب تفصيلية + مصروفات ثابتة أخرى + تبويب نقطة التعادل.
+// • يسحب المبيعات والمشتريات من Supabase، والتحويلات من الطلبات.
 // =============================================================
 
 import { useMemo, useState, useEffect } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../lib/supabase";
+import {
+  fetchSalesWithMigration, fetchPurchasesWithMigration,
+  getSettingWithMigration, setSetting, SETTING_KEYS, LOCAL_KEYS,
+} from "../lib/cafeDb";
 
 type SalType = "daily" | "weekly" | "monthly";
 type Salary = { id: number; name: string; title: string; type: SalType; amount: string; count: string; note: string };
@@ -26,10 +26,6 @@ const SAL_TYPES: { v: SalType; l: string; def: number }[] = [
 ];
 const DEFAULT_ITEM_NAMES = ["إيجار الفرع", "كهرباء ومياه", "إنترنت/اتصالات", "نظافة وصيانة ثابتة", "اشتراكات وبرامج", "تمويل/استقطاع", "مصروفات ثابتة أخرى"];
 
-const FE_KEY = "mihwar_fixed_expenses";
-const SALES_KEY = "mihwar_sales_reconciliation";
-const PURCH_KEY = "mihwar_purchases";
-
 const fmt = (n: number) => (Math.round(n * 100) / 100).toLocaleString("en-US", { maximumFractionDigits: 2 });
 const num = (v: string) => parseFloat(v) || 0;
 const uid = () => Date.now() + Math.random();
@@ -37,24 +33,6 @@ const uid = () => Date.now() + Math.random();
 const newSalary = (): Salary => ({ id: uid(), name: "", title: "", type: "monthly", amount: "", count: "", note: "" });
 const seedItems = (): FEItem[] => DEFAULT_ITEM_NAMES.map((nm) => ({ id: uid(), name: nm, amount: "", dueDate: "", payment: PAY_OPTS[0], inBE: true, note: "" }));
 const defaultConfig = (): FEConfig => ({ salaries: [newSalary()], items: seedItems(), targetUplift: "40" });
-
-function loadFE(branchId: number | null): FEConfig {
-  try {
-    const all = JSON.parse(localStorage.getItem(FE_KEY) || "{}");
-    const c = all[String(branchId)];
-    if (c && Array.isArray(c.salaries) && Array.isArray(c.items)) return { salaries: c.salaries, items: c.items, targetUplift: c.targetUplift ?? "40" };
-  } catch { /* ignore */ }
-  return defaultConfig();
-}
-function saveFE(branchId: number | null, cfg: FEConfig) {
-  try { const all = JSON.parse(localStorage.getItem(FE_KEY) || "{}"); all[String(branchId)] = cfg; localStorage.setItem(FE_KEY, JSON.stringify(all)); } catch { /* ignore */ }
-}
-function salesActualForMonth(branchId: number | null, ym: string): number {
-  try { const all = JSON.parse(localStorage.getItem(SALES_KEY) || "[]"); return all.filter((e: any) => e.branchId === branchId && (e.date || "").slice(0, 7) === ym).reduce((s: number, e: any) => s + (e.gAct || 0), 0); } catch { return 0; }
-}
-function purchasesForMonth(branchId: number | null, ym: string): number {
-  try { const all = JSON.parse(localStorage.getItem(PURCH_KEY) || "[]"); return all.filter((e: any) => e.branchId === branchId && (e.date || "").slice(0, 7) === ym).reduce((s: number, e: any) => s + ((e.subtotal ?? e.total) || 0), 0); } catch { return 0; }
-}
 
 const salaryMonthly = (s: Salary) => {
   const amt = num(s.amount); const t = SAL_TYPES.find((x) => x.v === s.type)!;
@@ -75,7 +53,7 @@ export default function FixedExpensesPage() {
     return () => { active = false; };
   }, [ownedShopId]);
 
-  // تحويلات الفرع (طلبات) من Supabase: وارد = +تكلفة، صادر = −تكلفة
+  // تحويلات الفرع (طلبات) من Supabase
   const [orders, setOrders] = useState<any[]>([]);
   useEffect(() => {
     let active = true;
@@ -90,22 +68,38 @@ export default function FixedExpensesPage() {
     return () => { active = false; };
   }, [ownedShopId]);
 
+  // مبيعات ومشتريات الفرع من Supabase (لحساب المقترحات)
+  const [salesRows, setSalesRows] = useState<any[]>([]);
+  const [purchRows, setPurchRows] = useState<any[]>([]);
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const s = await fetchSalesWithMigration(ownedShopId ?? null);
+      const p = await fetchPurchasesWithMigration(ownedShopId ?? null);
+      if (!active) return;
+      setSalesRows(s || []); setPurchRows(p || []);
+    })();
+    return () => { active = false; };
+  }, [ownedShopId]);
+
   const [tab, setTab] = useState<"fixed" | "breakeven">("fixed");
 
-  // ── إعداد المصروفات (ثابت لكل فرع) ──
+  // ── إعداد المصروفات (ثابت لكل فرع، مخزّن على Supabase) ──
   const [salaries, setSalaries] = useState<Salary[]>([newSalary()]);
   const [items, setItems] = useState<FEItem[]>(seedItems());
   const [targetUplift, setTargetUplift] = useState("40");
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const cfg = loadFE(ownedShopId ?? null);
-    setSalaries(cfg.salaries.length ? cfg.salaries : [newSalary()]);
-    setItems(cfg.items.length ? cfg.items : seedItems());
-    setTargetUplift(cfg.targetUplift || "40");
-    setReady(true);
+    (async () => {
+      const cfg = await getSettingWithMigration(ownedShopId ?? null, SETTING_KEYS.fixedExpenses, LOCAL_KEYS.FE_LKEY, defaultConfig());
+      setSalaries(Array.isArray(cfg?.salaries) && cfg.salaries.length ? cfg.salaries : [newSalary()]);
+      setItems(Array.isArray(cfg?.items) && cfg.items.length ? cfg.items : seedItems());
+      setTargetUplift(cfg?.targetUplift || "40");
+      setReady(true);
+    })();
   }, [ownedShopId]);
-  useEffect(() => { if (ready) saveFE(ownedShopId ?? null, { salaries, items, targetUplift }); }, [salaries, items, targetUplift, ready, ownedShopId]);
+  useEffect(() => { if (ready) setSetting(ownedShopId ?? null, SETTING_KEYS.fixedExpenses, { salaries, items, targetUplift } as FEConfig); }, [salaries, items, targetUplift, ready, ownedShopId]);
 
   const addSalary = () => setSalaries((p) => [...p, newSalary()]);
   const delSalary = (id: number) => setSalaries((p) => (p.length > 1 ? p.filter((r) => r.id !== id) : [newSalary()]));
@@ -117,14 +111,12 @@ export default function FixedExpensesPage() {
   const salariesTotal = useMemo(() => salaries.reduce((s, r) => s + salaryMonthly(r), 0), [salaries]);
   const itemsTotal = useMemo(() => items.reduce((s, r) => s + num(r.amount), 0), [items]);
   const fixedTotal = salariesTotal + itemsTotal;
-  // المصروفات الداخلة في التعادل (الرواتب كلها + البنود المحددة)
   const fixedForBE = useMemo(() => salariesTotal + items.filter((r) => r.inBE).reduce((s, r) => s + num(r.amount), 0), [salariesTotal, items]);
 
   // ── نقطة التعادل ──
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
-  const suggSales = salesActualForMonth(ownedShopId ?? null, month);
-  const suggPurch = purchasesForMonth(ownedShopId ?? null, month);
-  // تحويلات الشهر (مكتمل/موافقة جزئية فقط): وارد للفرع +تكلفة، صادر −تكلفة
+  const suggSales = useMemo(() => salesRows.filter((e) => (e.date || "").slice(0, 7) === month).reduce((s, e) => s + (e.gAct || 0), 0), [salesRows, month]);
+  const suggPurch = useMemo(() => purchRows.filter((e) => (e.date || "").slice(0, 7) === month).reduce((s, e) => s + ((e.subtotal ?? e.total) || 0), 0), [purchRows, month]);
   const transfers = useMemo(() => {
     const inMonth = orders.filter((o) => (o.created_at || "").slice(0, 7) === month && (o.status === "completed" || o.status === "partially_approved"));
     const transIn = inMonth.filter((o) => o.to_shop_id === ownedShopId).reduce((s, o) => s + (o.total_amount || 0), 0);
@@ -132,7 +124,7 @@ export default function FixedExpensesPage() {
     return { transIn, transOut };
   }, [orders, month, ownedShopId]);
   const suggVar = suggPurch + transfers.transIn - transfers.transOut;
-  const [salesOv, setSalesOv] = useState(""); // تجاوز يدوي
+  const [salesOv, setSalesOv] = useState("");
   const [varOv, setVarOv] = useState("");
   useEffect(() => { setSalesOv(""); setVarOv(""); }, [month, ownedShopId]);
 
@@ -141,7 +133,7 @@ export default function FixedExpensesPage() {
 
   const be = useMemo(() => {
     const varPct = actualSales > 0 ? variableCosts / actualSales : 0;
-    const cm = 1 - varPct; // هامش المساهمة
+    const cm = 1 - varPct;
     const breakEven = cm > 0 ? fixedForBE / cm : 0;
     const dailyBE = breakEven / 30;
     const uplift = num(targetUplift) / 100;
@@ -286,7 +278,6 @@ export default function FixedExpensesPage() {
             <button onClick={exportPDF} className="px-4 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 font-bold text-xs mr-auto">⬇ PDF</button>
           </div>
 
-          {/* المدخلات (مع المقترح التلقائي) */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-4">
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
               <div className="flex items-center justify-between mb-1"><span className="text-[10px] text-slate-500 font-bold">المبيعات الفعلية (شهري)</span>{salesOv.trim() && <button onClick={() => setSalesOv("")} className="text-[10px] text-blue-400">استخدم المقترح</button>}</div>
@@ -305,7 +296,6 @@ export default function FixedExpensesPage() {
             </div>
           </div>
 
-          {/* المؤشرات */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4"><div className="text-[10px] text-slate-500 font-bold">هامش المساهمة</div><div className="text-xl font-black font-mono mt-1 text-white [direction:ltr]">{(be.cm * 100).toFixed(1)}%</div><div className="text-[10px] text-slate-600 mt-0.5">متغيرة: {(be.varPct * 100).toFixed(1)}%</div></div>
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4"><div className="text-[10px] text-slate-500 font-bold">نقطة التعادل الشهرية</div><div className="text-xl font-black font-mono mt-1 text-amber-400 [direction:ltr]">{fmt(be.breakEven)}</div><div className="text-[10px] text-slate-600 mt-0.5">يومي: {fmt(be.dailyBE)}</div></div>
@@ -313,7 +303,6 @@ export default function FixedExpensesPage() {
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4"><div className="text-[10px] text-slate-500 font-bold">صافي الربح التقديري</div><div className={`text-xl font-black font-mono mt-1 [direction:ltr] ${be.profit >= 0 ? "text-emerald-400" : "text-red-400"}`}>{fmt(be.profit)}</div></div>
           </div>
 
-          {/* شريط الإنجاز */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 mb-4">
             <div className="flex justify-between text-xs mb-2"><span className="text-slate-400 font-bold">المبيعات الفعلية مقابل التعادل والمستهدف</span><span className="font-mono text-white [direction:ltr]">{fmt(actualSales)} ر.س</span></div>
             <div className="relative h-5 bg-slate-800 rounded-full overflow-hidden">
@@ -331,7 +320,6 @@ export default function FixedExpensesPage() {
             </div>
           </div>
 
-          {/* السيناريوهات */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
             <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-emerald-500" /><h2 className="text-sm font-bold text-white">سيناريوهات المستهدف فوق نقطة التعادل</h2></div>
             <div className="overflow-x-auto">

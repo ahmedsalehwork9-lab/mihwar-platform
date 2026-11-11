@@ -1,24 +1,23 @@
 // =============================================================
 // src/components/BranchDashboard.tsx
 // لوحة مؤشرات حيّة للفرع — تُدرَج أعلى الصفحة الرئيسية.
-// تقرأ لحظيًا من: تسوية المبيعات + المشتريات + المصروفات الثابتة
-// (نفس مفاتيح التخزين المستخدمة في صفحات المقهى)،
-// بالإضافة إلى أكثر الأصناف وارد/صادر من تحويلات الفروع (Supabase).
+// تقرأ لحظيًا من Supabase (cafeDb): تسوية المبيعات + المشتريات
+// + المصروفات الثابتة، بالإضافة لأكثر الأصناف وارد/صادر (تحويلات الطلبات).
 // =============================================================
 
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../pages/lib/supabase";
+import {
+  fetchSalesWithMigration, fetchPurchasesWithMigration,
+  getSettingWithMigration, SETTING_KEYS, LOCAL_KEYS,
+} from "../pages/lib/cafeDb";
 
-const SALES_KEY = "mihwar_sales_reconciliation";
-const PURCH_KEY = "mihwar_purchases";
-const FE_KEY = "mihwar_fixed_expenses";
 const VAT_RATE = 15;
 
 const BASE_CH: Record<string, string> = { cash: "نقدي", net: "شبكة", keeta: "كيتا", hunger: "هنقرستيشن", jahez: "جاهز", trans: "تحويل", refund: "مرتجع" };
-const fmt = (n: number) => (Math.round(n) ).toLocaleString("en-US");
+const fmt = (n: number) => (Math.round(n)).toLocaleString("en-US");
 const num = (v: any) => parseFloat(v) || 0;
-const readArr = (k: string): any[] => { try { return JSON.parse(localStorage.getItem(k) || "[]"); } catch { return []; } };
 
 const salaryMonthly = (s: any) => {
   const amt = num(s.amount); const cnt = s.count && String(s.count).trim() ? num(s.count) : (s.type === "daily" ? 30 : s.type === "weekly" ? 4 : 1);
@@ -68,19 +67,39 @@ export default function BranchDashboard() {
   const today = new Date().toISOString().slice(0, 10);
   const ym = today.slice(0, 7);
 
+  // ── بيانات الفرع من Supabase ──
+  const [salesRows, setSalesRows] = useState<any[]>([]);
+  const [purchRows, setPurchRows] = useState<any[]>([]);
+  const [feConfig, setFeConfig] = useState<any>({ salaries: [], items: [] });
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (bid == null) { setSalesRows([]); setPurchRows([]); setFeConfig({ salaries: [], items: [] }); return; }
+      const [s, p, fe] = await Promise.all([
+        fetchSalesWithMigration(bid),
+        fetchPurchasesWithMigration(bid),
+        getSettingWithMigration(bid, SETTING_KEYS.fixedExpenses, LOCAL_KEYS.FE_LKEY, { salaries: [], items: [] }),
+      ]);
+      if (!alive) return;
+      setSalesRows(s || []);
+      setPurchRows(p || []);
+      setFeConfig(fe || { salaries: [], items: [] });
+    })();
+    return () => { alive = false; };
+  }, [bid]);
+
   const d = useMemo(() => {
-    const sales = readArr(SALES_KEY).filter((e) => e.branchId === bid);
+    const sales = salesRows;
     const monthSalesRows = sales.filter((e) => (e.date || "").slice(0, 7) === ym);
     const todaySales = sales.filter((e) => e.date === today).reduce((s, e) => s + (e.gAct || 0), 0);
     const monthSales = monthSalesRows.reduce((s, e) => s + (e.gAct || 0), 0);
 
-    // قنوات الشهر
     const perCh: Record<string, number> = {};
     monthSalesRows.forEach((e) => Object.entries(e.perChannelActual || {}).forEach(([k, v]) => { perCh[k] = (perCh[k] || 0) + (v as number); }));
     const channels = Object.entries(perCh).filter(([, v]) => (v as number) > 0).sort((a, b) => (b[1] as number) - (a[1] as number)).slice(0, 4)
       .map(([id, v]) => ({ name: BASE_CH[id] || id, val: v as number }));
 
-    // آخر 7 أيام
     const trend: { day: string; val: number }[] = [];
     for (let i = 6; i >= 0; i--) {
       const dt = new Date(); dt.setDate(dt.getDate() - i);
@@ -90,16 +109,13 @@ export default function BranchDashboard() {
     }
     const trendMax = Math.max(1, ...trend.map((t) => t.val));
 
-    // مشتريات الشهر (صافي)
-    const monthPurch = readArr(PURCH_KEY).filter((e) => e.branchId === bid && (e.date || "").slice(0, 7) === ym).reduce((s, e) => s + ((e.subtotal ?? e.total) || 0), 0);
+    const monthPurch = purchRows.filter((e) => (e.date || "").slice(0, 7) === ym).reduce((s, e) => s + ((e.subtotal ?? e.total) || 0), 0);
 
-    // مصروفات ثابتة
-    const fe = (() => { try { return JSON.parse(localStorage.getItem(FE_KEY) || "{}")[String(bid)] || { salaries: [], items: [] }; } catch { return { salaries: [], items: [] }; } })();
+    const fe = feConfig || { salaries: [], items: [] };
     const salaries = (fe.salaries || []).reduce((s: number, r: any) => s + salaryMonthly(r), 0);
     const itemsTotal = (fe.items || []).reduce((s: number, r: any) => s + num(r.amount), 0);
     const fixedMonthly = salaries + itemsTotal;
 
-    // تعادل وربح
     const netSales = monthSales / (1 + VAT_RATE / 100);
     const varPct = monthSales > 0 ? monthPurch / netSales : 0;
     const cm = 1 - varPct;
@@ -107,12 +123,11 @@ export default function BranchDashboard() {
     const beAchievement = breakEven > 0 ? (netSales / breakEven) * 100 : 0;
     const profit = netSales - monthPurch - fixedMonthly;
 
-    // تنبيهات
     const discrepancies = monthSalesRows.filter((e) => Math.abs(e.err || 0) > 5).length;
     const hasData = sales.length > 0;
 
     return { todaySales, monthSales, monthPurch, fixedMonthly, netSales, breakEven, beAchievement, profit, channels, trend, trendMax, discrepancies, hasData };
-  }, [bid, today, ym]);
+  }, [salesRows, purchRows, feConfig, today, ym]);
 
   const chTotal = d.channels.reduce((s, c) => s + c.val, 0) || 1;
 
@@ -133,8 +148,8 @@ export default function BranchDashboard() {
           .gte("orders.created_at", monthStart)
           .limit(2000);
         const [inc, out] = await Promise.all([
-          base().eq("orders.to_shop_id", bid),   // وارد للفرع
-          base().eq("orders.from_shop_id", bid), // صادر من الفرع
+          base().eq("orders.to_shop_id", bid),
+          base().eq("orders.from_shop_id", bid),
         ]);
         if (!alive) return;
         setInItems(aggItems(inc.data || []));

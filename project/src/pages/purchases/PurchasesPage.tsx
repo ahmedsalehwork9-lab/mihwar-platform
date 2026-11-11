@@ -5,7 +5,7 @@
 // • الفرع يُؤخذ تلقائيًا من حساب المستخدم.
 // • إضافة الأصناف بطريقتين: صنف صنف (يدوي)، أو دفعة واحدة من ملف إكسيل.
 // • تقرير مشتريات بفلتر تاريخ + تصدير PDF/Excel بتصميم تقارير محور،
-//   مع نسبة كل تصنيف من إجمالي المشتريات في نهاية التقرير.
+//   مع نسبة كل تصنيف من إجمالي المشتريات، وتنبيه تغيّر أسعار الأصناف.
 // • التخزين محلي (localStorage) مؤقتًا — الربط بـ Supabase لاحقًا.
 // =============================================================
 
@@ -22,6 +22,15 @@ type Purchase = {
   items: PItem[]; total: number;
 };
 
+// سجل تغيّر سعر صنف واحد عبر الفترة
+type PriceChange = {
+  name: string; unit: string;
+  seq: number[];            // تسلسل الأسعار بالترتيب الزمني (بدون تكرار متتالٍ)
+  first: number; last: number; minP: number; maxP: number;
+  change: number;           // % التغيّر من أول سعر لآخر سعر
+  history: { date: string; supplier: string; price: number; qty: number }[];
+};
+
 const CAT_OPTS = ["مواد خام", "مشروبات", "مخبوزات", "سلطة", "سندوتشات", "تغليف وتعبئة", "مستهلكات", "صيانة", "أخرى"];
 const UNIT_OPTS = ["قطعة", "كجم", "جرام", "لتر", "مل", "كرتون", "علبة", "كيس", "حبة", "باكت", "صينية"];
 const PAY_OPTS = ["نقدي", "شبكة (مدى)", "آجل (على الحساب)", "تحويل بنكي"];
@@ -30,6 +39,8 @@ const VAT_RATE = 15; // ضريبة القيمة المضافة (السعودية
 const STORAGE_KEY = "mihwar_purchases";
 const fmt = (n: number) => (Math.round(n * 100) / 100).toLocaleString("en-US", { maximumFractionDigits: 2 });
 const num = (v: string) => parseFloat(v) || 0;
+// توحيد اسم الصنف للمطابقة (يتجاهل المسافات الزائدة والهمزات والتشكيل)
+const normName = (s: string) => (s || "").trim().replace(/\s+/g, " ").replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").replace(/[ً-ْ]/g, "").toLowerCase();
 const newItem = (): PItem => ({ id: Date.now() + Math.random(), name: "", category: CAT_OPTS[0], qty: "", unit: UNIT_OPTS[0], price: "" });
 
 function loadAll(): Purchase[] { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); } catch { return []; } }
@@ -79,6 +90,18 @@ export default function PurchasesPage() {
     const set = new Set<string>();
     loadAll().forEach((p) => p.supplier && set.add(p.supplier));
     return [...set];
+  }, [reloadKey, tab]);
+
+  // اقتراح أسماء الأصناف من الفواتير السابقة (يضمن إعادة استخدام نفس الاسم)
+  const itemSuggest = useMemo(() => {
+    const map = new Map<string, string>(); // مفتاح موحّد -> أول تهجئة ظهرت
+    loadAll().forEach((p) => p.items.forEach((it) => {
+      const n = (it.name || "").trim();
+      if (!n) return;
+      const k = normName(n);
+      if (!map.has(k)) map.set(k, n);
+    }));
+    return [...map.values()].sort((a, b) => a.localeCompare(b, "ar"));
   }, [reloadKey, tab]);
 
   // ── تنزيل نموذج إكسيل ──
@@ -191,7 +214,36 @@ export default function PurchasesPage() {
       catTotals[it.category || "أخرى"] = (catTotals[it.category || "أخرى"] || 0) + t;
     }));
     const cats = Object.entries(catTotals).sort((a, b) => b[1] - a[1]);
-    return { rows: all, total, totalVat, count, avg, cats };
+
+    // ── تتبّع تغيّر أسعار الأصناف ──
+    // نجمّع كل مرّة اشتُري فيها الصنف (بالاسم) عبر الفواتير مرتّبة زمنيًا
+    const itemMap: Record<string, { name: string; unit: string; hist: { date: string; supplier: string; price: number; qty: number }[] }> = {};
+    all.forEach((e) => e.items.forEach((it) => {
+      const nm = (it.name || "").trim();
+      const price = num(it.price);
+      if (!nm || price <= 0) return;
+      const key = normName(nm);
+      if (!key) return;
+      if (!itemMap[key]) itemMap[key] = { name: nm, unit: it.unit || "", hist: [] };
+      itemMap[key].hist.push({ date: e.date, supplier: e.supplier, price, qty: num(it.qty) });
+    }));
+    const priceChanges: PriceChange[] = Object.values(itemMap).map((g) => {
+      const history = g.hist.slice().sort((a, b) => a.date.localeCompare(b.date));
+      const prices = history.map((x) => x.price);
+      // تسلسل الأسعار مع دمج التكرار المتتالي
+      const seq: number[] = [];
+      history.forEach((x) => { const r = Math.round(x.price * 100) / 100; if (seq[seq.length - 1] !== r) seq.push(r); });
+      const first = prices[0];
+      const last = prices[prices.length - 1];
+      const minP = Math.min(...prices);
+      const maxP = Math.max(...prices);
+      const change = first > 0 ? ((last - first) / first) * 100 : 0;
+      return { name: g.name, unit: g.unit, seq, first, last, minP, maxP, change, history };
+    })
+      .filter((x) => x.seq.length > 1)                 // فقط الأصناف التي تغيّر سعرها
+      .sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
+
+    return { rows: all, total, totalVat, count, avg, cats, priceChanges };
   }, [from, to, reloadKey, tab, ownedShopId]);
 
   const delPurchase = (id: string) => {
@@ -257,13 +309,33 @@ export default function PurchasesPage() {
           </tr>`).join("")}
         </table>
       </div>` : "";
+    // تنبيه تغيّر أسعار الأصناف (الأصناف التي اشتُريت بأكثر من سعر)
+    const priceBlock = report.priceChanges.length ? `
+      <div style="padding:4px 20px 14px;">
+        <div style="font-size:13px;font-weight:800;color:#0f1b2b;margin:6px 0;">تنبيه تغيّر أسعار الأصناف (${report.priceChanges.length} صنف)</div>
+        <table style="border-collapse:collapse;width:100%;">
+          <tr>${["الصنف", "تسلسل الأسعار", "أول سعر", "آخر سعر", "أعلى سعر", "% التغيّر"].map((h) => `<th style="border:1px solid #d1d5db;padding:6px 8px;background:#14304d;color:#fff;font-size:11px;">${h}</th>`).join("")}</tr>
+          ${report.priceChanges.map((pc) => {
+            const up = pc.change > 0;
+            return `<tr>
+              <td style="border:1px solid #e5e7eb;padding:5px 8px;font-size:11px;text-align:right;">${pc.name}${pc.unit ? ` <span style="color:#9ca3af;">(${pc.unit})</span>` : ""}</td>
+              <td style="border:1px solid #e5e7eb;padding:5px 8px;font-size:11px;text-align:center;direction:ltr;">${pc.seq.map(fmt).join(" → ")}</td>
+              <td style="border:1px solid #e5e7eb;padding:5px 8px;font-size:11px;text-align:center;">${fmt(pc.first)}</td>
+              <td style="border:1px solid #e5e7eb;padding:5px 8px;font-size:11px;text-align:center;font-weight:800;">${fmt(pc.last)}</td>
+              <td style="border:1px solid #e5e7eb;padding:5px 8px;font-size:11px;text-align:center;">${fmt(pc.maxP)}</td>
+              <td style="border:1px solid #e5e7eb;padding:5px 8px;font-size:11px;text-align:center;font-weight:800;color:${up ? "#dc2626" : "#15a06a"};">${(up ? "+" : "") + pc.change.toFixed(1)}%</td>
+            </tr>`;
+          }).join("")}
+        </table>
+        <div style="margin-top:4px;font-size:10px;color:#9ca3af;">يعرض فقط الأصناف التي اشتُريت بأكثر من سعر خلال الفترة (السعر بدون ضريبة = صافي التكلفة).</div>
+      </div>` : "";
     const table = `<div style="padding:6px 20px 4px;"><table style="border-collapse:collapse;width:100%;"><thead>${thead}</thead><tbody>${body}${totalRow}</tbody></table></div>`;
     const footer = `
       <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 20px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:10px;">
         <div>تم إنشاء هذا التقرير آليًا من صفحة المشتريات</div>
         <div>منصة محور — MIHWAR B2B Marketplace</div>
       </div>`;
-    return `<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;color:#1f2937;background:#fff;">${header}${cards}${table}${catBlock}${footer}</div>`;
+    return `<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;color:#1f2937;background:#fff;">${header}${cards}${table}${catBlock}${priceBlock}${footer}</div>`;
   };
   const exportPDF = () => {
     const w = window.open("", "_blank", "width=1000,height=900"); if (!w) return;
@@ -354,11 +426,12 @@ export default function PurchasesPage() {
                   </tr>
                 </thead>
                 <tbody>
+                  <datalist id="itemList">{itemSuggest.map((n) => <option key={n} value={n} />)}</datalist>
                   <datalist id="catList">{CAT_OPTS.map((c) => <option key={c} value={c} />)}</datalist>
                   <datalist id="unitList">{UNIT_OPTS.map((u) => <option key={u} value={u} />)}</datalist>
                   {items.map((r) => (
                     <tr key={r.id} className="border-t border-slate-800">
-                      <td className="px-2 py-1.5"><input value={r.name} onChange={(e) => editItem(r.id, { name: e.target.value })} placeholder="اسم الصنف" className="w-full min-w-[150px] bg-[#0b1220] border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs" /></td>
+                      <td className="px-2 py-1.5"><input list="itemList" value={r.name} onChange={(e) => editItem(r.id, { name: e.target.value })} placeholder="اسم الصنف" className="w-full min-w-[150px] bg-[#0b1220] border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs" /></td>
                       <td className="px-2 py-1.5"><input list="catList" value={r.category} onChange={(e) => editItem(r.id, { category: e.target.value })} className="w-full min-w-[110px] bg-[#0b1220] border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs" /></td>
                       <td className="px-2 py-1.5"><input type="number" step="0.01" value={r.qty} onChange={(e) => editItem(r.id, { qty: e.target.value })} placeholder="0" className="w-20 bg-[#0b1220] border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr]" /></td>
                       <td className="px-2 py-1.5"><input list="unitList" value={r.unit} onChange={(e) => editItem(r.id, { unit: e.target.value })} className="w-20 bg-[#0b1220] border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center text-xs" /></td>
@@ -448,6 +521,38 @@ export default function PurchasesPage() {
               </div>
             )}
           </div>
+
+          {/* تنبيه تغيّر أسعار الأصناف — الأصناف التي اشتُريت بأكثر من سعر */}
+          {report.priceChanges.length > 0 && (
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden mb-4">
+              <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2">
+                <span className="w-1 h-4 rounded bg-amber-500" />
+                <h2 className="text-sm font-bold text-white">تنبيه تغيّر أسعار الأصناف</h2>
+                <span className="text-[11px] text-amber-400 font-bold mr-auto">{report.priceChanges.length} صنف تغيّر سعره</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse" style={{ minWidth: 640 }}>
+                  <thead><tr>{["الصنف", "تسلسل الأسعار", "أول سعر", "آخر سعر", "أعلى سعر", "% التغيّر"].map((h) => <th key={h} className="text-[10px] px-2 py-2.5 bg-[#0b1220] text-slate-500 uppercase whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
+                  <tbody>
+                    {report.priceChanges.map((pc) => {
+                      const up = pc.change > 0;
+                      return (
+                        <tr key={pc.name} className="hover:bg-white/[0.02]">
+                          <td className="px-2 py-2.5 text-[13px] text-right font-semibold text-slate-100 border-b border-slate-800">{pc.name}{pc.unit ? <span className="text-slate-500 text-[11px]"> ({pc.unit})</span> : null}</td>
+                          <td className="px-2 py-2.5 text-[12px] text-center font-mono text-slate-300 [direction:ltr] border-b border-slate-800 whitespace-nowrap">{pc.seq.map((x) => fmt(x)).join(" → ")}</td>
+                          <td className="px-2 py-2.5 text-[13px] text-center font-mono text-slate-200 [direction:ltr] border-b border-slate-800">{fmt(pc.first)}</td>
+                          <td className="px-2 py-2.5 text-[13px] text-center font-mono font-extrabold text-white [direction:ltr] border-b border-slate-800">{fmt(pc.last)}</td>
+                          <td className="px-2 py-2.5 text-[13px] text-center font-mono text-slate-200 [direction:ltr] border-b border-slate-800">{fmt(pc.maxP)}</td>
+                          <td className={`px-2 py-2.5 text-[13px] text-center font-mono font-extrabold [direction:ltr] border-b border-slate-800 ${up ? "text-red-400" : "text-emerald-400"}`}>{(up ? "+" : "") + pc.change.toFixed(1)}%</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className="px-4 py-2 text-[11px] text-slate-500">يعرض فقط الأصناف التي اشتُريت بأكثر من سعر خلال الفترة. أحمر = زيادة، أخضر = نقص.</div>
+            </div>
+          )}
 
           {/* نسبة كل تصنيف */}
           {report.cats.length > 0 && (

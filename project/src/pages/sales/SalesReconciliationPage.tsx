@@ -9,6 +9,8 @@
 // • التخزين محلي (localStorage) مؤقتًا، والتقرير يُبنى من الأيام المحفوظة
 //   للفرع الحالي فقط، مع فلتر مدى تاريخ وتصدير PDF/Excel.
 //   الربط بـ Supabase لاحقًا (نفس شكل البيانات).
+// • الجدول داخل محور كما هو (أرقام واضحة)، وأعمدة قبل/الضريبة/شامل
+//   الضريبة (ض.ق.م 15%) تظهر في ملف الـ PDF/Excel المُصدَّر فقط.
 // =============================================================
 
 import { useMemo, useState, useEffect } from "react";
@@ -54,8 +56,10 @@ type SavedEntry = {
 };
 
 const STORAGE_KEY = "mihwar_sales_reconciliation";
+const VAT_RATE = 15; // ضريبة القيمة المضافة % (تظهر في الـ PDF)
 const fmt = (n: number) => (Math.round(n * 100) / 100).toLocaleString("en-US", { maximumFractionDigits: 2 });
 const num = (v: string) => parseFloat(v) || 0;
+const netOf = (gross: number) => gross / (1 + VAT_RATE / 100); // قبل الضريبة
 const newReason = (): Reason => ({ id: Date.now() + Math.random(), shift: "", employees: "", reason: REASON_OPTS[0], amount: "", note: "" });
 
 function loadAll(): SavedEntry[] { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); } catch { return []; } }
@@ -228,7 +232,7 @@ export default function SalesReconciliationPage() {
   const grandErr = report.grandSystem !== 0 ? (grandDiff / report.grandSystem) * 100 : 0;
   const pctOfTotal = (v: number) => (report.grandActual > 0 ? (v / report.grandActual) * 100 : 0);
 
-  // ── تصدير ──
+  // ── تصدير (الـ PDF/Excel يحتوي أعمدة قبل/الضريبة/شامل الضريبة) ──
   const buildExportHTML = () => {
     const rows = report.rows, cols = report.cols;
     const n = rows.length;
@@ -236,6 +240,8 @@ export default function SalesReconciliationPage() {
     const grandSystem = rows.reduce((s, e) => s + e.gSys, 0);
     const grandDiff = grandActual - grandSystem;
     const grandErr = grandSystem !== 0 ? (grandDiff / grandSystem) * 100 : 0;
+    const grandBefore = netOf(grandActual);
+    const grandVat = grandActual - grandBefore;
     const colTotals: Record<string, number> = {};
     cols.forEach((c) => { colTotals[c.id] = rows.reduce((s, e) => s + (e.perChannelActual[c.id] || 0), 0); });
     const pct = (v: number) => (grandActual > 0 ? (v / grandActual) * 100 : 0);
@@ -266,22 +272,28 @@ export default function SalesReconciliationPage() {
       <div style="display:flex;gap:10px;padding:14px 20px;background:#f8fafc;">
         ${card("الفرع", branch || "—")}
         ${card("عدد الأيام", String(n))}
-        ${card("إجمالي التحصيل الفعلي", fmt(grandActual) + " ر.س", true)}
-        ${card("متوسط اليوم", fmt(report.avg) + " ر.س")}
+        ${card("الإجمالي قبل الضريبة", fmt(grandBefore) + " ر.س")}
+        ${card("ضريبة القيمة المضافة", fmt(grandVat) + " ر.س")}
+        ${card("شامل الضريبة", fmt(grandActual) + " ر.س", true)}
       </div>`;
 
-    const ths = ["التاريخ", ...cols.map((c) => c.nm), "الفعلي", "السيستم", "الفرق", "الخطأ %", "الحالة", "ملاحظات"];
+    const ths = ["التاريخ", ...cols.map((c) => c.nm), "الفعلي", "السيستم", "الفرق", "قبل الضريبة", "الضريبة", "شامل الضريبة", "الخطأ %", "الحالة", "ملاحظات"];
     const thead = `<tr>${ths.map((h) => `<th style="border:1px solid #d1d5db;padding:7px 8px;background:#14304d;color:#fff;font-size:11px;font-weight:700;white-space:nowrap;">${h}</th>`).join("")}</tr>`;
 
     const body = rows.map((e, idx) => {
       const warn = Math.abs(e.err) > 5;
       const bg = idx % 2 ? "#ffffff" : "#f9fafb";
+      const before = netOf(e.gAct);
+      const vat = e.gAct - before;
       const cells = [
         e.date,
         ...cols.map((c) => (e.perChannelActual[c.id] ? fmt(e.perChannelActual[c.id]) : "—")),
         `<b style="color:#15a06a;">${fmt(e.gAct)}</b>`,
         fmt(e.gSys),
         (e.net > 0 ? "+" : "") + fmt(e.net),
+        fmt(before),
+        `<span style="color:#b45309;">${fmt(vat)}</span>`,
+        `<b style="color:#0f1b2b;">${fmt(e.gAct)}</b>`,
         (e.err > 0 ? "+" : "") + e.err.toFixed(1) + "%",
         warn ? "⚠️ مراجعة" : "OK",
         (e.note || "").replace(/</g, "&lt;"),
@@ -293,13 +305,14 @@ export default function SalesReconciliationPage() {
 
     // صف الإجماليات
     const totalCells = ["الإجمالي", ...cols.map((c) => fmt(colTotals[c.id])), fmt(grandActual), fmt(grandSystem),
-      (grandDiff > 0 ? "+" : "") + fmt(grandDiff), (grandErr > 0 ? "+" : "") + grandErr.toFixed(1) + "%", "", ""];
+      (grandDiff > 0 ? "+" : "") + fmt(grandDiff), fmt(grandBefore), fmt(grandVat), fmt(grandActual),
+      (grandErr > 0 ? "+" : "") + grandErr.toFixed(1) + "%", "", ""];
     const totalRow = `<tr>${totalCells.map((v, i) =>
       `<td style="border:1px solid #cbd5e1;padding:6px 8px;font-size:11px;font-weight:800;text-align:${i === 0 ? "right" : "center"};background:#eef2f7;color:#0f1b2b;">${v}</td>`
     ).join("")}</tr>`;
 
     // صف نسبة كل قناة من إجمالي المبيعات
-    const pctCells = ["نسبة القناة %", ...cols.map((c) => pct(colTotals[c.id]).toFixed(1) + "%"), "100%", "", "", "", "", ""];
+    const pctCells = ["نسبة القناة %", ...cols.map((c) => pct(colTotals[c.id]).toFixed(1) + "%"), "100%", "", "", "", "", "", "", ""];
     const pctRow = `<tr>${pctCells.map((v, i) =>
       `<td style="border:1px solid #cbd5e1;padding:6px 8px;font-size:11px;font-weight:800;text-align:${i === 0 ? "right" : "center"};background:#15a06a;color:#ffffff;">${v}</td>`
     ).join("")}</tr>`;
@@ -313,6 +326,7 @@ export default function SalesReconciliationPage() {
         <div style="margin-top:10px;font-size:11px;color:#374151;">
           أعلى يوم: <b style="color:#15a06a;">${fmt(report.max)}</b> · المتوسط: <b>${fmt(report.avg)}</b> · أقل يوم: <b style="color:#dc2626;">${fmt(report.min)}</b> · عدد الأيام: <b>${n}</b>
         </div>
+        <div style="margin-top:4px;font-size:10px;color:#9ca3af;">«شامل الضريبة» = التحصيل الفعلي · «قبل الضريبة» = الفعلي ÷ ${(1 + VAT_RATE / 100).toFixed(2)} · الضريبة ${VAT_RATE}%</div>
       </div>`;
 
     const footer = `
@@ -498,39 +512,39 @@ export default function SalesReconciliationPage() {
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse" style={{ minWidth: 700 + report.cols.length * 80 }}>
-                  <thead><tr>{["التاريخ", ...report.cols.map((c) => c.nm), "الفعلي", "السيستم", "الفرق", "الخطأ %", "الحالة", "ملاحظات"].map((h) => <th key={h} className="text-[10px] px-2 py-2.5 bg-[#0b1220] text-slate-500 uppercase whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
+                  <thead><tr>{["التاريخ", ...report.cols.map((c) => c.nm), "الفعلي", "السيستم", "الفرق", "الخطأ %", "الحالة", "ملاحظات"].map((h) => <th key={h} className="text-[11px] px-2 py-2.5 bg-[#0b1220] text-slate-300 font-bold uppercase whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
                   <tbody>
                     {report.rows.map((e) => {
                       const warn = Math.abs(e.err) > 5;
-                      const dc = e.net > 0 ? "text-emerald-400" : e.net < 0 ? "text-red-400" : "text-slate-500";
+                      const dc = e.net > 0 ? "text-emerald-400" : e.net < 0 ? "text-red-400" : "text-slate-400";
                       return (
                         <tr key={e.date} className={warn ? "bg-amber-500/[0.07]" : "bg-emerald-500/[0.04]"}>
-                          <td className="px-2 py-2 text-xs text-right font-mono [direction:ltr] whitespace-nowrap border-b border-slate-800">{e.date.slice(5)}</td>
-                          {report.cols.map((c) => <td key={c.id} className="px-2 py-2 text-xs text-center font-mono [direction:ltr] border-b border-slate-800">{e.perChannelActual[c.id] ? fmt(e.perChannelActual[c.id]) : "—"}</td>)}
-                          <td className="px-2 py-2 text-xs text-center font-mono font-bold text-amber-300 [direction:ltr] border-b border-slate-800">{fmt(e.gAct)}</td>
-                          <td className="px-2 py-2 text-xs text-center font-mono font-bold text-white [direction:ltr] border-b border-slate-800">{fmt(e.gSys)}</td>
-                          <td className={`px-2 py-2 text-xs text-center font-mono font-bold [direction:ltr] border-b border-slate-800 ${dc}`}>{e.net === 0 ? "—" : (e.net > 0 ? "+" : "") + fmt(e.net)}</td>
-                          <td className={`px-2 py-2 text-xs text-center font-mono [direction:ltr] border-b border-slate-800 ${dc}`}>{(e.err > 0 ? "+" : "") + e.err.toFixed(1)}%</td>
-                          <td className={`px-2 py-2 text-xs text-center font-extrabold border-b border-slate-800 ${warn ? "text-amber-400" : "text-emerald-400"}`}>{warn ? "⚠️" : "OK"}</td>
-                          <td className="px-2 py-2 text-[11px] text-right text-slate-400 max-w-[240px] border-b border-slate-800">{e.note || ""}</td>
+                          <td className="px-2 py-2.5 text-[13px] text-right font-mono font-semibold text-slate-100 [direction:ltr] whitespace-nowrap border-b border-slate-800">{e.date.slice(5)}</td>
+                          {report.cols.map((c) => <td key={c.id} className="px-2 py-2.5 text-[13px] text-center font-mono font-semibold text-slate-100 [direction:ltr] border-b border-slate-800">{e.perChannelActual[c.id] ? fmt(e.perChannelActual[c.id]) : "—"}</td>)}
+                          <td className="px-2 py-2.5 text-[13px] text-center font-mono font-extrabold text-amber-300 [direction:ltr] border-b border-slate-800">{fmt(e.gAct)}</td>
+                          <td className="px-2 py-2.5 text-[13px] text-center font-mono font-extrabold text-white [direction:ltr] border-b border-slate-800">{fmt(e.gSys)}</td>
+                          <td className={`px-2 py-2.5 text-[13px] text-center font-mono font-extrabold [direction:ltr] border-b border-slate-800 ${dc}`}>{e.net === 0 ? "—" : (e.net > 0 ? "+" : "") + fmt(e.net)}</td>
+                          <td className={`px-2 py-2.5 text-[13px] text-center font-mono font-bold [direction:ltr] border-b border-slate-800 ${dc}`}>{(e.err > 0 ? "+" : "") + e.err.toFixed(1)}%</td>
+                          <td className={`px-2 py-2.5 text-xs text-center font-extrabold border-b border-slate-800 ${warn ? "text-amber-400" : "text-emerald-400"}`}>{warn ? "⚠️" : "OK"}</td>
+                          <td className="px-2 py-2.5 text-[12px] text-right text-slate-300 max-w-[240px] border-b border-slate-800">{e.note || ""}</td>
                         </tr>
                       );
                     })}
                   </tbody>
                   <tfoot>
                     <tr className="bg-[#0b1220] font-bold">
-                      <td className="px-2 py-2.5 text-xs text-right text-slate-200 whitespace-nowrap border-t border-slate-600">الإجمالي</td>
-                      {report.cols.map((c) => <td key={c.id} className="px-2 py-2.5 text-xs text-center font-mono text-slate-200 [direction:ltr] border-t border-slate-600">{fmt(report.colTotals[c.id] || 0)}</td>)}
-                      <td className="px-2 py-2.5 text-xs text-center font-mono text-emerald-400 [direction:ltr] border-t border-slate-600">{fmt(report.grandActual)}</td>
-                      <td className="px-2 py-2.5 text-xs text-center font-mono text-white [direction:ltr] border-t border-slate-600">{fmt(report.grandSystem)}</td>
-                      <td className="px-2 py-2.5 text-xs text-center font-mono [direction:ltr] border-t border-slate-600">{(grandDiff > 0 ? "+" : "") + fmt(grandDiff)}</td>
-                      <td className="px-2 py-2.5 text-xs text-center font-mono [direction:ltr] border-t border-slate-600">{(grandErr > 0 ? "+" : "") + grandErr.toFixed(1)}%</td>
+                      <td className="px-2 py-2.5 text-[13px] text-right text-slate-100 font-extrabold whitespace-nowrap border-t border-slate-600">الإجمالي</td>
+                      {report.cols.map((c) => <td key={c.id} className="px-2 py-2.5 text-[13px] text-center font-mono font-bold text-slate-100 [direction:ltr] border-t border-slate-600">{fmt(report.colTotals[c.id] || 0)}</td>)}
+                      <td className="px-2 py-2.5 text-[13px] text-center font-mono font-extrabold text-emerald-400 [direction:ltr] border-t border-slate-600">{fmt(report.grandActual)}</td>
+                      <td className="px-2 py-2.5 text-[13px] text-center font-mono font-extrabold text-white [direction:ltr] border-t border-slate-600">{fmt(report.grandSystem)}</td>
+                      <td className="px-2 py-2.5 text-[13px] text-center font-mono font-bold text-slate-100 [direction:ltr] border-t border-slate-600">{(grandDiff > 0 ? "+" : "") + fmt(grandDiff)}</td>
+                      <td className="px-2 py-2.5 text-[13px] text-center font-mono font-bold text-slate-100 [direction:ltr] border-t border-slate-600">{(grandErr > 0 ? "+" : "") + grandErr.toFixed(1)}%</td>
                       <td className="border-t border-slate-600" /><td className="border-t border-slate-600" />
                     </tr>
                     <tr className="bg-emerald-600/15">
-                      <td className="px-2 py-2.5 text-xs text-right font-extrabold text-emerald-300 whitespace-nowrap">نسبة القناة %</td>
-                      {report.cols.map((c) => <td key={c.id} className="px-2 py-2.5 text-xs text-center font-mono font-bold text-emerald-300 [direction:ltr]">{pctOfTotal(report.colTotals[c.id] || 0).toFixed(1)}%</td>)}
-                      <td className="px-2 py-2.5 text-xs text-center font-mono font-bold text-emerald-300 [direction:ltr]">100%</td>
+                      <td className="px-2 py-2.5 text-[13px] text-right font-extrabold text-emerald-300 whitespace-nowrap">نسبة القناة %</td>
+                      {report.cols.map((c) => <td key={c.id} className="px-2 py-2.5 text-[13px] text-center font-mono font-bold text-emerald-300 [direction:ltr]">{pctOfTotal(report.colTotals[c.id] || 0).toFixed(1)}%</td>)}
+                      <td className="px-2 py-2.5 text-[13px] text-center font-mono font-bold text-emerald-300 [direction:ltr]">100%</td>
                       <td /><td /><td /><td /><td />
                     </tr>
                   </tfoot>

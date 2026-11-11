@@ -1,0 +1,8 @@
+[33mcommit c2a8318143edba2c0fdfa0607718f8aec8ee2733[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m
+Author: Ahmed Saleh <ahmedsalehwork9@gmail.com>
+Date:   Wed Jun 3 19:15:41 2026 +0300
+
+    Apply Inventory Orders Alerts mobile fixes
+
+ project/src/context/NotificationContext.tsx | 80 [32m+++++++++++++++++++++++++++++[m
+ 1 file changed, 80 insertions(+)

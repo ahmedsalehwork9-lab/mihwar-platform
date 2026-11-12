@@ -131,7 +131,7 @@ export default function ReportsHubPage({ setPage }: Props) {
                 ) : (
                   <span className="text-[11px] text-slate-500 font-bold pt-1">التصدير المباشر قريبًا —</span>
                 )}
-                <button onClick={() => setPage(c.id)}
+                <button onClick={() => { try { sessionStorage.setItem("mihwar_open_tab", c.id); } catch (e) {} setPage(c.id); }}
                   className="px-4 py-2 rounded-xl bg-slate-800/60 border border-slate-700 text-slate-300 font-bold text-xs mr-auto">
                   فتح الصفحة ←
                 </button>

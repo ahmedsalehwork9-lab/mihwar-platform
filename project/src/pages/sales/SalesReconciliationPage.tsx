@@ -94,6 +94,7 @@ export default function SalesReconciliationPage() {
   const removeStaff = (n: string) => persistStaff(staff.filter((x) => x !== n));
 
   const [tab, setTab] = useState<"entry" | "report">("entry");
+  useEffect(() => { try { if (sessionStorage.getItem("mihwar_open_tab") === "sales-reconciliation") { setTab("report"); sessionStorage.removeItem("mihwar_open_tab"); } } catch (e) {} }, []);
 
   // ── كل تسويات الفرع (من Supabase) ──
   const [allEntries, setAllEntries] = useState<SavedEntry[]>([]);

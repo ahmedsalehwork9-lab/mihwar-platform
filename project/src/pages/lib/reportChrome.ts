@@ -14,7 +14,7 @@ export const SUPPORT_NAME = "ACC Ahmed Saleh";
 export function logoBox(logoUrl?: string | null): string {
   const u = (logoUrl || "").trim();
   if (u && /^https?:\/\//i.test(u)) {
-    return `<img src="${u}" alt="logo" style="width:46px;height:46px;border-radius:11px;object-fit:cover;background:#fff;border:1px solid rgba(255,255,255,0.15);" />`;
+    return `<img src="${u}" alt="logo" style="width:150px;height:52px;border-radius:10px;object-fit:contain;background:#fff;padding:4px 8px;box-sizing:border-box;display:block;" />`;
   }
   return `<div style="width:42px;height:42px;border-radius:11px;background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.4);color:#34d399;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;">م</div>`;
 }

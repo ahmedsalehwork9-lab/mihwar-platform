@@ -238,7 +238,7 @@ const NavButton = ({
 // ══════════════════════════════════════════════════════════════════════
 
 export default function Layout({ page, setPage, children }: LayoutProps) {
-  const { signOut, isAdmin, ownedShopId, permissions } = useAuth();
+  const { signOut, isAdmin, ownedShopId, permissions, branches } = useAuth();
   const { lang, setLang, t, isRTL }       = useLang();
   const [sidebarOpen, setSidebarOpen]     = useState(false);
   const [showMore,    setShowMore]         = useState(false);
@@ -583,7 +583,7 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
               <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               {isAdmin
                 ? t('System Admin', 'مدير النظام')
-                : t('Shop User', 'مستخدم المحل')}
+                : ((branches && branches.length > 1) ? t('Group Manager', 'مدير المجموعة') : t('Shop User', 'مستخدم الفرع'))}
             </div>
           </div>
         </header>

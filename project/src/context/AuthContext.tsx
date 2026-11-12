@@ -69,13 +69,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const getInitialSession = async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
-
       setSession(session);
       setUser(session?.user ?? null);
-
-      if (session?.user) {
-        await loadAll(session.user.id);
-      }
+      if (session?.user) await loadAll(session.user.id);
     } catch (err) {
       console.error("SESSION ERROR", err);
     } finally {
@@ -112,21 +108,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const perms = (prof as any)?.page_permissions;
       setPermissions(Array.isArray(perms) && perms.length > 0 ? perms : null);
 
-      // 2) قائمة الفروع
+      // 2) قائمة الفروع — المصدر الأساسي دالة RPC محصّنة ضد RLS
       let list: Branch[] = [];
-      if (admin) {
-        // الأدمن يصل لكل الفروع
-        const { data } = await supabase.from("shops").select("id, shop_name").order("id");
-        list = (data || []).map((s: any) => ({ id: Number(s.id), name: s.shop_name || ("فرع " + s.id) }));
+      const { data: br, error: rpcErr } = await supabase.rpc("my_branches");
+      if (!rpcErr && Array.isArray(br)) {
+        list = br.map((r: any) => ({ id: Number(r.id), name: r.name || ("فرع " + r.id) }));
       } else {
-        // الفروع التي المستخدم مالكها (owner_id)
-        const { data: owned } = await supabase.from("shops").select("id, shop_name").eq("owner_id", userId).order("id");
-        list = (owned || []).map((s: any) => ({ id: Number(s.id), name: s.shop_name || ("فرع " + s.id) }));
-        // + فرعه الثابت من ملفه الشخصي (لو مش ضمن القائمة)
-        const storeId = (prof as any)?.store_id;
-        if (storeId && !list.some((b) => b.id === Number(storeId))) {
-          const { data: sb } = await supabase.from("shops").select("id, shop_name").eq("id", storeId).maybeSingle();
-          if (sb) list.push({ id: Number((sb as any).id), name: (sb as any).shop_name || ("فرع " + (sb as any).id) });
+        // احتياطي لو الدالة لسه متعملتش بعد
+        if (admin) {
+          const { data } = await supabase.from("shops").select("id, shop_name").order("id");
+          list = (data || []).map((s: any) => ({ id: Number(s.id), name: s.shop_name || ("فرع " + s.id) }));
+        } else {
+          const { data: owned } = await supabase.from("shops").select("id, shop_name").eq("owner_id", userId).order("id");
+          list = (owned || []).map((s: any) => ({ id: Number(s.id), name: s.shop_name || ("فرع " + s.id) }));
+          const storeId = (prof as any)?.store_id;
+          if (storeId && !list.some((b) => b.id === Number(storeId))) {
+            const { data: sb } = await supabase.from("shops").select("id, shop_name").eq("id", storeId).maybeSingle();
+            if (sb) list.push({ id: Number((sb as any).id), name: (sb as any).shop_name || ("فرع " + (sb as any).id) });
+          }
         }
       }
 
@@ -158,16 +157,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider
       value={{
-        user,
-        session,
-        ownedShopId,
-        branches,
-        setActiveBranchId,
-        role,
-        isAdmin,
-        permissions,
-        loading,
-        signOut,
+        user, session, ownedShopId, branches, setActiveBranchId,
+        role, isAdmin, permissions, loading, signOut,
       }}
     >
       {children}

@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { supabase } from './lib/supabase';
 import { useLang } from '../context/LanguageContext';
+import OrgAdminsPanel from '../components/OrgAdminsPanel';
 import {
   Building2,
   RefreshCw,
@@ -629,6 +630,8 @@ function DetailsDrawer({ org, allGroups, onClose, onRefresh, t, isRTL, locale }:
               )}
             </div>
           </div>
+
+          <OrgAdminsPanel organizationId={org.id} t={t} isRTL={isRTL} />
 
           {/* ── BRANCH MANAGEMENT ─────────────────────────────────────── */}
           <div className="mt-8 space-y-3">

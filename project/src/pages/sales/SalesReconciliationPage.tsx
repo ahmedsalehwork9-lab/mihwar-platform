@@ -56,7 +56,21 @@ type SavedEntry = {
 const VAT_RATE = 15; // ضريبة القيمة المضافة % (تظهر في الـ PDF)
 const fmt = (n: number) => (Math.round(n * 100) / 100).toLocaleString("en-US", { maximumFractionDigits: 2 });
 const num = (v: string) => parseFloat(v) || 0;
-const netOf = (gross: number) => gross / (1 + VAT_RATE / 100); // قبل الضريبة
+const netOf = (gross: number) => gross / (1 + VAT_RATE / 100);
+// توافق مع البيانات القديمة: جمع سيستم الشفتين في قيمة سيستم واحدة لكل قناة
+const migrateVals = (v: Record<string, string>): Record<string, string> => {
+  const out: Record<string, string> = { ...v };
+  const chans = new Set<string>();
+  Object.keys(v).forEach((k) => { const m = k.match(/^(am|pm)-(.+)-sys$/); if (m) chans.add(m[2]); });
+  chans.forEach((c) => {
+    if (out[`sys-${c}`] == null || out[`sys-${c}`] === "") {
+      const a = parseFloat(v[`am-${c}-sys`]) || 0;
+      const b = parseFloat(v[`pm-${c}-sys`]) || 0;
+      if (a + b) out[`sys-${c}`] = String(a + b);
+    }
+  });
+  return out;
+}; // قبل الضريبة
 const newReason = (): Reason => ({ id: Date.now() + Math.random(), shift: "", employees: "", reason: REASON_OPTS[0], amount: "", note: "" });
 
 export default function SalesReconciliationPage() {
@@ -131,7 +145,7 @@ export default function SalesReconciliationPage() {
   useEffect(() => {
     const e = allEntries.find((x) => x.date === date);
     if (e) {
-      setVals(e.vals ?? {});
+      setVals(migrateVals(e.vals ?? {}));
       setReasons(e.reasons?.length ? e.reasons : [newReason()]);
       setNote(e.note ?? "");
     } else {
@@ -141,8 +155,10 @@ export default function SalesReconciliationPage() {
     }
   }, [date, allEntries]);
 
-  const setVal = (sh: ShiftId, c: string, f: "sys" | "act", v: string) => setVals((p) => ({ ...p, [`${sh}-${c}-${f}`]: v }));
-  const getVal = (sh: ShiftId, c: string, f: "sys" | "act") => vals[`${sh}-${c}-${f}`] ?? "";
+  const getSys = (c: string) => vals[`sys-${c}`] ?? "";
+  const setSys = (c: string, v: string) => setVals((p) => ({ ...p, [`sys-${c}`]: v }));
+  const getAct = (sh: ShiftId, c: string) => vals[`${sh}-${c}-act`] ?? "";
+  const setAct = (sh: ShiftId, c: string, v: string) => setVals((p) => ({ ...p, [`${sh}-${c}-act`]: v }));
   const persistChannels = (ids: string[], customs: Channel[]) =>
     setSetting(ownedShopId ?? null, SETTING_KEYS.salesChannels, { activeIds: ids, customChannels: customs });
   const addChannel = (id: string) => {
@@ -169,19 +185,19 @@ export default function SalesReconciliationPage() {
   const editReason = (id: number, patch: Partial<Reason>) => setReasons((p) => p.map((r) => (r.id === id ? { ...r, ...patch } : r)));
 
   const calc = useMemo(() => {
-    const shiftTotals: Record<ShiftId, { sys: number; act: number }> = { am: { sys: 0, act: 0 }, pm: { sys: 0, act: 0 } };
+    const perChannelSys: Record<string, number> = {};
     const perChannelActual: Record<string, number> = {};
-    SHIFTS.forEach((sh) => {
-      activeChannels.forEach((c) => {
-        const sign = c.sign ?? 1;
-        const sys = num(getVal(sh.id, c.id, "sys")) * sign;
-        const act = num(getVal(sh.id, c.id, "act")) * sign;
-        shiftTotals[sh.id].sys += sys; shiftTotals[sh.id].act += act;
-        perChannelActual[c.id] = (perChannelActual[c.id] || 0) + act;
-      });
+    const shiftActual: Record<ShiftId, number> = { am: 0, pm: 0 };
+    let gSys = 0, gAct = 0;
+    activeChannels.forEach((c) => {
+      const sign = c.sign ?? 1;
+      const sysV = num(getSys(c.id)) * sign;
+      perChannelSys[c.id] = sysV; gSys += sysV;
+      const amA = num(getAct("am", c.id)) * sign;
+      const pmA = num(getAct("pm", c.id)) * sign;
+      perChannelActual[c.id] = amA + pmA;
+      shiftActual.am += amA; shiftActual.pm += pmA; gAct += amA + pmA;
     });
-    const gSys = shiftTotals.am.sys + shiftTotals.pm.sys;
-    const gAct = shiftTotals.am.act + shiftTotals.pm.act;
     const net = gAct - gSys;
     const err = gSys !== 0 ? (net / gSys) * 100 : 0;
     const warn = Math.abs(err) > 5;
@@ -192,7 +208,7 @@ export default function SalesReconciliationPage() {
     const hasDiff = need >= 0.01;
     const badReasons = hasDiff ? reasons.filter((r) => num(r.amount) !== 0 && (!r.shift || !r.employees.trim())) : [];
     const justified = covered && badReasons.length === 0;
-    return { shiftTotals, gSys, gAct, net, err, warn, reasonsSum, need, left, covered, hasDiff, badReasons, justified, perChannelActual };
+    return { perChannelSys, perChannelActual, shiftActual, gSys, gAct, net, err, warn, reasonsSum, need, left, covered, hasDiff, badReasons, justified };
   }, [vals, reasons, activeIds]);
 
   // ملء خانة المبلغ تلقائيًا بقيمة الفرق عند وجود سبب واحد وخانته فارغة
@@ -406,48 +422,85 @@ export default function SalesReconciliationPage() {
             </div>
           </div>
 
-          {SHIFTS.map((sh) => (
-            <div key={sh.id} className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden mb-4">
-              <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className={`w-1 h-4 rounded ${sh.bar}`} /><h2 className="text-sm font-bold text-white">{sh.nm}</h2></div>
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse" style={{ minWidth: 120 + activeChannels.length * 110 }}>
-                  <thead>
-                    <tr className="bg-[#0b1220]">
-                      <th className="text-right text-[10px] font-bold text-slate-500 uppercase px-3 py-2">البند</th>
-                      {activeChannels.map((c) => (
-                        <th key={c.id} className="text-center text-[10px] font-bold text-slate-500 px-2 py-2 whitespace-nowrap">
-                          <div className="flex items-center justify-center gap-1"><span>{c.icon} {c.nm}</span>{!c.base && <button onClick={() => removeChannel(c.id)} title="إزالة" className="text-red-400 text-[11px] leading-none">✕</button>}</div>
-                        </th>
-                      ))}
-                      <th className="text-center text-[10px] font-bold text-slate-500 px-2 py-2">الإجمالي</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(["sys", "act"] as const).map((f) => (
-                      <tr key={f}>
-                        <td className="text-right font-bold text-xs text-slate-400 bg-[#0b1220] px-3 py-2 whitespace-nowrap">{f === "sys" ? "السيستم" : "الفعلي"}</td>
+          {/* ① مبيعات السيستم */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden mb-4">
+            <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-emerald-500" /><h2 className="text-sm font-bold text-white">① مبيعات السيستم (الإجمالي لليوم)</h2><span className="text-[11px] text-slate-500 mr-auto">قيمة واحدة لكل قناة</span></div>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse" style={{ minWidth: 120 + activeChannels.length * 110 }}>
+                <thead>
+                  <tr className="bg-[#0b1220]">
+                    <th className="text-right text-[10px] font-bold text-slate-500 uppercase px-3 py-2">البند</th>
+                    {activeChannels.map((c) => (
+                      <th key={c.id} className="text-center text-[10px] font-bold text-slate-500 px-2 py-2 whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-1"><span>{c.icon} {c.nm}</span>{!c.base && <button onClick={() => removeChannel(c.id)} title="إزالة" className="text-red-400 text-[11px] leading-none">✕</button>}</div>
+                      </th>
+                    ))}
+                    <th className="text-center text-[10px] font-bold text-slate-500 px-2 py-2">الإجمالي</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="text-right font-bold text-xs text-slate-400 bg-[#0b1220] px-3 py-2 whitespace-nowrap">السيستم</td>
+                    {activeChannels.map((c) => (
+                      <td key={c.id} className="px-1.5 py-2 text-center border-t border-slate-800">
+                        <input type="number" step="0.01" placeholder="0" value={getSys(c.id)} onChange={(e) => setSys(c.id, e.target.value)} className="w-24 bg-[#0b1220] border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr] focus:outline-none focus:border-emerald-500" />
+                      </td>
+                    ))}
+                    <td className="text-center border-t border-slate-800 font-mono font-bold text-emerald-300 text-xs [direction:ltr]">{fmt(calc.gSys)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* ② التحصيل الفعلي حسب الشفت */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden mb-4">
+            <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-blue-500" /><h2 className="text-sm font-bold text-white">② التحصيل الفعلي (حسب الشفت)</h2><span className="text-[11px] text-slate-500 mr-auto">صباحي + مسائي = الفعلي</span></div>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse" style={{ minWidth: 120 + activeChannels.length * 110 }}>
+                <thead>
+                  <tr className="bg-[#0b1220]">
+                    <th className="text-right text-[10px] font-bold text-slate-500 uppercase px-3 py-2">الشفت</th>
+                    {activeChannels.map((c) => (
+                      <th key={c.id} className="text-center text-[10px] font-bold text-slate-500 px-2 py-2 whitespace-nowrap">{c.icon} {c.nm}</th>
+                    ))}
+                    <th className="text-center text-[10px] font-bold text-slate-500 px-2 py-2">إجمالي الشفت</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {SHIFTS.map((sh) => {
+                    const shTotal = activeChannels.reduce((s, c) => s + num(getAct(sh.id, c.id)) * (c.sign ?? 1), 0);
+                    return (
+                      <tr key={sh.id}>
+                        <td className="text-right font-bold text-xs text-slate-400 bg-[#0b1220] px-3 py-2 whitespace-nowrap"><span className={`inline-block w-1.5 h-1.5 rounded-full ${sh.bar} ml-1`} />{sh.nm}</td>
                         {activeChannels.map((c) => (
                           <td key={c.id} className="px-1.5 py-2 text-center border-t border-slate-800">
-                            <input type="number" step="0.01" placeholder="0" value={getVal(sh.id, c.id, f)} onChange={(e) => setVal(sh.id, c.id, f, e.target.value)} className="w-20 bg-[#0b1220] border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr] focus:outline-none focus:border-blue-500" />
+                            <input type="number" step="0.01" placeholder="0" value={getAct(sh.id, c.id)} onChange={(e) => setAct(sh.id, c.id, e.target.value)} className="w-24 bg-[#0b1220] border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr] focus:outline-none focus:border-blue-500" />
                           </td>
                         ))}
-                        <td className="text-center border-t border-slate-800 font-mono text-slate-300 text-xs">{fmt(calc.shiftTotals[sh.id][f])}</td>
+                        <td className="text-center border-t border-slate-800 font-mono text-slate-300 text-xs [direction:ltr]">{fmt(shTotal)}</td>
                       </tr>
+                    );
+                  })}
+                  <tr className="bg-[#0b1220]">
+                    <td className="text-right font-bold text-xs text-slate-300 px-3 py-2 whitespace-nowrap">إجمالي الفعلي</td>
+                    {activeChannels.map((c) => (
+                      <td key={c.id} className="text-center border-t border-slate-700 font-mono font-bold text-emerald-400 text-xs [direction:ltr]">{fmt(calc.perChannelActual[c.id] || 0)}</td>
                     ))}
-                    <tr className="bg-white/[0.012]">
-                      <td className="text-right font-bold text-xs text-slate-400 bg-[#0b1220] px-3 py-2 whitespace-nowrap">الفرق</td>
-                      {activeChannels.map((c) => {
-                        const sign = c.sign ?? 1;
-                        const d = (num(getVal(sh.id, c.id, "act")) - num(getVal(sh.id, c.id, "sys"))) * sign;
-                        return <td key={c.id} className={`text-center border-t border-slate-800 font-mono font-bold text-xs [direction:ltr] ${diffColor(d)}`}>{diffTxt(d)}</td>;
-                      })}
-                      <td className={`text-center border-t border-slate-800 font-mono font-bold text-xs [direction:ltr] ${diffColor(calc.shiftTotals[sh.id].act - calc.shiftTotals[sh.id].sys)}`}>{diffTxt(calc.shiftTotals[sh.id].act - calc.shiftTotals[sh.id].sys)}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+                    <td className="text-center border-t border-slate-700 font-mono font-bold text-emerald-400 text-xs [direction:ltr]">{fmt(calc.gAct)}</td>
+                  </tr>
+                  <tr className="bg-white/[0.012]">
+                    <td className="text-right font-bold text-xs text-slate-400 px-3 py-2 whitespace-nowrap">الفرق (فعلي − سيستم)</td>
+                    {activeChannels.map((c) => {
+                      const d = (calc.perChannelActual[c.id] || 0) - (calc.perChannelSys[c.id] || 0);
+                      return <td key={c.id} className={`text-center border-t border-slate-800 font-mono font-bold text-xs [direction:ltr] ${diffColor(d)}`}>{diffTxt(d)}</td>;
+                    })}
+                    <td className={`text-center border-t border-slate-800 font-mono font-bold text-xs [direction:ltr] ${diffColor(calc.net)}`}>{diffTxt(calc.net)}</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
-          ))}
+          </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4"><div className="text-[10px] text-slate-500 font-bold">مبيعات السيستم</div><div className="text-xl font-black font-mono mt-1 text-white [direction:ltr]">{fmt(calc.gSys)} <span className="text-[11px] text-slate-500">ر.س</span></div></div>

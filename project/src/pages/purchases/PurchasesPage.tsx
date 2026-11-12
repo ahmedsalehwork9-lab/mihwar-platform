@@ -62,6 +62,7 @@ export default function PurchasesPage() {
   useEffect(() => { let a = true; (async () => { const d = await waQrDataUrl(waNum); if (a) setQr(d); })(); return () => { a = false; }; }, [waNum]);
 
   const [tab, setTab] = useState<"entry" | "report">("entry");
+  useEffect(() => { try { if (sessionStorage.getItem("mihwar_open_tab") === "purchases") { setTab("report"); sessionStorage.removeItem("mihwar_open_tab"); } } catch (e) {} }, []);
 
   // ── كل مشتريات الفرع (من Supabase) ──
   const [allPurchases, setAllPurchases] = useState<Purchase[]>([]);

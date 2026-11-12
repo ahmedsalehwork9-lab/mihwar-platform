@@ -91,6 +91,7 @@ export default function FixedExpensesPage() {
   }, [ownedShopId]);
 
   const [tab, setTab] = useState<"fixed" | "breakeven">("fixed");
+  useEffect(() => { try { if (sessionStorage.getItem("mihwar_open_tab") === "fixed-expenses") { setTab("breakeven"); sessionStorage.removeItem("mihwar_open_tab"); } } catch (e) {} }, []);
 
   // ── إعداد المصروفات (ثابت لكل فرع، مخزّن على Supabase) ──
   const [salaries, setSalaries] = useState<Salary[]>([newSalary()]);

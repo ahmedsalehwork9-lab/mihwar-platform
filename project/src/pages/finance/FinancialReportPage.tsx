@@ -267,7 +267,7 @@ export default function FinancialReportPage() {
   };
   const exportPDF = () => {
     const w = window.open("", "_blank", "width=1100,height=900"); if (!w) return;
-    w.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar" style="color-scheme:light;background:#fff;"><head><meta charset="UTF-8"><meta name="color-scheme" content="light"><title>التقرير المالي — ${branch}</title></head><body style="margin:0;background:#fff;">${buildHTML()}<script>window.onload=function(){window.print();}<\/script></body></html>`);
+    w.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar" style="color-scheme:light;background:#fff;"><head><meta charset="UTF-8"><meta name="color-scheme" content="light"><style>@page{size:A4 landscape;margin:8mm}@media print{html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style><title>التقرير المالي — ${branch}</title></head><body style="margin:0;background:#fff;">${buildHTML()}<script>window.onload=function(){window.print();}<\/script></body></html>`);
     w.document.close();
   };
   const exportExcel = () => {

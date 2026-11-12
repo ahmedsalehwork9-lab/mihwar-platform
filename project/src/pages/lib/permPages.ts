@@ -16,6 +16,7 @@ export const PERM_PAGES: PermPage[] = [
   { id: "purchases", ar: "المشتريات", en: "Purchases" },
   { id: "fixed-expenses", ar: "المصروفات الثابتة", en: "Fixed Expenses" },
   { id: "financial-report", ar: "التقرير المالي", en: "Financial Report" },
+  { id: "reports-center", ar: "مركز التقارير", en: "Reports Center" },
   { id: "alerts", ar: "التنبيهات", en: "Alerts" },
   { id: "shop-settings", ar: "إعدادات المحل", en: "Shop Settings" },
 ];

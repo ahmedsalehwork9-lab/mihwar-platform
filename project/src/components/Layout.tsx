@@ -35,6 +35,7 @@ import NotificationBell from '../context/NotificationBell';
 import { useAuth } from '../context/AuthContext';
 import { useLang } from '../context/LanguageContext';
 import { ThemeToggle } from './ThemeToggle';
+import BranchSwitcher from './BranchSwitcher';
 
 // ══════════════════════════════════════════════════════════════════════
 // PAGE TYPE
@@ -576,6 +577,7 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
 
           <div className="flex items-center gap-3">
             {/* Notification Bell */}
+            <BranchSwitcher />
             <NotificationBell />
             <div className="hidden md:flex items-center gap-2 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-xl text-xs text-slate-300">
               <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />

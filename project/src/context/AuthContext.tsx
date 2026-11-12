@@ -13,10 +13,14 @@ import {
   User,
 } from "@supabase/supabase-js";
 
+export type Branch = { id: number; name: string };
+
 type AuthType = {
   user: User | null;
   session: Session | null;
-  ownedShopId: number | null;
+  ownedShopId: number | null;          // = الفرع النشط حاليًا
+  branches: Branch[];                  // كل الفروع التي يصل إليها المستخدم
+  setActiveBranchId: (id: number) => void;
   role: string | null;
   isAdmin: boolean;
   permissions: string[] | null; // null = وصول كامل لكل الصفحات؛ قائمة = الصفحات المسموحة فقط
@@ -25,11 +29,13 @@ type AuthType = {
 };
 
 const AuthContext = createContext<AuthType | null>(null);
+const ACTIVE_KEY = "mihwar_active_branch";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [ownedShopId, setOwnedShopId] = useState<number | null>(null);
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [role, setRole] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [permissions, setPermissions] = useState<string[] | null>(null);
@@ -44,10 +50,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(session?.user ?? null);
 
         if (session?.user) {
-          loadShop(session.user.id);
-          loadProfile(session.user.id);
+          loadAll(session.user.id);
         } else {
           setOwnedShopId(null);
+          setBranches([]);
           setRole(null);
           setIsAdmin(false);
           setPermissions(null);
@@ -68,8 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session?.user ?? null);
 
       if (session?.user) {
-        await loadShop(session.user.id);
-        await loadProfile(session.user.id);
+        await loadAll(session.user.id);
       }
     } catch (err) {
       console.error("SESSION ERROR", err);
@@ -78,50 +83,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const loadProfile = async (userId: string) => {
+  // يختار الفرع النشط من القائمة: المحفوظ سابقًا إن وُجد، وإلا أول فرع
+  const applyActive = (list: Branch[]) => {
+    const ids = list.map((b) => b.id);
+    let saved: number | null = null;
+    try { const s = localStorage.getItem(ACTIVE_KEY); if (s) saved = Number(s); } catch (e) {}
+    const pick = saved && ids.includes(saved) ? saved : (ids[0] ?? null);
+    setOwnedShopId(pick);
+  };
+
+  const setActiveBranchId = (id: number) => {
+    setOwnedShopId(id);
+    try { localStorage.setItem(ACTIVE_KEY, String(id)); } catch (e) {}
+  };
+
+  const loadAll = async (userId: string) => {
     try {
-      const { data, error } = await supabase
+      // 1) الملف الشخصي (الدور + أدمن + الصلاحيات + الفرع الثابت)
+      const { data: prof } = await supabase
         .from("profiles")
-        .select("role, is_admin, page_permissions")
+        .select("role, is_admin, page_permissions, store_id")
         .eq("id", userId)
         .single();
 
-      if (error) {
-        console.error("PROFILE ERROR", error);
-        return;
+      const admin = (prof as any)?.is_admin === true;
+      setRole((prof as any)?.role || null);
+      setIsAdmin(admin);
+      const perms = (prof as any)?.page_permissions;
+      setPermissions(Array.isArray(perms) && perms.length > 0 ? perms : null);
+
+      // 2) قائمة الفروع
+      let list: Branch[] = [];
+      if (admin) {
+        // الأدمن يصل لكل الفروع
+        const { data } = await supabase.from("shops").select("id, shop_name").order("id");
+        list = (data || []).map((s: any) => ({ id: Number(s.id), name: s.shop_name || ("فرع " + s.id) }));
+      } else {
+        // الفروع التي المستخدم مالكها (owner_id)
+        const { data: owned } = await supabase.from("shops").select("id, shop_name").eq("owner_id", userId).order("id");
+        list = (owned || []).map((s: any) => ({ id: Number(s.id), name: s.shop_name || ("فرع " + s.id) }));
+        // + فرعه الثابت من ملفه الشخصي (لو مش ضمن القائمة)
+        const storeId = (prof as any)?.store_id;
+        if (storeId && !list.some((b) => b.id === Number(storeId))) {
+          const { data: sb } = await supabase.from("shops").select("id, shop_name").eq("id", storeId).maybeSingle();
+          if (sb) list.push({ id: Number((sb as any).id), name: (sb as any).shop_name || ("فرع " + (sb as any).id) });
+        }
       }
 
-      setRole(data?.role || null);
-      setIsAdmin(data?.is_admin === true);
-
-      const perms = (data as any)?.page_permissions;
-      setPermissions(Array.isArray(perms) && perms.length > 0 ? perms : null);
+      setBranches(list);
+      applyActive(list);
     } catch (err) {
-      console.error("LOAD PROFILE FAILED", err);
-    }
-  };
-
-  const loadShop = async (userId: string) => {
-    try {
-      // 1) مالك محل؟
-      const { data: owned } = await supabase
-        .from("shops")
-        .select("id")
-        .eq("owner_id", userId)
-        .maybeSingle();
-
-      if (owned?.id) { setOwnedShopId(Number(owned.id)); return; }
-
-      // 2) عضو في فرع عبر store_id في ملفه الشخصي
-      const { data: prof } = await supabase
-        .from("profiles")
-        .select("store_id")
-        .eq("id", userId)
-        .maybeSingle();
-
-      setOwnedShopId(prof?.store_id ? Number(prof.store_id) : null);
-    } catch (err) {
-      console.error("LOAD SHOP FAILED", err);
+      console.error("LOAD AUTH FAILED", err);
+      setBranches([]);
       setOwnedShopId(null);
     }
   };
@@ -132,6 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       setSession(null);
       setOwnedShopId(null);
+      setBranches([]);
       setRole(null);
       setIsAdmin(false);
       setPermissions(null);
@@ -147,6 +161,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         session,
         ownedShopId,
+        branches,
+        setActiveBranchId,
         role,
         isAdmin,
         permissions,

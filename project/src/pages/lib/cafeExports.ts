@@ -341,3 +341,111 @@ export const EXPORTERS: Record<string, (b: number | null, f: string, t: string, 
   "fixed-expenses": exportBreakevenReport,
   "financial-report": exportFinancialReport,
 };
+
+// ========================= تقارير مجمّعة (عدة فروع) =========================
+export type BranchRef = { id: number; name: string };
+
+async function salesSummary(bid: number, from: string, to: string) {
+  const rows = ((await fetchSalesWithMigration(bid)) as SalesEntry[]).filter((e) => e.date >= from && e.date <= to);
+  const gAct = rows.reduce((s, e) => s + e.gAct, 0);
+  const gSys = rows.reduce((s, e) => s + e.gSys, 0);
+  const before = netOf(gAct);
+  return { count: rows.length, gAct, gSys, diff: gAct - gSys, before, vat: gAct - before, err: gSys ? ((gAct - gSys) / gSys) * 100 : 0 };
+}
+async function purchasesSummary(bid: number, from: string, to: string) {
+  const rows = ((await fetchPurchasesWithMigration(bid)) as Purchase[]).filter((e) => e.date >= from && e.date <= to);
+  const total = rows.reduce((s, e) => s + e.total, 0);
+  const vat = rows.reduce((s, e) => s + (e.vat || 0), 0);
+  return { count: rows.length, total, vat, avg: rows.length ? total / rows.length : 0 };
+}
+async function breakevenSummary(bid: number, month: string) {
+  const [salesRows, purchRows, cfg, orders] = await Promise.all([
+    fetchSalesWithMigration(bid), fetchPurchasesWithMigration(bid),
+    getSettingWithMigration(bid, SETTING_KEYS.fixedExpenses, LOCAL_KEYS.FE_LKEY, { salaries: [], items: [], targetUplift: "40" }),
+    fetchOrders(bid),
+  ]);
+  const salaries = Array.isArray(cfg?.salaries) ? cfg.salaries : [];
+  const items = Array.isArray(cfg?.items) ? cfg.items : [];
+  const uplift = num(cfg?.targetUplift || "40") / 100;
+  const fixedForBE = salaries.reduce((s: number, r: any) => s + salaryMonthly(r), 0) + items.filter((r: any) => r.inBE).reduce((s: number, r: any) => s + num(r.amount), 0);
+  const sales = (salesRows as any[]).filter((e) => (e.date || "").slice(0, 7) === month).reduce((s, e) => s + (e.gAct || 0), 0);
+  const purch = (purchRows as any[]).filter((e) => (e.date || "").slice(0, 7) === month).reduce((s, e) => s + ((e.subtotal ?? e.total) || 0), 0);
+  const inM = orders.filter((o) => (o.created_at || "").slice(0, 7) === month && (o.status === "completed" || o.status === "partially_approved"));
+  const tIn = inM.filter((o) => o.to_shop_id === bid).reduce((s, o) => s + (o.total_amount || 0), 0);
+  const tOut = inM.filter((o) => o.from_shop_id === bid).reduce((s, o) => s + (o.total_amount || 0), 0);
+  const variable = purch + tIn - tOut;
+  const cm = sales > 0 ? 1 - variable / sales : 0;
+  const be = cm > 0 ? fixedForBE / cm : 0;
+  return { sales, fixed: fixedForBE, variable, be, target: be * (1 + uplift), profit: sales - variable - fixedForBE };
+}
+async function financialSummary(bid: number, month: string) {
+  const [salesRows, purchRows, feCfg, commCfg, orders] = await Promise.all([
+    fetchSalesWithMigration(bid), fetchPurchasesWithMigration(bid),
+    getSettingWithMigration(bid, SETTING_KEYS.fixedExpenses, LOCAL_KEYS.FE_LKEY, { salaries: [], items: [] }),
+    getSettingWithMigration(bid, SETTING_KEYS.appCommissions, LOCAL_KEYS.COMM_LKEY, { ...DEFAULT_RATE }),
+    fetchOrders(bid),
+  ]);
+  const fe = feCfg && Array.isArray(feCfg.salaries) ? { salaries: feCfg.salaries, items: feCfg.items || [] } : { salaries: [], items: [] };
+  const comm = { ...DEFAULT_RATE, ...(commCfg || {}) };
+  const cur = buildFin(bid, month, orders, comm, fe, salesRows as any[], purchRows as any[]);
+  return { gross: cur.gross, net: cur.net, costs: cur.totalCosts, profit: cur.netProfit, margin: cur.margin };
+}
+
+function consolidatedHTML(title: string, periodLabel: string, headers: string[], bodyRows: string[][], totalRow: string[], qr: string): string {
+  const now = new Date().toLocaleString("ar-SA");
+  const header = `<div style="background:#0f1b2b;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;"><div style="text-align:left;"><div style="font-size:20px;font-weight:800;color:#34d399;">${title}</div><div style="font-size:12px;color:#9fb3c8;">${periodLabel} — ${now}</div></div><div style="text-align:right;"><div style="font-size:18px;font-weight:800;color:#fff;">محور</div><div style="font-size:9px;letter-spacing:3px;color:#9fb3c8;">MIHWAR PLATFORM</div></div></div>`;
+  const thead = `<tr>${headers.map((h) => `<th style="border:1px solid #d1d5db;padding:7px 8px;background:#14304d;color:#fff;font-size:11px;font-weight:700;white-space:nowrap;">${h}</th>`).join("")}</tr>`;
+  const body = bodyRows.map((cells, idx) => {
+    const bg = idx % 2 ? "#ffffff" : "#f9fafb";
+    return `<tr style="background:${bg};">${cells.map((v, i) => `<td style="border:1px solid #e5e7eb;padding:6px 8px;font-size:11px;text-align:${i === 0 ? "right" : "center"};font-weight:${i === 0 ? 700 : 500};color:${i === 0 ? "#0f1b2b" : "#1f2937"};">${v}</td>`).join("")}</tr>`;
+  }).join("");
+  const total = `<tr>${totalRow.map((v, i) => `<td style="border:1px solid #cbd5e1;padding:7px 8px;font-size:11px;font-weight:800;text-align:${i === 0 ? "right" : "center"};background:#eef2f7;color:#0f1b2b;">${v}</td>`).join("")}</tr>`;
+  const table = `<div style="padding:10px 20px 14px;"><table style="border-collapse:collapse;width:100%;"><thead>${thead}</thead><tbody>${body}${total}</tbody></table><div style="margin-top:8px;font-size:10px;color:#9ca3af;">تقرير مجمّع — صف لكل فرع + إجمالي عام للفروع المختارة (${bodyRows.length} فرع).</div></div>`;
+  const footer = `<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:10px;gap:12px;"><div><div>تم إنشاء هذا التقرير آليًا من مركز التقارير</div><div>منصة محور — MIHWAR B2B Marketplace</div></div>${contactFooter(SUPPORT_WA, qr)}</div>`;
+  return SHELL(header, `${table}${footer}`);
+}
+
+export async function exportConsolidated(reportId: string, branches: BranchRef[], from: string, to: string, mode: ExportMode): Promise<ExportResult> {
+  if (!branches.length) return { ok: false, rows: 0, msg: "اختر فرعًا واحدًا على الأقل." };
+  const qr = await waQrDataUrl(SUPPORT_WA);
+  const month = from.slice(0, 7);
+  let title = "", periodLabel = "", filename = "", headers: string[] = [];
+  const body: string[][] = [];
+  let total: string[] = [];
+
+  if (reportId === "sales-reconciliation") {
+    title = "تقرير تسوية المبيعات — عدة فروع"; periodLabel = `الفترة: ${from} إلى ${to}`; filename = `تسوية_عدة_فروع_${from}_${to}`;
+    headers = ["الفرع", "عدد الأيام", "شامل الضريبة", "قبل الضريبة", "الضريبة", "السيستم", "الفرق", "الخطأ %"];
+    let c = 0, act = 0, bef = 0, vat = 0, sys = 0;
+    for (const b of branches) { const s = await salesSummary(b.id, from, to); c += s.count; act += s.gAct; bef += s.before; vat += s.vat; sys += s.gSys;
+      body.push([b.name, String(s.count), fmt(s.gAct), fmt(s.before), fmt(s.vat), fmt(s.gSys), (s.diff > 0 ? "+" : "") + fmt(s.diff), (s.err > 0 ? "+" : "") + s.err.toFixed(1) + "%"]); }
+    const d = act - sys, er = sys ? (d / sys) * 100 : 0;
+    total = ["الإجمالي", String(c), fmt(act), fmt(bef), fmt(vat), fmt(sys), (d > 0 ? "+" : "") + fmt(d), (er > 0 ? "+" : "") + er.toFixed(1) + "%"];
+  } else if (reportId === "purchases") {
+    title = "تقرير المشتريات — عدة فروع"; periodLabel = `الفترة: ${from} إلى ${to}`; filename = `مشتريات_عدة_فروع_${from}_${to}`;
+    headers = ["الفرع", "عدد الفواتير", "شامل الضريبة", "الضريبة", "متوسط الفاتورة"];
+    let c = 0, tot = 0, vat = 0;
+    for (const b of branches) { const s = await purchasesSummary(b.id, from, to); c += s.count; tot += s.total; vat += s.vat;
+      body.push([b.name, String(s.count), fmt(s.total), fmt(s.vat), fmt(s.avg)]); }
+    total = ["الإجمالي", String(c), fmt(tot), fmt(vat), fmt(c ? tot / c : 0)];
+  } else if (reportId === "fixed-expenses") {
+    title = "نقطة التعادل — عدة فروع"; periodLabel = `الشهر: ${month}`; filename = `التعادل_عدة_فروع_${month}`;
+    headers = ["الفرع", "المبيعات", "تكاليف ثابتة", "تكاليف متغيرة", "نقطة التعادل", "المستهدف", "صافي الربح"];
+    let sa = 0, fx = 0, vr = 0, be = 0, tg = 0, pr = 0;
+    for (const b of branches) { const s = await breakevenSummary(b.id, month); sa += s.sales; fx += s.fixed; vr += s.variable; be += s.be; tg += s.target; pr += s.profit;
+      body.push([b.name, fmt(s.sales), fmt(s.fixed), fmt(s.variable), fmt(s.be), fmt(s.target), fmt(s.profit)]); }
+    total = ["الإجمالي", fmt(sa), fmt(fx), fmt(vr), fmt(be), fmt(tg), fmt(pr)];
+  } else if (reportId === "financial-report") {
+    title = "التقرير المالي — عدة فروع"; periodLabel = `الشهر: ${month}`; filename = `التقرير_المالي_عدة_فروع_${month}`;
+    headers = ["الفرع", "إجمالي المبيعات", "صافي المبيعات", "إجمالي التكاليف", "صافي الربح", "هامش %"];
+    let gr = 0, nt = 0, co = 0, pr = 0;
+    for (const b of branches) { const s = await financialSummary(b.id, month); gr += s.gross; nt += s.net; co += s.costs; pr += s.profit;
+      body.push([b.name, fmt(s.gross), fmt(s.net), fmt(s.costs), fmt(s.profit), s.margin.toFixed(1) + "%"]); }
+    total = ["الإجمالي", fmt(gr), fmt(nt), fmt(co), fmt(pr), (gr > 0 ? (pr / gr) * 100 : 0).toFixed(1) + "%"];
+  } else {
+    return { ok: false, rows: 0, msg: "نوع تقرير غير معروف." };
+  }
+
+  emit(mode, title, filename, consolidatedHTML(title, periodLabel, headers, body, total, qr));
+  return { ok: true, rows: branches.length };
+}

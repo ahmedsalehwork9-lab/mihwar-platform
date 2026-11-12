@@ -1,13 +1,13 @@
 // =============================================================
 // src/pages/ReportsHubPage.tsx
-// مركز التقارير — اختر الفرع تلقائيًا + الفترة (شهر/نطاق مخصص) ثم صدّر
-// التقرير PDF/Excel مباشرة من هنا، أو افتح الصفحة الكاملة.
+// مركز التقارير — اختر الفترة + الفروع المشمولة، وصدّر تقرير مباشر
+// (فرع واحد = تقرير كامل · عدة فروع = تقرير مجمّع بصف لكل فرع).
 // =============================================================
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Page } from "../components/Layout";
 import { useAuth } from "../context/AuthContext";
-import { EXPORTERS, ExportMode } from "./lib/cafeExports";
+import { EXPORTERS, exportConsolidated, ExportMode, BranchRef } from "./lib/cafeExports";
 
 type Props = { setPage: (p: Page) => void };
 
@@ -18,7 +18,6 @@ const CARDS: { id: Page; title: string; desc: string; emoji: string; accent: str
   { id: "financial-report", title: "التقرير المالي الشهري", desc: "قائمة ربح وخسارة + مقارنة شهرين + نقطة التعادل", emoji: "📑", accent: "from-purple-600/20 border-purple-500/30" },
 ];
 
-// حدود الشهر (YYYY-MM → من/إلى)
 function monthBounds(ym: string): { from: string; to: string } {
   const [y, m] = ym.split("-").map(Number);
   const from = `${ym}-01`;
@@ -28,9 +27,12 @@ function monthBounds(ym: string): { from: string; to: string } {
 }
 
 export default function ReportsHubPage({ setPage }: Props) {
-  const { permissions, ownedShopId } = (useAuth() as any) ?? {};
+  const { permissions, ownedShopId, branches } = (useAuth() as any) ?? {};
   const allowed = (id: Page) => !permissions || permissions.includes(id);
   const cards = CARDS.filter((c) => allowed(c.id));
+
+  const allBranches: BranchRef[] = Array.isArray(branches) ? branches : [];
+  const multiBranch = allBranches.length > 1;
 
   const thisMonth = new Date().toISOString().slice(0, 7);
   const [month, setMonth] = useState(thisMonth);
@@ -38,9 +40,14 @@ export default function ReportsHubPage({ setPage }: Props) {
   const b = useMemo(() => monthBounds(month), [month]);
   const [from, setFrom] = useState(b.from);
   const [to, setTo] = useState(b.to);
-
-  // عند تغيير الشهر (في وضع الشهر) حدّث من/إلى
   const onMonth = (ym: string) => { setMonth(ym); const nb = monthBounds(ym); setFrom(nb.from); setTo(nb.to); };
+
+  // اختيار الفروع — افتراضيًا كلها
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  useEffect(() => { setSelected(new Set(allBranches.map((x) => x.id))); /* eslint-disable-next-line */ }, [branches]);
+  const toggle = (id: number) => setSelected((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const selectAll = () => setSelected(new Set(allBranches.map((x) => x.id)));
+  const clearAll = () => setSelected(new Set());
 
   const [busy, setBusy] = useState<string>("");
   const [msg, setMsg] = useState<{ t: "ok" | "err"; x: string } | null>(null);
@@ -48,15 +55,28 @@ export default function ReportsHubPage({ setPage }: Props) {
   const rangeFrom = custom ? from : b.from;
   const rangeTo = custom ? to : b.to;
 
+  const chosen: BranchRef[] = useMemo(
+    () => (multiBranch ? allBranches.filter((x) => selected.has(x.id)) : allBranches),
+    [multiBranch, allBranches, selected],
+  );
+
   const run = async (id: Page, mode: ExportMode) => {
     const fn = EXPORTERS[id as string];
-    if (!fn) { setPage(id); return; }            // لسه متوصّلش → افتح الصفحة
+    if (!fn) { setPage(id); return; }
     const key = `${id}-${mode}`;
     setBusy(key); setMsg(null);
     try {
-      const res = await fn(ownedShopId ?? null, rangeFrom, rangeTo, mode);
+      // فرع واحد → تقرير كامل · عدة فروع → مجمّع
+      const picks = chosen.length ? chosen : (ownedShopId ? [{ id: ownedShopId, name: "" }] : []);
+      let res;
+      if (picks.length === 0) res = { ok: false, rows: 0, msg: "اختر فرعًا واحدًا على الأقل." };
+      else if (picks.length === 1) res = await fn(picks[0].id, rangeFrom, rangeTo, mode);
+      else res = await exportConsolidated(id as string, picks, rangeFrom, rangeTo, mode);
+
       if (!res.ok) setMsg({ t: "err", x: res.msg || "تعذّر إنشاء التقرير." });
-      else setMsg({ t: "ok", x: `تم إنشاء التقرير (${res.rows} سجل) للفترة ${rangeFrom} → ${rangeTo}.` });
+      else setMsg({ t: "ok", x: picks.length > 1
+        ? `تم إنشاء تقرير مجمّع لـ ${res.rows} فرع للفترة ${rangeFrom} → ${rangeTo}.`
+        : `تم إنشاء التقرير (${res.rows} سجل) للفترة ${rangeFrom} → ${rangeTo}.` });
     } catch (e: any) {
       setMsg({ t: "err", x: "حصل خطأ أثناء التصدير: " + (e?.message || e) });
     } finally { setBusy(""); }
@@ -69,11 +89,11 @@ export default function ReportsHubPage({ setPage }: Props) {
           <span className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-xl">🗂️</span>
           مركز التقارير
         </h1>
-        <p className="text-slate-500 text-sm mt-1">اختر الفترة وصدّر أي تقرير PDF/Excel مباشرة — أو افتح الصفحة الكاملة للتفاصيل.</p>
+        <p className="text-slate-500 text-sm mt-1">اختر الفترة والفروع ثم صدّر أي تقرير PDF/Excel مباشرة — أو افتح الصفحة الكاملة.</p>
       </div>
 
       {/* شريط الفترة */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 mb-5 flex flex-wrap items-end gap-3">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 mb-4 flex flex-wrap items-end gap-3">
         <div className="flex flex-col gap-1">
           <label className="text-[10px] text-slate-500 font-bold">الشهر</label>
           <input type="month" value={month} onChange={(e) => onMonth(e.target.value)} disabled={custom}
@@ -94,9 +114,37 @@ export default function ReportsHubPage({ setPage }: Props) {
             className="bg-[#0b1220] border border-slate-700 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark] disabled:opacity-40" />
         </div>
         <div className="mr-auto text-[11px] text-slate-500 pb-2.5">
-          الفترة الحالية: <b className="text-slate-300 [direction:ltr] inline-block">{rangeFrom} → {rangeTo}</b>
+          الفترة: <b className="text-slate-300 [direction:ltr] inline-block">{rangeFrom} → {rangeTo}</b>
         </div>
       </div>
+
+      {/* اختيار الفروع — يظهر فقط لو عندك أكتر من فرع */}
+      {multiBranch && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 mb-4">
+          <div className="flex items-center justify-between mb-2.5">
+            <div className="text-sm font-bold text-white flex items-center gap-2">
+              🏪 الفروع المشمولة
+              <span className="text-[11px] text-slate-500 font-normal">({selected.size} من {allBranches.length})</span>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={selectAll} className="text-[11px] font-bold text-blue-300 bg-blue-600/10 border border-blue-500/20 rounded-lg px-2.5 py-1">تحديد الكل</button>
+              <button onClick={clearAll} className="text-[11px] font-bold text-slate-400 bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1">إلغاء الكل</button>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {allBranches.map((br) => {
+              const on = selected.has(br.id);
+              return (
+                <button key={br.id} onClick={() => toggle(br.id)}
+                  className={`text-xs font-bold rounded-xl px-3 py-1.5 border transition-all ${on ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300" : "bg-slate-800/60 border-slate-700 text-slate-400"}`}>
+                  {on ? "✓ " : ""}{br.name}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[11px] text-slate-500 mt-2.5">فرع واحد مختار → تقرير كامل بالتفاصيل · أكتر من فرع → تقرير مجمّع بصف لكل فرع وإجمالي عام.</p>
+        </div>
+      )}
 
       {msg && (
         <div className={`mb-4 rounded-xl px-4 py-2.5 text-sm font-bold border ${msg.t === "ok" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-300" : "bg-amber-500/10 border-amber-500/20 text-amber-300"}`}>
@@ -115,7 +163,6 @@ export default function ReportsHubPage({ setPage }: Props) {
                 <h2 className="text-lg font-black text-white">{c.title}</h2>
               </div>
               <p className="text-slate-400 text-sm leading-relaxed mb-3">{c.desc}</p>
-
               <div className="flex flex-wrap gap-2">
                 {hasExport ? (
                   <>

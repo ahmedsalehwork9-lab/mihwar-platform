@@ -11,8 +11,9 @@ import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import {
   fetchSalesWithMigration, upsertSale,
-  getSettingWithMigration, setSetting, SETTING_KEYS, LOCAL_KEYS,
+  getSetting, getSettingWithMigration, setSetting, SETTING_KEYS, LOCAL_KEYS,
 } from "../lib/cafeDb";
+import { logoBox, contactFooter, waQrDataUrl, SUPPORT_WA } from "../lib/reportChrome";
 
 type ShiftId = "am" | "pm";
 type Channel = { id: string; icon: string; nm: string; base?: boolean; sign?: number };
@@ -61,16 +62,36 @@ const newReason = (): Reason => ({ id: Date.now() + Math.random(), shift: "", em
 export default function SalesReconciliationPage() {
   const { ownedShopId } = (useAuth() as any) ?? {};
   const [branch, setBranch] = useState<string>("");
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const waNum = SUPPORT_WA;
+  const [qr, setQr] = useState<string>("");
 
   useEffect(() => {
     let active = true;
     (async () => {
-      if (!ownedShopId) { setBranch(""); return; }
-      const { data } = await supabase.from("shops").select("shop_name").eq("id", ownedShopId).single();
-      if (active && data) setBranch((data as any).shop_name ?? "");
+      if (!ownedShopId) { setBranch(""); setLogoUrl(null); return; }
+      const { data } = await supabase.from("shops").select("shop_name, logo_url").eq("id", ownedShopId).single();
+      if (active && data) {
+        setBranch((data as any).shop_name ?? "");
+        setLogoUrl((data as any).logo_url ?? null);
+      }
     })();
     return () => { active = false; };
   }, [ownedShopId]);
+  useEffect(() => { let a = true; (async () => { const d = await waQrDataUrl(waNum); if (a) setQr(d); })(); return () => { a = false; }; }, [waNum]);
+
+  // ── أسماء الكاشير لكل فرع (مخزّنة على Supabase، غير موحّدة) ──
+  const [staff, setStaff] = useState<string[]>(STAFF_SUGGEST);
+  const [staffInput, setStaffInput] = useState("");
+  useEffect(() => {
+    (async () => {
+      const list = await getSetting(ownedShopId ?? null, "staff_names");
+      setStaff(Array.isArray(list) && list.length ? list : STAFF_SUGGEST);
+    })();
+  }, [ownedShopId]);
+  const persistStaff = (list: string[]) => { setStaff(list); setSetting(ownedShopId ?? null, "staff_names", list); };
+  const addStaff = () => { const n = staffInput.trim(); if (!n || staff.includes(n)) { setStaffInput(""); return; } persistStaff([...staff, n]); setStaffInput(""); };
+  const removeStaff = (n: string) => persistStaff(staff.filter((x) => x !== n));
 
   const [tab, setTab] = useState<"entry" | "report">("entry");
 
@@ -250,7 +271,7 @@ export default function SalesReconciliationPage() {
             <div style="font-size:18px;font-weight:800;color:#ffffff;">محور</div>
             <div style="font-size:9px;letter-spacing:3px;color:#9fb3c8;">MIHWAR PLATFORM</div>
           </div>
-          <div style="width:42px;height:42px;border-radius:11px;background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.4);color:#34d399;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;">م</div>
+          ${logoBox(logoUrl)}
         </div>
       </div>`;
 
@@ -314,9 +335,9 @@ export default function SalesReconciliationPage() {
       </div>`;
 
     const footer = `
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 20px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:10px;">
-        <div>تم إنشاء هذا التقرير آليًا من صفحة تسوية المبيعات</div>
-        <div>منصة محور — MIHWAR B2B Marketplace</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:10px;gap:12px;">
+        <div><div>تم إنشاء هذا التقرير آليًا من صفحة تسوية المبيعات</div><div>منصة محور — MIHWAR B2B Marketplace</div></div>
+        ${contactFooter(waNum, qr)}
       </div>`;
 
     return `<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;color:#1f2937;background:#fff;">${header}${cards}${table}${footer}</div>`;
@@ -428,7 +449,17 @@ export default function SalesReconciliationPage() {
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden mb-4">
             <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-amber-500" /><h2 className="text-sm font-bold text-white">أسباب الفروقات والمبالغ المستردة</h2>{calc.hasDiff && <span className="text-[11px] text-amber-400 font-bold mr-auto">إلزامي: حدّد الشفت واسم الموظف لكل فرق</span>}</div>
 
-            <datalist id="staffList">{STAFF_SUGGEST.map((s) => <option key={s} value={s} />)}</datalist>
+            {/* إدارة أسماء الكاشير لهذا الفرع */}
+            <div className="px-4 py-2.5 border-b border-slate-800 bg-[#0b1220]/40 flex items-center gap-2 flex-wrap">
+              <span className="text-[11px] text-slate-400 font-bold">أسماء الكاشير (هذا الفرع):</span>
+              {staff.map((n) => (
+                <span key={n} className="inline-flex items-center gap-1 bg-slate-800 text-slate-200 text-[11px] rounded-full px-2.5 py-1">{n}<button onClick={() => removeStaff(n)} title="حذف" className="text-red-400 leading-none">✕</button></span>
+              ))}
+              <input value={staffInput} onChange={(e) => setStaffInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addStaff(); } }} placeholder="أضف اسم…" className="bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1 text-[11px] w-28" />
+              <button onClick={addStaff} className="text-[11px] bg-blue-600/15 border border-blue-500/30 text-blue-300 rounded-lg px-2.5 py-1 font-bold">+ إضافة</button>
+            </div>
+
+            <datalist id="staffList">{staff.map((s) => <option key={s} value={s} />)}</datalist>
 
             {reasons.map((r) => {
               const bad = calc.hasDiff && num(r.amount) !== 0 && (!r.shift || !r.employees.trim());

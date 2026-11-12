@@ -14,6 +14,7 @@ import {
   fetchSalesWithMigration, fetchPurchasesWithMigration,
   getSettingWithMigration, setSetting, SETTING_KEYS, LOCAL_KEYS,
 } from "../lib/cafeDb";
+import { logoBox, contactFooter, waQrDataUrl, SUPPORT_WA } from "../lib/reportChrome";
 
 type SalType = "daily" | "weekly" | "monthly";
 type Salary = { id: number; name: string; title: string; type: SalType; amount: string; count: string; note: string };
@@ -43,15 +44,22 @@ const salaryMonthly = (s: Salary) => {
 export default function FixedExpensesPage() {
   const { ownedShopId } = (useAuth() as any) ?? {};
   const [branch, setBranch] = useState<string>("");
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const waNum = SUPPORT_WA;
+  const [qr, setQr] = useState<string>("");
   useEffect(() => {
     let active = true;
     (async () => {
-      if (!ownedShopId) { setBranch(""); return; }
-      const { data } = await supabase.from("shops").select("shop_name").eq("id", ownedShopId).single();
-      if (active && data) setBranch((data as any).shop_name ?? "");
+      if (!ownedShopId) { setBranch(""); setLogoUrl(null); return; }
+      const { data } = await supabase.from("shops").select("shop_name, logo_url").eq("id", ownedShopId).single();
+      if (active && data) {
+        setBranch((data as any).shop_name ?? "");
+        setLogoUrl((data as any).logo_url ?? null);
+      }
     })();
     return () => { active = false; };
   }, [ownedShopId]);
+  useEffect(() => { let a = true; (async () => { const d = await waQrDataUrl(waNum); if (a) setQr(d); })(); return () => { a = false; }; }, [waNum]);
 
   // تحويلات الفرع (طلبات) من Supabase
   const [orders, setOrders] = useState<any[]>([]);
@@ -151,7 +159,7 @@ export default function FixedExpensesPage() {
   const buildBEHTML = () => {
     const now = new Date().toLocaleString("ar-SA");
     const card = (l: string, v: string, green = false) => `<div style="flex:1;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:10px 14px;"><div style="font-size:10px;color:#6b7280;font-weight:700;">${l}</div><div style="font-size:16px;font-weight:800;margin-top:3px;color:${green ? "#15a06a" : "#111827"};">${v}</div></div>`;
-    const header = `<div style="background:#0f1b2b;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;"><div style="text-align:left;"><div style="font-size:20px;font-weight:800;color:#34d399;">نقطة التعادل والمستهدف</div><div style="font-size:12px;color:#9fb3c8;">الشهر: ${month} — ${now}</div></div><div style="display:flex;align-items:center;gap:10px;"><div style="text-align:right;"><div style="font-size:18px;font-weight:800;color:#fff;">محور</div><div style="font-size:9px;letter-spacing:3px;color:#9fb3c8;">MIHWAR PLATFORM</div></div><div style="width:42px;height:42px;border-radius:11px;background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.4);color:#34d399;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;">م</div></div></div>`;
+    const header = `<div style="background:#0f1b2b;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;"><div style="text-align:left;"><div style="font-size:20px;font-weight:800;color:#34d399;">نقطة التعادل والمستهدف</div><div style="font-size:12px;color:#9fb3c8;">الشهر: ${month} — ${now}</div></div><div style="display:flex;align-items:center;gap:10px;"><div style="text-align:right;"><div style="font-size:18px;font-weight:800;color:#fff;">محور</div><div style="font-size:9px;letter-spacing:3px;color:#9fb3c8;">MIHWAR PLATFORM</div></div>${logoBox(logoUrl)}</div></div>`;
     const cards = `<div style="display:flex;gap:10px;padding:14px 20px;background:#f8fafc;">${card("الفرع", branch || "—")}${card("المبيعات الفعلية", fmt(actualSales) + " ر.س")}${card("نقطة التعادل", fmt(be.breakEven) + " ر.س", true)}${card("المستهدف", fmt(be.target) + " ر.س", true)}</div>`;
     const row = (l: string, v: string, note = "") => `<tr><td style="border:1px solid #e5e7eb;padding:6px 10px;font-size:12px;text-align:right;font-weight:600;color:#374151;">${l}</td><td style="border:1px solid #e5e7eb;padding:6px 10px;font-size:12px;text-align:center;font-weight:800;color:#0f1b2b;">${v}</td><td style="border:1px solid #e5e7eb;padding:6px 10px;font-size:11px;text-align:right;color:#6b7280;">${note}</td></tr>`;
     const metrics = `<div style="padding:8px 20px;"><table style="border-collapse:collapse;width:100%;max-width:640px;">
@@ -171,7 +179,7 @@ export default function FixedExpensesPage() {
     const scen = `<div style="padding:4px 20px 14px;"><div style="font-size:13px;font-weight:800;color:#0f1b2b;margin:6px 0;">سيناريوهات المستهدف فوق نقطة التعادل</div>
       <table style="border-collapse:collapse;width:100%;max-width:640px;"><tr>${["السيناريو", "الزيادة", "Target", "الفرق عن التعادل"].map((h) => `<th style="border:1px solid #d1d5db;padding:6px 8px;background:#14304d;color:#fff;font-size:11px;">${h}</th>`).join("")}</tr>
       ${be.scenarios.map((s) => `<tr><td style="border:1px solid #e5e7eb;padding:5px 8px;font-size:11px;text-align:right;">${s.l}</td><td style="border:1px solid #e5e7eb;padding:5px 8px;font-size:11px;text-align:center;">${s.up}%</td><td style="border:1px solid #e5e7eb;padding:5px 8px;font-size:11px;text-align:center;font-weight:800;color:#15a06a;">${fmt(s.target)}</td><td style="border:1px solid #e5e7eb;padding:5px 8px;font-size:11px;text-align:center;">${fmt(s.diff)}</td></tr>`).join("")}</table></div>`;
-    const footer = `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 20px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:10px;"><div>تم إنشاء هذا التقرير آليًا من صفحة المصروفات الثابتة / نقطة التعادل</div><div>منصة محور — MIHWAR B2B Marketplace</div></div>`;
+    const footer = `<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:10px;gap:12px;"><div><div>تم إنشاء هذا التقرير آليًا من صفحة المصروفات الثابتة / نقطة التعادل</div><div>منصة محور — MIHWAR B2B Marketplace</div></div>${contactFooter(waNum, qr)}</div>`;
     return `<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;color:#1f2937;background:#fff;">${header}${cards}${metrics}${scen}${footer}</div>`;
   };
   const exportPDF = () => {

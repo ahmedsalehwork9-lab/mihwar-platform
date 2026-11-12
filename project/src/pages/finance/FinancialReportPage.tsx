@@ -14,6 +14,7 @@ import {
   fetchSalesWithMigration, fetchPurchasesWithMigration,
   getSettingWithMigration, setSetting, SETTING_KEYS, LOCAL_KEYS,
 } from "../lib/cafeDb";
+import { logoBox, contactFooter, waQrDataUrl, SUPPORT_WA } from "../lib/reportChrome";
 
 const VAT_DIV = 1.15;
 
@@ -107,15 +108,22 @@ const changeNote = (cur: number, prev: number) => {
 export default function FinancialReportPage() {
   const { ownedShopId } = (useAuth() as any) ?? {};
   const [branch, setBranch] = useState("");
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const waNum = SUPPORT_WA;
+  const [qr, setQr] = useState<string>("");
   useEffect(() => {
     let active = true;
     (async () => {
-      if (!ownedShopId) { setBranch(""); return; }
-      const { data } = await supabase.from("shops").select("shop_name").eq("id", ownedShopId).single();
-      if (active && data) setBranch((data as any).shop_name ?? "");
+      if (!ownedShopId) { setBranch(""); setLogoUrl(null); return; }
+      const { data } = await supabase.from("shops").select("shop_name, logo_url").eq("id", ownedShopId).single();
+      if (active && data) {
+        setBranch((data as any).shop_name ?? "");
+        setLogoUrl((data as any).logo_url ?? null);
+      }
     })();
     return () => { active = false; };
   }, [ownedShopId]);
+  useEffect(() => { let a = true; (async () => { const d = await waQrDataUrl(waNum); if (a) setQr(d); })(); return () => { a = false; }; }, [waNum]);
 
   const [orders, setOrders] = useState<any[]>([]);
   useEffect(() => {
@@ -249,12 +257,12 @@ export default function FinancialReportPage() {
     const salBody = fe.salaries.filter((s: any) => s.name).map((s: any) => `<tr>${tdL(s.name, true)}${tdN(fmt0(salaryMonthly(s)), "#334155")}${tdNote(s.title || "")}${tdNote(s.note || "")}</tr>`).join("");
     const salTable = fe.salaries.some((s: any) => s.name) ? `<table style="border-collapse:collapse;width:100%;"><tr>${th("الموظف")}${th("الراتب الشهري")}${th("الوظيفة")}${th("ملاحظات")}</tr>${salBody}<tr style="background:#f1f5f9;">${tdL("الإجمالي", true)}${tdN(fmt0(cur.salaries), "#0f1b2b", true)}<td colspan="2" style="border:1px solid #e5e7eb;"></td></tr></table>` : "";
 
-    const header = `<div style="background:#0f1b2b;padding:18px 22px;display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #34d399;"><div style="display:flex;align-items:center;gap:10px;"><div style="width:44px;height:44px;border-radius:11px;background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.4);color:#34d399;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;">م</div><div style="text-align:right;"><div style="font-size:18px;font-weight:800;color:#fff;">محور</div><div style="font-size:9px;letter-spacing:3px;color:#9fb3c8;">MIHWAR PLATFORM</div></div></div><div style="text-align:left;"><div style="font-size:22px;font-weight:800;color:#34d399;">التقرير المالي الشهري — ${branch || "الفرع"}</div><div style="font-size:12px;color:#9fb3c8;">${compare ? monthLabel(pm) + " و " + monthLabel(month) : monthLabel(month)} — ${now}</div></div></div>`;
+    const header = `<div style="background:#0f1b2b;padding:18px 22px;display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #34d399;"><div style="display:flex;align-items:center;gap:10px;">${logoBox(logoUrl)}<div style="text-align:right;"><div style="font-size:18px;font-weight:800;color:#fff;">محور</div><div style="font-size:9px;letter-spacing:3px;color:#9fb3c8;">MIHWAR PLATFORM</div></div></div><div style="text-align:left;"><div style="font-size:22px;font-weight:800;color:#34d399;">التقرير المالي الشهري — ${branch || "الفرع"}</div><div style="font-size:12px;color:#9fb3c8;">${compare ? monthLabel(pm) + " و " + monthLabel(month) : monthLabel(month)} — ${now}</div></div></div>`;
     const card = (l: string, v: string, green = false) => `<div style="flex:1;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:10px 14px;"><div style="font-size:10px;color:#6b7280;font-weight:700;">${l}</div><div style="font-size:16px;font-weight:800;margin-top:3px;color:${green ? "#15a06a" : "#111827"};">${v}</div></div>`;
     const cards = `<div style="display:flex;gap:10px;padding:14px 22px;background:#f8fafc;border-bottom:1px solid #e5e7eb;">${card("الفرع", branch || "—")}${card("صافي المبيعات (" + monthLabel(month) + ")", fmt(cur.net) + " SAR")}${card("صافي الربح", fmt(cur.netProfit) + " SAR", true)}${card("هامش الربح", cur.margin.toFixed(1) + "%")}</div>`;
     const sec = (t: string) => `<div style="font-size:16px;font-weight:800;color:#0f1b2b;border-bottom:2px solid #14304d;padding-bottom:4px;margin:18px 0 10px;">${t}</div>`;
     const plHead = `<table style="border-collapse:collapse;width:100%;"><tr>${th("البند")}${th(monthLabel(pm))}${th(monthLabel(month))}${th("ملاحظات")}</tr>${plBody}${marginRow}</table>`;
-    const footer = `<div style="display:flex;justify-content:space-between;padding:12px 22px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:10px;margin-top:16px;"><div>تم إنشاء هذا التقرير آليًا من منصة محور</div><div>MIHWAR B2B Marketplace</div></div>`;
+    const footer = `<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 22px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:10px;margin-top:16px;gap:12px;"><div><div>تم إنشاء هذا التقرير آليًا من منصة محور</div><div>MIHWAR B2B Marketplace</div></div>${contactFooter(waNum, qr)}</div>`;
     return `<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;color:#1f2937;background:#fff;">${header}${cards}<div style="padding:8px 22px;">${sec("أولاً: قائمة الربح والخسارة")}${plHead}${appTable}${sec("ثانياً: نقطة التعادل")}${beTable}${sec("ثالثاً: المصروفات الثابتة الشهرية")}${feTable}${salTable ? sec("رابعاً: بيانات الموظفين والرواتب") + salTable : ""}</div>${footer}</div>`;
   };
   const exportPDF = () => {

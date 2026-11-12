@@ -12,6 +12,7 @@ import * as XLSX from "xlsx";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import { fetchPurchasesWithMigration, upsertPurchase, deletePurchase } from "../lib/cafeDb";
+import { logoBox, contactFooter, waQrDataUrl, SUPPORT_WA } from "../lib/reportChrome";
 
 type PItem = { id: number; name: string; category: string; qty: string; unit: string; price: string };
 type Purchase = {
@@ -42,16 +43,23 @@ const newItem = (): PItem => ({ id: Date.now() + Math.random(), name: "", catego
 export default function PurchasesPage() {
   const { ownedShopId } = (useAuth() as any) ?? {};
   const [branch, setBranch] = useState<string>("");
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const waNum = SUPPORT_WA;
+  const [qr, setQr] = useState<string>("");
 
   useEffect(() => {
     let active = true;
     (async () => {
-      if (!ownedShopId) { setBranch(""); return; }
-      const { data } = await supabase.from("shops").select("shop_name").eq("id", ownedShopId).single();
-      if (active && data) setBranch((data as any).shop_name ?? "");
+      if (!ownedShopId) { setBranch(""); setLogoUrl(null); return; }
+      const { data } = await supabase.from("shops").select("shop_name, logo_url").eq("id", ownedShopId).single();
+      if (active && data) {
+        setBranch((data as any).shop_name ?? "");
+        setLogoUrl((data as any).logo_url ?? null);
+      }
     })();
     return () => { active = false; };
   }, [ownedShopId]);
+  useEffect(() => { let a = true; (async () => { const d = await waQrDataUrl(waNum); if (a) setQr(d); })(); return () => { a = false; }; }, [waNum]);
 
   const [tab, setTab] = useState<"entry" | "report">("entry");
 
@@ -269,7 +277,7 @@ export default function PurchasesPage() {
             <div style="font-size:18px;font-weight:800;color:#fff;">محور</div>
             <div style="font-size:9px;letter-spacing:3px;color:#9fb3c8;">MIHWAR PLATFORM</div>
           </div>
-          <div style="width:42px;height:42px;border-radius:11px;background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.4);color:#34d399;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;">م</div>
+          ${logoBox(logoUrl)}
         </div>
       </div>`;
     const cards = `
@@ -328,9 +336,9 @@ export default function PurchasesPage() {
       </div>` : "";
     const table = `<div style="padding:6px 20px 4px;"><table style="border-collapse:collapse;width:100%;"><thead>${thead}</thead><tbody>${body}${totalRow}</tbody></table></div>`;
     const footer = `
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 20px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:10px;">
-        <div>تم إنشاء هذا التقرير آليًا من صفحة المشتريات</div>
-        <div>منصة محور — MIHWAR B2B Marketplace</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:10px;gap:12px;">
+        <div><div>تم إنشاء هذا التقرير آليًا من صفحة المشتريات</div><div>منصة محور — MIHWAR B2B Marketplace</div></div>
+        ${contactFooter(waNum, qr)}
       </div>`;
     return `<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;color:#1f2937;background:#fff;">${header}${cards}${table}${catBlock}${priceBlock}${footer}</div>`;
   };

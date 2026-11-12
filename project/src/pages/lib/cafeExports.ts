@@ -391,25 +391,34 @@ async function financialSummary(bid: number, month: string) {
   return { gross: cur.gross, net: cur.net, costs: cur.totalCosts, profit: cur.netProfit, margin: cur.margin };
 }
 
-function consolidatedHTML(title: string, periodLabel: string, headers: string[], bodyRows: string[][], totalRow: string[], qr: string): string {
+type ConsCard = { label: string; value: string; green?: boolean };
+const col = (v: string, c: string) => `<span style="color:${c};font-weight:800;">${v}</span>`;
+const diffCol = (d: number) => col((d > 0 ? "+" : "") + fmt(d), d > 0.009 ? "#15a06a" : d < -0.009 ? "#dc2626" : "#6b7280");
+const errCol = (e: number) => col((e > 0 ? "+" : "") + e.toFixed(1) + "%", Math.abs(e) <= 5 ? "#15a06a" : "#b45309");
+const prCol = (p: number) => col(fmt(p), p >= 0 ? "#15a06a" : "#dc2626");
+
+function consolidatedHTML(title: string, periodLabel: string, cards: ConsCard[], headers: string[], bodyRows: string[][], totalRow: string[], qr: string): string {
   const now = new Date().toLocaleString("ar-SA");
-  const header = `<div style="background:#0f1b2b;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;"><div style="text-align:left;"><div style="font-size:20px;font-weight:800;color:#34d399;">${title}</div><div style="font-size:12px;color:#9fb3c8;">${periodLabel} — ${now}</div></div><div style="text-align:right;"><div style="font-size:18px;font-weight:800;color:#fff;">محور</div><div style="font-size:9px;letter-spacing:3px;color:#9fb3c8;">MIHWAR PLATFORM</div></div></div>`;
-  const thead = `<tr>${headers.map((h) => `<th style="border:1px solid #d1d5db;padding:7px 8px;background:#14304d;color:#fff;font-size:11px;font-weight:700;white-space:nowrap;">${h}</th>`).join("")}</tr>`;
+  const header = `<div style="background:#0f1b2b;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #34d399;"><div style="text-align:left;"><div style="font-size:20px;font-weight:800;color:#34d399;">${title}</div><div style="font-size:12px;color:#9fb3c8;">${periodLabel} — ${now}</div></div><div style="text-align:right;"><div style="font-size:18px;font-weight:800;color:#fff;">محور</div><div style="font-size:9px;letter-spacing:3px;color:#9fb3c8;">MIHWAR PLATFORM</div></div></div>`;
+  const card = (c: ConsCard) => `<div style="flex:1;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:11px 14px;box-shadow:0 1px 2px rgba(15,27,43,0.04);"><div style="font-size:10px;color:#6b7280;font-weight:700;">${c.label}</div><div style="font-size:17px;font-weight:800;margin-top:4px;color:${c.green ? "#15a06a" : "#0f1b2b"};">${c.value}</div></div>`;
+  const cardsBand = `<div style="display:flex;gap:10px;padding:16px 20px;background:#f8fafc;border-bottom:1px solid #eef2f7;">${cards.map(card).join("")}</div>`;
+  const thead = `<tr>${headers.map((h, i) => `<th style="border:1px solid #1f3a5a;padding:9px 10px;background:#14304d;color:#fff;font-size:11px;font-weight:700;white-space:nowrap;text-align:${i === 0 ? "right" : "center"};">${h}</th>`).join("")}</tr>`;
   const body = bodyRows.map((cells, idx) => {
-    const bg = idx % 2 ? "#ffffff" : "#f9fafb";
-    return `<tr style="background:${bg};">${cells.map((v, i) => `<td style="border:1px solid #e5e7eb;padding:6px 8px;font-size:11px;text-align:${i === 0 ? "right" : "center"};font-weight:${i === 0 ? 700 : 500};color:${i === 0 ? "#0f1b2b" : "#1f2937"};">${v}</td>`).join("")}</tr>`;
+    const bg = idx % 2 ? "#ffffff" : "#f6f9fc";
+    return `<tr style="background:${bg};">${cells.map((v, i) => `<td style="border:1px solid #e5e7eb;padding:8px 10px;font-size:12px;text-align:${i === 0 ? "right" : "center"};font-weight:${i === 0 ? 700 : 600};color:${i === 0 ? "#0f1b2b" : "#1f2937"};">${v}</td>`).join("")}</tr>`;
   }).join("");
-  const total = `<tr>${totalRow.map((v, i) => `<td style="border:1px solid #cbd5e1;padding:7px 8px;font-size:11px;font-weight:800;text-align:${i === 0 ? "right" : "center"};background:#eef2f7;color:#0f1b2b;">${v}</td>`).join("")}</tr>`;
-  const table = `<div style="padding:10px 20px 14px;"><table style="border-collapse:collapse;width:100%;"><thead>${thead}</thead><tbody>${body}${total}</tbody></table><div style="margin-top:8px;font-size:10px;color:#9ca3af;">تقرير مجمّع — صف لكل فرع + إجمالي عام للفروع المختارة (${bodyRows.length} فرع).</div></div>`;
+  const total = `<tr>${totalRow.map((v, i) => `<td style="border:1px solid #bbf7d0;padding:10px;font-size:12.5px;font-weight:800;text-align:${i === 0 ? "right" : "center"};background:#dcfce7;color:#14532d;">${i === 0 ? "🧮 " + v : v}</td>`).join("")}</tr>`;
+  const table = `<div style="padding:16px 20px 14px;"><div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;"><table style="border-collapse:collapse;width:100%;"><thead>${thead}</thead><tbody>${body}${total}</tbody></table></div><div style="margin-top:9px;font-size:10px;color:#9ca3af;">تقرير مجمّع — صف لكل فرع + إجمالي عام للفروع المختارة (${bodyRows.length} فرع). المبالغ بالريال السعودي.</div></div>`;
   const footer = `<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:10px;gap:12px;"><div><div>تم إنشاء هذا التقرير آليًا من مركز التقارير</div><div>منصة محور — MIHWAR B2B Marketplace</div></div>${contactFooter(SUPPORT_WA, qr)}</div>`;
-  return SHELL(header, `${table}${footer}`);
+  return SHELL(header, `${cardsBand}${table}${footer}`);
 }
 
 export async function exportConsolidated(reportId: string, branches: BranchRef[], from: string, to: string, mode: ExportMode): Promise<ExportResult> {
   if (!branches.length) return { ok: false, rows: 0, msg: "اختر فرعًا واحدًا على الأقل." };
   const qr = await waQrDataUrl(SUPPORT_WA);
   const month = from.slice(0, 7);
-  let title = "", periodLabel = "", filename = "", headers: string[] = [];
+  const n = branches.length;
+  let title = "", periodLabel = "", filename = "", headers: string[] = [], cards: ConsCard[] = [];
   const body: string[][] = [];
   let total: string[] = [];
 
@@ -418,34 +427,38 @@ export async function exportConsolidated(reportId: string, branches: BranchRef[]
     headers = ["الفرع", "عدد الأيام", "شامل الضريبة", "قبل الضريبة", "الضريبة", "السيستم", "الفرق", "الخطأ %"];
     let c = 0, act = 0, bef = 0, vat = 0, sys = 0;
     for (const b of branches) { const s = await salesSummary(b.id, from, to); c += s.count; act += s.gAct; bef += s.before; vat += s.vat; sys += s.gSys;
-      body.push([b.name, String(s.count), fmt(s.gAct), fmt(s.before), fmt(s.vat), fmt(s.gSys), (s.diff > 0 ? "+" : "") + fmt(s.diff), (s.err > 0 ? "+" : "") + s.err.toFixed(1) + "%"]); }
+      body.push([b.name, String(s.count), `<b style="color:#15a06a;">${fmt(s.gAct)}</b>`, fmt(s.before), col(fmt(s.vat), "#b45309"), fmt(s.gSys), diffCol(s.diff), errCol(s.err)]); }
     const d = act - sys, er = sys ? (d / sys) * 100 : 0;
     total = ["الإجمالي", String(c), fmt(act), fmt(bef), fmt(vat), fmt(sys), (d > 0 ? "+" : "") + fmt(d), (er > 0 ? "+" : "") + er.toFixed(1) + "%"];
+    cards = [{ label: "عدد الفروع", value: String(n) }, { label: "الإجمالي قبل الضريبة", value: fmt(bef) + " ر.س" }, { label: "ضريبة القيمة المضافة", value: fmt(vat) + " ر.س" }, { label: "شامل الضريبة", value: fmt(act) + " ر.س", green: true }];
   } else if (reportId === "purchases") {
     title = "تقرير المشتريات — عدة فروع"; periodLabel = `الفترة: ${from} إلى ${to}`; filename = `مشتريات_عدة_فروع_${from}_${to}`;
     headers = ["الفرع", "عدد الفواتير", "شامل الضريبة", "الضريبة", "متوسط الفاتورة"];
     let c = 0, tot = 0, vat = 0;
     for (const b of branches) { const s = await purchasesSummary(b.id, from, to); c += s.count; tot += s.total; vat += s.vat;
-      body.push([b.name, String(s.count), fmt(s.total), fmt(s.vat), fmt(s.avg)]); }
+      body.push([b.name, String(s.count), `<b style="color:#15a06a;">${fmt(s.total)}</b>`, col(fmt(s.vat), "#b45309"), fmt(s.avg)]); }
     total = ["الإجمالي", String(c), fmt(tot), fmt(vat), fmt(c ? tot / c : 0)];
+    cards = [{ label: "عدد الفروع", value: String(n) }, { label: "عدد الفواتير", value: String(c) }, { label: "إجمالي الضريبة", value: fmt(vat) + " ر.س" }, { label: "الإجمالي شامل الضريبة", value: fmt(tot) + " ر.س", green: true }];
   } else if (reportId === "fixed-expenses") {
     title = "نقطة التعادل — عدة فروع"; periodLabel = `الشهر: ${month}`; filename = `التعادل_عدة_فروع_${month}`;
     headers = ["الفرع", "المبيعات", "تكاليف ثابتة", "تكاليف متغيرة", "نقطة التعادل", "المستهدف", "صافي الربح"];
     let sa = 0, fx = 0, vr = 0, be = 0, tg = 0, pr = 0;
     for (const b of branches) { const s = await breakevenSummary(b.id, month); sa += s.sales; fx += s.fixed; vr += s.variable; be += s.be; tg += s.target; pr += s.profit;
-      body.push([b.name, fmt(s.sales), fmt(s.fixed), fmt(s.variable), fmt(s.be), fmt(s.target), fmt(s.profit)]); }
+      body.push([b.name, fmt(s.sales), fmt(s.fixed), fmt(s.variable), `<b style="color:#b45309;">${fmt(s.be)}</b>`, fmt(s.target), prCol(s.profit)]); }
     total = ["الإجمالي", fmt(sa), fmt(fx), fmt(vr), fmt(be), fmt(tg), fmt(pr)];
+    cards = [{ label: "عدد الفروع", value: String(n) }, { label: "إجمالي المبيعات", value: fmt(sa) + " ر.س" }, { label: "إجمالي نقطة التعادل", value: fmt(be) + " ر.س" }, { label: "إجمالي صافي الربح", value: fmt(pr) + " ر.س", green: true }];
   } else if (reportId === "financial-report") {
     title = "التقرير المالي — عدة فروع"; periodLabel = `الشهر: ${month}`; filename = `التقرير_المالي_عدة_فروع_${month}`;
     headers = ["الفرع", "إجمالي المبيعات", "صافي المبيعات", "إجمالي التكاليف", "صافي الربح", "هامش %"];
     let gr = 0, nt = 0, co = 0, pr = 0;
     for (const b of branches) { const s = await financialSummary(b.id, month); gr += s.gross; nt += s.net; co += s.costs; pr += s.profit;
-      body.push([b.name, fmt(s.gross), fmt(s.net), fmt(s.costs), fmt(s.profit), s.margin.toFixed(1) + "%"]); }
+      body.push([b.name, `<b style="color:#15a06a;">${fmt(s.gross)}</b>`, fmt(s.net), col(fmt(s.costs), "#b45309"), prCol(s.profit), (s.gross > 0 ? s.margin : 0).toFixed(1) + "%"]); }
     total = ["الإجمالي", fmt(gr), fmt(nt), fmt(co), fmt(pr), (gr > 0 ? (pr / gr) * 100 : 0).toFixed(1) + "%"];
+    cards = [{ label: "عدد الفروع", value: String(n) }, { label: "إجمالي المبيعات", value: fmt(gr) + " ر.س" }, { label: "إجمالي التكاليف", value: fmt(co) + " ر.س" }, { label: "إجمالي صافي الربح", value: fmt(pr) + " ر.س", green: true }];
   } else {
     return { ok: false, rows: 0, msg: "نوع تقرير غير معروف." };
   }
 
-  emit(mode, title, filename, consolidatedHTML(title, periodLabel, headers, body, total, qr));
+  emit(mode, title, filename, consolidatedHTML(title, periodLabel, cards, headers, body, total, qr));
   return { ok: true, rows: branches.length };
 }

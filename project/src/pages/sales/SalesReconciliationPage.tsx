@@ -81,12 +81,12 @@ export default function SalesReconciliationPage() {
   useEffect(() => { let a = true; (async () => { const d = await waQrDataUrl(waNum); if (a) setQr(d); })(); return () => { a = false; }; }, [waNum]);
 
   // ── أسماء الكاشير لكل فرع (مخزّنة على Supabase، غير موحّدة) ──
-  const [staff, setStaff] = useState<string[]>(STAFF_SUGGEST);
+  const [staff, setStaff] = useState<string[]>([]);
   const [staffInput, setStaffInput] = useState("");
   useEffect(() => {
     (async () => {
       const list = await getSetting(ownedShopId ?? null, "staff_names");
-      setStaff(Array.isArray(list) && list.length ? list : STAFF_SUGGEST);
+      setStaff(Array.isArray(list) ? list : []);
     })();
   }, [ownedShopId]);
   const persistStaff = (list: string[]) => { setStaff(list); setSetting(ownedShopId ?? null, "staff_names", list); };
@@ -94,7 +94,6 @@ export default function SalesReconciliationPage() {
   const removeStaff = (n: string) => persistStaff(staff.filter((x) => x !== n));
 
   const [tab, setTab] = useState<"entry" | "report">("entry");
-  useEffect(() => { try { if (sessionStorage.getItem("mihwar_open_tab") === "sales-reconciliation") { setTab("report"); sessionStorage.removeItem("mihwar_open_tab"); } } catch (e) {} }, []);
 
   // ── كل تسويات الفرع (من Supabase) ──
   const [allEntries, setAllEntries] = useState<SavedEntry[]>([]);
@@ -195,6 +194,16 @@ export default function SalesReconciliationPage() {
     const justified = covered && badReasons.length === 0;
     return { shiftTotals, gSys, gAct, net, err, warn, reasonsSum, need, left, covered, hasDiff, badReasons, justified, perChannelActual };
   }, [vals, reasons, activeIds]);
+
+  // ملء خانة المبلغ تلقائيًا بقيمة الفرق عند وجود سبب واحد وخانته فارغة
+  useEffect(() => {
+    setReasons((prev) => {
+      if (prev.length !== 1 || prev[0].amount) return prev;
+      if (calc.need < 0.01) return prev;
+      return [{ ...prev[0], amount: String(Math.round(calc.need * 100) / 100) }];
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calc.need]);
 
   const diffColor = (v: number) => (v > 0.009 ? "text-emerald-400" : v < -0.009 ? "text-red-400" : "text-slate-500");
   const diffTxt = (v: number) => (v > 0 ? "+" : "") + fmt(v);
@@ -358,6 +367,7 @@ export default function SalesReconciliationPage() {
   // ================= UI =================
   return (
     <div className="p-4 lg:p-6 min-h-screen" dir="rtl">
+      <style>{`input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input[type=number]{-moz-appearance:textfield}`}</style>
       <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
         <div>
           <h1 className="text-2xl font-black text-white flex items-center gap-3">

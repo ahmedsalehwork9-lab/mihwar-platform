@@ -185,7 +185,7 @@ export default function FixedExpensesPage() {
   };
   const exportPDF = () => {
     const w = window.open("", "_blank", "width=1000,height=900"); if (!w) return;
-    w.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>نقطة التعادل — ${branch}</title></head><body>${buildBEHTML()}<script>window.onload=function(){window.print();}<\/script></body></html>`);
+    w.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar" style="color-scheme:light;background:#fff;"><head><meta charset="UTF-8"><meta name="color-scheme" content="light"><title>نقطة التعادل — ${branch}</title></head><body style="margin:0;background:#fff;">${buildBEHTML()}<script>window.onload=function(){window.print();}<\/script></body></html>`);
     w.document.close();
   };
 

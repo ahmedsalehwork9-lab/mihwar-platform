@@ -267,11 +267,11 @@ export default function FinancialReportPage() {
   };
   const exportPDF = () => {
     const w = window.open("", "_blank", "width=1100,height=900"); if (!w) return;
-    w.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>التقرير المالي — ${branch}</title></head><body>${buildHTML()}<script>window.onload=function(){window.print();}<\/script></body></html>`);
+    w.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar" style="color-scheme:light;background:#fff;"><head><meta charset="UTF-8"><meta name="color-scheme" content="light"><title>التقرير المالي — ${branch}</title></head><body style="margin:0;background:#fff;">${buildHTML()}<script>window.onload=function(){window.print();}<\/script></body></html>`);
     w.document.close();
   };
   const exportExcel = () => {
-    const html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"></head><body>${buildHTML()}</body></html>`;
+    const html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"></head><body style="margin:0;background:#fff;">${buildHTML()}</body></html>`;
     const blob = new Blob(["﻿" + html], { type: "application/vnd.ms-excel;charset=utf-8" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `التقرير_المالي_${branch || "فرع"}_${month}.xls`; a.click(); URL.revokeObjectURL(a.href);
   };

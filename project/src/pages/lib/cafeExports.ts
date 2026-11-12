@@ -54,10 +54,10 @@ function emit(mode: ExportMode, title: string, filename: string, html: string) {
   if (mode === "pdf") {
     const w = window.open("", "_blank", "width=1000,height=900");
     if (!w) { alert("فضلًا اسمح بالنوافذ المنبثقة (pop-ups) لتصدير الـ PDF."); return; }
-    w.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>${title}</title></head><body>${html}<script>window.onload=function(){window.print();}<\/script></body></html>`);
+    w.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar" style="color-scheme:light;background:#fff;"><head><meta charset="UTF-8"><meta name="color-scheme" content="light"><title>${title}</title></head><body style="margin:0;background:#fff;">${html}<script>window.onload=function(){window.print();}<\/script></body></html>`);
     w.document.close();
   } else {
-    const x = `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"></head><body>${html}</body></html>`;
+    const x = `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"></head><body style="margin:0;background:#fff;">${html}</body></html>`;
     const blob = new Blob(["﻿" + x], { type: "application/vnd.ms-excel;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);

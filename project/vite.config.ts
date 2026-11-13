@@ -28,7 +28,10 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        navigateFallback: '/',
+        navigateFallback: '/index.html',
+        cleanupOutdatedCaches: true,
+        skipWaiting: true,
+        clientsClaim: true,
         // Never cache Supabase API calls
         navigateFallbackDenylist: [/^\/api/, /^\/verify/],
         runtimeCaching: [

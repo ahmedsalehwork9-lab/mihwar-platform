@@ -422,7 +422,7 @@ export default function PurchasesPage() {
             <div className="overflow-x-auto">
               <table className="w-full border-collapse" style={{ minWidth: 760 }}>
                 <thead>
-                  <tr className="bg-[#0b1220]">
+                  <tr className="bg-slate-950">
                     {["الصنف", "التصنيف", "الكمية", "الوحدة", "سعر الوحدة", "الإجمالي", ""].map((h) => (
                       <th key={h} className="text-right text-[10px] font-bold text-slate-500 uppercase px-3 py-2 whitespace-nowrap">{h}</th>
                     ))}
@@ -434,11 +434,11 @@ export default function PurchasesPage() {
                   <datalist id="unitList">{UNIT_OPTS.map((u) => <option key={u} value={u} />)}</datalist>
                   {items.map((r) => (
                     <tr key={r.id} className="border-t border-slate-800">
-                      <td className="px-2 py-1.5"><input list="itemList" value={r.name} onChange={(e) => editItem(r.id, { name: e.target.value })} placeholder="اسم الصنف" className="w-full min-w-[150px] bg-[#0b1220] border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs" /></td>
-                      <td className="px-2 py-1.5"><input list="catList" value={r.category} onChange={(e) => editItem(r.id, { category: e.target.value })} className="w-full min-w-[110px] bg-[#0b1220] border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs" /></td>
-                      <td className="px-2 py-1.5"><input type="number" step="0.01" value={r.qty} onChange={(e) => editItem(r.id, { qty: e.target.value })} placeholder="0" className="w-20 bg-[#0b1220] border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr]" /></td>
-                      <td className="px-2 py-1.5"><input list="unitList" value={r.unit} onChange={(e) => editItem(r.id, { unit: e.target.value })} className="w-20 bg-[#0b1220] border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center text-xs" /></td>
-                      <td className="px-2 py-1.5"><input type="number" step="0.01" value={r.price} onChange={(e) => editItem(r.id, { price: e.target.value })} placeholder="0" className="w-24 bg-[#0b1220] border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr]" /></td>
+                      <td className="px-2 py-1.5"><input list="itemList" value={r.name} onChange={(e) => editItem(r.id, { name: e.target.value })} placeholder="اسم الصنف" className="w-full min-w-[150px] bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs" /></td>
+                      <td className="px-2 py-1.5"><input list="catList" value={r.category} onChange={(e) => editItem(r.id, { category: e.target.value })} className="w-full min-w-[110px] bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs" /></td>
+                      <td className="px-2 py-1.5"><input type="number" step="0.01" value={r.qty} onChange={(e) => editItem(r.id, { qty: e.target.value })} placeholder="0" className="w-20 bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr]" /></td>
+                      <td className="px-2 py-1.5"><input list="unitList" value={r.unit} onChange={(e) => editItem(r.id, { unit: e.target.value })} className="w-20 bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center text-xs" /></td>
+                      <td className="px-2 py-1.5"><input type="number" step="0.01" value={r.price} onChange={(e) => editItem(r.id, { price: e.target.value })} placeholder="0" className="w-24 bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr]" /></td>
                       <td className="px-2 py-1.5 text-center font-mono text-emerald-400 text-xs [direction:ltr] whitespace-nowrap">{fmt(lineTotal(r))}</td>
                       <td className="px-2 py-1.5 text-center"><button onClick={() => delItem(r.id)} className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400">✕</button></td>
                     </tr>
@@ -451,7 +451,7 @@ export default function PurchasesPage() {
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-4">
             <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-3.5">
-              <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="ملاحظات الفاتورة…" className="w-full bg-[#0b1220] border border-slate-700 rounded-xl text-white p-2.5 text-sm resize-y min-h-[72px]" />
+              <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="ملاحظات الفاتورة…" className="w-full bg-slate-950 border border-slate-700 rounded-xl text-white p-2.5 text-sm resize-y min-h-[72px]" />
             </div>
             <div className="bg-gradient-to-br from-blue-600/20 to-slate-900 border border-blue-500/20 rounded-2xl p-4 flex flex-col justify-center gap-1">
               <div className="flex justify-between text-xs"><span className="text-slate-400 font-semibold">المجموع قبل الضريبة</span><span className="font-mono text-slate-200 [direction:ltr]">{fmt(subtotal)}</span></div>
@@ -494,7 +494,7 @@ export default function PurchasesPage() {
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse" style={{ minWidth: 760 }}>
-                  <thead><tr>{["التاريخ", "المورّد", "رقم الفاتورة", "النوع", "عدد الأصناف", "الضريبة", "الإجمالي", "الدفع", "ملاحظات", ""].map((h) => <th key={h} className="text-[10px] px-2 py-2.5 bg-[#0b1220] text-slate-500 uppercase whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
+                  <thead><tr>{["التاريخ", "المورّد", "رقم الفاتورة", "النوع", "عدد الأصناف", "الضريبة", "الإجمالي", "الدفع", "ملاحظات", ""].map((h) => <th key={h} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 uppercase whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
                   <tbody>
                     {report.rows.map((e) => (
                       <tr key={e.id} className="hover:bg-white/[0.02]">
@@ -512,7 +512,7 @@ export default function PurchasesPage() {
                     ))}
                   </tbody>
                   <tfoot>
-                    <tr className="bg-[#0b1220] font-bold">
+                    <tr className="bg-slate-950 font-bold">
                       <td colSpan={5} className="px-2 py-2.5 text-xs text-right text-slate-200 border-t border-slate-600">الإجمالي العام</td>
                       <td className="px-2 py-2.5 text-xs text-center font-mono text-amber-400 [direction:ltr] border-t border-slate-600">{fmt(report.totalVat)}</td>
                       <td className="px-2 py-2.5 text-xs text-center font-mono text-emerald-400 [direction:ltr] border-t border-slate-600">{fmt(report.total)}</td>
@@ -533,7 +533,7 @@ export default function PurchasesPage() {
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse" style={{ minWidth: 640 }}>
-                  <thead><tr>{["الصنف", "تسلسل الأسعار", "أول سعر", "آخر سعر", "أعلى سعر", "% التغيّر"].map((h) => <th key={h} className="text-[10px] px-2 py-2.5 bg-[#0b1220] text-slate-500 uppercase whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
+                  <thead><tr>{["الصنف", "تسلسل الأسعار", "أول سعر", "آخر سعر", "أعلى سعر", "% التغيّر"].map((h) => <th key={h} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 uppercase whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
                   <tbody>
                     {report.priceChanges.map((pc) => {
                       const up = pc.change > 0;

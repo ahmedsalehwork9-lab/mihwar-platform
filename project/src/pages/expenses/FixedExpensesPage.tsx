@@ -222,19 +222,19 @@ export default function FixedExpensesPage() {
             <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-emerald-500" /><h2 className="text-sm font-bold text-white">الرواتب (تفصيلي)</h2><span className="text-[11px] text-emerald-400 font-bold mr-auto">إجمالي شهري: {fmt(salariesTotal)} ر.س</span></div>
             <div className="overflow-x-auto">
               <table className="w-full border-collapse" style={{ minWidth: 820 }}>
-                <thead><tr className="bg-[#0b1220]">{["اسم الموظف", "الوظيفة", "نوع الراتب", "القيمة", "العدد/الشهر", "المستحق الشهري", "ملاحظات", ""].map((h) => <th key={h} className="text-right text-[10px] font-bold text-slate-500 px-3 py-2 whitespace-nowrap">{h}</th>)}</tr></thead>
+                <thead><tr className="bg-slate-950">{["اسم الموظف", "الوظيفة", "نوع الراتب", "القيمة", "العدد/الشهر", "المستحق الشهري", "ملاحظات", ""].map((h) => <th key={h} className="text-right text-[10px] font-bold text-slate-500 px-3 py-2 whitespace-nowrap">{h}</th>)}</tr></thead>
                 <tbody>
                   {salaries.map((s) => {
                     const t = SAL_TYPES.find((x) => x.v === s.type)!;
                     return (
                       <tr key={s.id} className="border-t border-slate-800">
-                        <td className="px-2 py-1.5"><input value={s.name} onChange={(e) => editSalary(s.id, { name: e.target.value })} placeholder="الاسم" className="w-full min-w-[130px] bg-[#0b1220] border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs" /></td>
-                        <td className="px-2 py-1.5"><input value={s.title} onChange={(e) => editSalary(s.id, { title: e.target.value })} placeholder="مثال: باريستا" className="w-full min-w-[110px] bg-[#0b1220] border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs" /></td>
-                        <td className="px-2 py-1.5"><select value={s.type} onChange={(e) => editSalary(s.id, { type: e.target.value as SalType })} className="w-24 bg-[#0b1220] border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs">{SAL_TYPES.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}</select></td>
-                        <td className="px-2 py-1.5"><input type="number" step="0.01" value={s.amount} onChange={(e) => editSalary(s.id, { amount: e.target.value })} placeholder="0" className="w-24 bg-[#0b1220] border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr]" /></td>
-                        <td className="px-2 py-1.5">{s.type === "monthly" ? <span className="text-slate-600 text-xs">—</span> : <input type="number" value={s.count} onChange={(e) => editSalary(s.id, { count: e.target.value })} placeholder={String(t.def)} className="w-16 bg-[#0b1220] border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr]" />}</td>
+                        <td className="px-2 py-1.5"><input value={s.name} onChange={(e) => editSalary(s.id, { name: e.target.value })} placeholder="الاسم" className="w-full min-w-[130px] bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs" /></td>
+                        <td className="px-2 py-1.5"><input value={s.title} onChange={(e) => editSalary(s.id, { title: e.target.value })} placeholder="مثال: باريستا" className="w-full min-w-[110px] bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs" /></td>
+                        <td className="px-2 py-1.5"><select value={s.type} onChange={(e) => editSalary(s.id, { type: e.target.value as SalType })} className="w-24 bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs">{SAL_TYPES.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}</select></td>
+                        <td className="px-2 py-1.5"><input type="number" step="0.01" value={s.amount} onChange={(e) => editSalary(s.id, { amount: e.target.value })} placeholder="0" className="w-24 bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr]" /></td>
+                        <td className="px-2 py-1.5">{s.type === "monthly" ? <span className="text-slate-600 text-xs">—</span> : <input type="number" value={s.count} onChange={(e) => editSalary(s.id, { count: e.target.value })} placeholder={String(t.def)} className="w-16 bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr]" />}</td>
                         <td className="px-2 py-1.5 text-center font-mono text-emerald-400 text-xs [direction:ltr] whitespace-nowrap">{fmt(salaryMonthly(s))}</td>
-                        <td className="px-2 py-1.5"><input value={s.note} onChange={(e) => editSalary(s.id, { note: e.target.value })} placeholder="ملاحظة" className="w-full min-w-[90px] bg-[#0b1220] border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs" /></td>
+                        <td className="px-2 py-1.5"><input value={s.note} onChange={(e) => editSalary(s.id, { note: e.target.value })} placeholder="ملاحظة" className="w-full min-w-[90px] bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs" /></td>
                         <td className="px-2 py-1.5 text-center"><button onClick={() => delSalary(s.id)} className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400">✕</button></td>
                       </tr>
                     );
@@ -250,16 +250,16 @@ export default function FixedExpensesPage() {
             <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-blue-500" /><h2 className="text-sm font-bold text-white">مصروفات ثابتة أخرى</h2><span className="text-[11px] text-slate-400 font-bold mr-auto">إجمالي: {fmt(itemsTotal)} ر.س</span></div>
             <div className="overflow-x-auto">
               <table className="w-full border-collapse" style={{ minWidth: 820 }}>
-                <thead><tr className="bg-[#0b1220]">{["البند", "القيمة الشهرية", "تاريخ الاستحقاق", "طريقة الدفع", "يدخل في التعادل؟", "ملاحظات", ""].map((h) => <th key={h} className="text-right text-[10px] font-bold text-slate-500 px-3 py-2 whitespace-nowrap">{h}</th>)}</tr></thead>
+                <thead><tr className="bg-slate-950">{["البند", "القيمة الشهرية", "تاريخ الاستحقاق", "طريقة الدفع", "يدخل في التعادل؟", "ملاحظات", ""].map((h) => <th key={h} className="text-right text-[10px] font-bold text-slate-500 px-3 py-2 whitespace-nowrap">{h}</th>)}</tr></thead>
                 <tbody>
                   {items.map((r) => (
                     <tr key={r.id} className="border-t border-slate-800">
-                      <td className="px-2 py-1.5"><input value={r.name} onChange={(e) => editItem(r.id, { name: e.target.value })} placeholder="اسم البند" className="w-full min-w-[150px] bg-[#0b1220] border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs" /></td>
-                      <td className="px-2 py-1.5"><input type="number" step="0.01" value={r.amount} onChange={(e) => editItem(r.id, { amount: e.target.value })} placeholder="0" className="w-28 bg-[#0b1220] border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr]" /></td>
-                      <td className="px-2 py-1.5"><input type="date" value={r.dueDate} onChange={(e) => editItem(r.id, { dueDate: e.target.value })} className="bg-[#0b1220] border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs [color-scheme:dark]" /></td>
-                      <td className="px-2 py-1.5"><select value={r.payment} onChange={(e) => editItem(r.id, { payment: e.target.value })} className="w-28 bg-[#0b1220] border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs">{PAY_OPTS.map((o) => <option key={o}>{o}</option>)}</select></td>
+                      <td className="px-2 py-1.5"><input value={r.name} onChange={(e) => editItem(r.id, { name: e.target.value })} placeholder="اسم البند" className="w-full min-w-[150px] bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs" /></td>
+                      <td className="px-2 py-1.5"><input type="number" step="0.01" value={r.amount} onChange={(e) => editItem(r.id, { amount: e.target.value })} placeholder="0" className="w-28 bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr]" /></td>
+                      <td className="px-2 py-1.5"><input type="date" value={r.dueDate} onChange={(e) => editItem(r.id, { dueDate: e.target.value })} className="bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs [color-scheme:dark]" /></td>
+                      <td className="px-2 py-1.5"><select value={r.payment} onChange={(e) => editItem(r.id, { payment: e.target.value })} className="w-28 bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs">{PAY_OPTS.map((o) => <option key={o}>{o}</option>)}</select></td>
                       <td className="px-2 py-1.5 text-center"><button onClick={() => editItem(r.id, { inBE: !r.inBE })} className={`text-xs font-bold px-3 py-1 rounded-full ${r.inBE ? "bg-emerald-500/15 text-emerald-400" : "bg-slate-600/20 text-slate-500"}`}>{r.inBE ? "✓ نعم" : "لا"}</button></td>
-                      <td className="px-2 py-1.5"><input value={r.note} onChange={(e) => editItem(r.id, { note: e.target.value })} placeholder="المصدر/ملاحظة" className="w-full min-w-[110px] bg-[#0b1220] border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs" /></td>
+                      <td className="px-2 py-1.5"><input value={r.note} onChange={(e) => editItem(r.id, { note: e.target.value })} placeholder="المصدر/ملاحظة" className="w-full min-w-[110px] bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs" /></td>
                       <td className="px-2 py-1.5 text-center"><button onClick={() => delItem(r.id)} className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400">✕</button></td>
                     </tr>
                   ))}
@@ -290,12 +290,12 @@ export default function FixedExpensesPage() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-4">
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
               <div className="flex items-center justify-between mb-1"><span className="text-[10px] text-slate-500 font-bold">المبيعات الفعلية (شهري)</span>{salesOv.trim() && <button onClick={() => setSalesOv("")} className="text-[10px] text-blue-400">استخدم المقترح</button>}</div>
-              <input type="number" value={salesOv} onChange={(e) => setSalesOv(e.target.value)} placeholder={fmt(suggSales)} className="w-full bg-[#0b1220] border border-slate-700 rounded-xl text-white px-3 py-2 text-lg font-mono text-center [direction:ltr]" />
+              <input type="number" value={salesOv} onChange={(e) => setSalesOv(e.target.value)} placeholder={fmt(suggSales)} className="w-full bg-slate-950 border border-slate-700 rounded-xl text-white px-3 py-2 text-lg font-mono text-center [direction:ltr]" />
               <div className="text-[10px] text-slate-500 mt-1">مقترح من تسوية المبيعات: {fmt(suggSales)} ر.س</div>
             </div>
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
               <div className="flex items-center justify-between mb-1"><span className="text-[10px] text-slate-500 font-bold">التكاليف المتغيرة (شهري)</span>{varOv.trim() && <button onClick={() => setVarOv("")} className="text-[10px] text-blue-400">استخدم المقترح</button>}</div>
-              <input type="number" value={varOv} onChange={(e) => setVarOv(e.target.value)} placeholder={fmt(suggVar)} className="w-full bg-[#0b1220] border border-slate-700 rounded-xl text-white px-3 py-2 text-lg font-mono text-center [direction:ltr]" />
+              <input type="number" value={varOv} onChange={(e) => setVarOv(e.target.value)} placeholder={fmt(suggVar)} className="w-full bg-slate-950 border border-slate-700 rounded-xl text-white px-3 py-2 text-lg font-mono text-center [direction:ltr]" />
               <div className="text-[10px] text-slate-500 mt-1 leading-relaxed [direction:ltr] text-right">مشتريات {fmt(suggPurch)} <span className="text-emerald-400">+ وارد {fmt(transfers.transIn)}</span> <span className="text-red-400">− صادر {fmt(transfers.transOut)}</span> = <b className="text-slate-300">{fmt(suggVar)}</b> ر.س</div>
             </div>
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
@@ -333,7 +333,7 @@ export default function FixedExpensesPage() {
             <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-emerald-500" /><h2 className="text-sm font-bold text-white">سيناريوهات المستهدف فوق نقطة التعادل</h2></div>
             <div className="overflow-x-auto">
               <table className="w-full border-collapse" style={{ minWidth: 520 }}>
-                <thead><tr>{["السيناريو", "الزيادة", "Target الشهري", "الفرق عن التعادل"].map((h) => <th key={h} className="text-[10px] px-3 py-2.5 bg-[#0b1220] text-slate-500 border-b border-slate-700">{h}</th>)}</tr></thead>
+                <thead><tr>{["السيناريو", "الزيادة", "Target الشهري", "الفرق عن التعادل"].map((h) => <th key={h} className="text-[10px] px-3 py-2.5 bg-slate-950 text-slate-500 border-b border-slate-700">{h}</th>)}</tr></thead>
                 <tbody>
                   {be.scenarios.map((s, i) => (
                     <tr key={i} className={i === 1 ? "bg-emerald-500/[0.05]" : ""}>

@@ -428,7 +428,7 @@ export default function SalesReconciliationPage() {
             <div className="overflow-x-auto">
               <table className="w-full border-collapse" style={{ minWidth: 120 + activeChannels.length * 110 }}>
                 <thead>
-                  <tr className="bg-[#0b1220]">
+                  <tr className="bg-slate-950">
                     <th className="text-right text-[10px] font-bold text-slate-500 uppercase px-3 py-2">البند</th>
                     {activeChannels.map((c) => (
                       <th key={c.id} className="text-center text-[10px] font-bold text-slate-500 px-2 py-2 whitespace-nowrap">
@@ -440,10 +440,10 @@ export default function SalesReconciliationPage() {
                 </thead>
                 <tbody>
                   <tr>
-                    <td className="text-right font-bold text-xs text-slate-400 bg-[#0b1220] px-3 py-2 whitespace-nowrap">السيستم</td>
+                    <td className="text-right font-bold text-xs text-slate-400 bg-slate-950 px-3 py-2 whitespace-nowrap">السيستم</td>
                     {activeChannels.map((c) => (
                       <td key={c.id} className="px-1.5 py-2 text-center border-t border-slate-800">
-                        <input type="number" step="0.01" placeholder="0" value={getSys(c.id)} onChange={(e) => setSys(c.id, e.target.value)} className="w-24 bg-[#0b1220] border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr] focus:outline-none focus:border-emerald-500" />
+                        <input type="number" step="0.01" placeholder="0" value={getSys(c.id)} onChange={(e) => setSys(c.id, e.target.value)} className="w-24 bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr] focus:outline-none focus:border-emerald-500" />
                       </td>
                     ))}
                     <td className="text-center border-t border-slate-800 font-mono font-bold text-emerald-300 text-xs [direction:ltr]">{fmt(calc.gSys)}</td>
@@ -459,7 +459,7 @@ export default function SalesReconciliationPage() {
             <div className="overflow-x-auto">
               <table className="w-full border-collapse" style={{ minWidth: 120 + activeChannels.length * 110 }}>
                 <thead>
-                  <tr className="bg-[#0b1220]">
+                  <tr className="bg-slate-950">
                     <th className="text-right text-[10px] font-bold text-slate-500 uppercase px-3 py-2">الشفت</th>
                     {activeChannels.map((c) => (
                       <th key={c.id} className="text-center text-[10px] font-bold text-slate-500 px-2 py-2 whitespace-nowrap">{c.icon} {c.nm}</th>
@@ -472,17 +472,17 @@ export default function SalesReconciliationPage() {
                     const shTotal = activeChannels.reduce((s, c) => s + num(getAct(sh.id, c.id)) * (c.sign ?? 1), 0);
                     return (
                       <tr key={sh.id}>
-                        <td className="text-right font-bold text-xs text-slate-400 bg-[#0b1220] px-3 py-2 whitespace-nowrap"><span className={`inline-block w-1.5 h-1.5 rounded-full ${sh.bar} ml-1`} />{sh.nm}</td>
+                        <td className="text-right font-bold text-xs text-slate-400 bg-slate-950 px-3 py-2 whitespace-nowrap"><span className={`inline-block w-1.5 h-1.5 rounded-full ${sh.bar} ml-1`} />{sh.nm}</td>
                         {activeChannels.map((c) => (
                           <td key={c.id} className="px-1.5 py-2 text-center border-t border-slate-800">
-                            <input type="number" step="0.01" placeholder="0" value={getAct(sh.id, c.id)} onChange={(e) => setAct(sh.id, c.id, e.target.value)} className="w-24 bg-[#0b1220] border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr] focus:outline-none focus:border-blue-500" />
+                            <input type="number" step="0.01" placeholder="0" value={getAct(sh.id, c.id)} onChange={(e) => setAct(sh.id, c.id, e.target.value)} className="w-24 bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr] focus:outline-none focus:border-blue-500" />
                           </td>
                         ))}
                         <td className="text-center border-t border-slate-800 font-mono text-slate-300 text-xs [direction:ltr]">{fmt(shTotal)}</td>
                       </tr>
                     );
                   })}
-                  <tr className="bg-[#0b1220]">
+                  <tr className="bg-slate-950">
                     <td className="text-right font-bold text-xs text-slate-300 px-3 py-2 whitespace-nowrap">إجمالي الفعلي</td>
                     {activeChannels.map((c) => (
                       <td key={c.id} className="text-center border-t border-slate-700 font-mono font-bold text-emerald-400 text-xs [direction:ltr]">{fmt(calc.perChannelActual[c.id] || 0)}</td>
@@ -514,7 +514,7 @@ export default function SalesReconciliationPage() {
             <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-amber-500" /><h2 className="text-sm font-bold text-white">أسباب الفروقات والمبالغ المستردة</h2>{calc.hasDiff && <span className="text-[11px] text-amber-400 font-bold mr-auto">إلزامي: حدّد الشفت واسم الموظف لكل فرق</span>}</div>
 
             {/* إدارة أسماء الكاشير لهذا الفرع */}
-            <div className="px-4 py-2.5 border-b border-slate-800 bg-[#0b1220]/40 flex items-center gap-2 flex-wrap">
+            <div className="px-4 py-2.5 border-b border-slate-800 bg-slate-950/40 flex items-center gap-2 flex-wrap">
               <span className="text-[11px] text-slate-400 font-bold">أسماء الكاشير (هذا الفرع):</span>
               {staff.map((n) => (
                 <span key={n} className="inline-flex items-center gap-1 bg-slate-800 text-slate-200 text-[11px] rounded-full px-2.5 py-1">{n}<button onClick={() => removeStaff(n)} title="حذف" className="text-red-400 leading-none">✕</button></span>
@@ -529,18 +529,18 @@ export default function SalesReconciliationPage() {
               const bad = calc.hasDiff && num(r.amount) !== 0 && (!r.shift || !r.employees.trim());
               return (
                 <div key={r.id} className={`flex flex-wrap gap-2 items-center px-4 py-2 border-b border-dashed last:border-b-0 ${bad ? "border-red-500/40 bg-red-500/[0.04]" : "border-slate-800"}`}>
-                  <select value={r.shift} onChange={(e) => editReason(r.id, { shift: e.target.value })} className={`w-24 bg-[#0b1220] border rounded-lg text-white px-2 py-1.5 text-xs ${bad && !r.shift ? "border-red-500" : "border-slate-700"}`}>{SHIFT_OPTS.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}</select>
-                  <input list="staffList" placeholder="اسم الموظف (أو أكثر بفاصلة)" value={r.employees} onChange={(e) => editReason(r.id, { employees: e.target.value })} className={`flex-1 min-w-[150px] bg-[#0b1220] border rounded-lg text-white px-2 py-1.5 text-xs ${bad && !r.employees.trim() ? "border-red-500" : "border-slate-700"}`} />
-                  <select value={r.reason} onChange={(e) => editReason(r.id, { reason: e.target.value })} className="flex-1 min-w-[140px] bg-[#0b1220] border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs">{REASON_OPTS.map((o) => <option key={o}>{o}</option>)}</select>
-                  <input type="number" step="0.01" placeholder="المبلغ" value={r.amount} onChange={(e) => editReason(r.id, { amount: e.target.value })} className="w-24 bg-[#0b1220] border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr]" />
-                  <input placeholder="ملاحظة" value={r.note} onChange={(e) => editReason(r.id, { note: e.target.value })} className="flex-1 min-w-[100px] bg-[#0b1220] border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs" />
+                  <select value={r.shift} onChange={(e) => editReason(r.id, { shift: e.target.value })} className={`w-24 bg-slate-950 border rounded-lg text-white px-2 py-1.5 text-xs ${bad && !r.shift ? "border-red-500" : "border-slate-700"}`}>{SHIFT_OPTS.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}</select>
+                  <input list="staffList" placeholder="اسم الموظف (أو أكثر بفاصلة)" value={r.employees} onChange={(e) => editReason(r.id, { employees: e.target.value })} className={`flex-1 min-w-[150px] bg-slate-950 border rounded-lg text-white px-2 py-1.5 text-xs ${bad && !r.employees.trim() ? "border-red-500" : "border-slate-700"}`} />
+                  <select value={r.reason} onChange={(e) => editReason(r.id, { reason: e.target.value })} className="flex-1 min-w-[140px] bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs">{REASON_OPTS.map((o) => <option key={o}>{o}</option>)}</select>
+                  <input type="number" step="0.01" placeholder="المبلغ" value={r.amount} onChange={(e) => editReason(r.id, { amount: e.target.value })} className="w-24 bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr]" />
+                  <input placeholder="ملاحظة" value={r.note} onChange={(e) => editReason(r.id, { note: e.target.value })} className="flex-1 min-w-[100px] bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs" />
                   <button onClick={() => delReason(r.id)} className="w-8 h-8 rounded-lg bg-red-500/10 text-red-400 shrink-0">✕</button>
                 </div>
               );
             })}
             <button onClick={addReason} className="m-3.5 bg-blue-600/10 border border-dashed border-blue-500 text-blue-300 py-2.5 rounded-xl w-[calc(100%-28px)] font-bold text-xs">+ إضافة سبب / مبلغ مسترد</button>
 
-            <div className="mx-3.5 mb-3.5 bg-[#0b1220] border border-slate-800 rounded-xl p-3.5">
+            <div className="mx-3.5 mb-3.5 bg-slate-950 border border-slate-800 rounded-xl p-3.5">
               <div className="flex justify-between text-xs mb-1.5"><span className="text-slate-400 font-semibold">الفرق المطلوب تبريره</span><span className="font-mono font-bold text-slate-200 [direction:ltr]">{fmt(calc.need)}</span></div>
               <div className="flex justify-between text-xs mb-1.5"><span className="text-slate-400 font-semibold">المبرَّر (مجموع الأسباب)</span><span className="font-mono font-bold text-emerald-400 [direction:ltr]">{fmt(calc.reasonsSum)}</span></div>
               <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden my-2"><div className="h-full bg-gradient-to-l from-emerald-500 to-amber-500 rounded-full transition-all" style={{ width: `${calc.need > 0 ? Math.min(100, (calc.reasonsSum / calc.need) * 100) : calc.net === 0 ? 100 : 0}%` }} /></div>
@@ -553,7 +553,7 @@ export default function SalesReconciliationPage() {
               </div>
             </div>
 
-            <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="ملاحظة اليوم (تظهر في عمود Notes بالتقرير)…" className="w-[calc(100%-28px)] mx-3.5 mb-3.5 bg-[#0b1220] border border-slate-700 rounded-xl text-white p-2.5 text-sm resize-y min-h-[54px]" />
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="ملاحظة اليوم (تظهر في عمود Notes بالتقرير)…" className="w-[calc(100%-28px)] mx-3.5 mb-3.5 bg-slate-950 border border-slate-700 rounded-xl text-white p-2.5 text-sm resize-y min-h-[54px]" />
           </div>
 
           <div className="flex gap-3 justify-end flex-wrap">
@@ -588,7 +588,7 @@ export default function SalesReconciliationPage() {
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse" style={{ minWidth: 700 + report.cols.length * 80 }}>
-                  <thead><tr>{["التاريخ", ...report.cols.map((c) => c.nm), "الفعلي", "السيستم", "الفرق", "الخطأ %", "الحالة", "ملاحظات"].map((h) => <th key={h} className="text-[11px] px-2 py-2.5 bg-[#0b1220] text-slate-300 font-bold uppercase whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
+                  <thead><tr>{["التاريخ", ...report.cols.map((c) => c.nm), "الفعلي", "السيستم", "الفرق", "الخطأ %", "الحالة", "ملاحظات"].map((h) => <th key={h} className="text-[11px] px-2 py-2.5 bg-slate-950 text-slate-300 font-bold uppercase whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
                   <tbody>
                     {report.rows.map((e) => {
                       const warn = Math.abs(e.err) > 5;
@@ -608,7 +608,7 @@ export default function SalesReconciliationPage() {
                     })}
                   </tbody>
                   <tfoot>
-                    <tr className="bg-[#0b1220] font-bold">
+                    <tr className="bg-slate-950 font-bold">
                       <td className="px-2 py-2.5 text-[13px] text-right text-slate-100 font-extrabold whitespace-nowrap border-t border-slate-600">الإجمالي</td>
                       {report.cols.map((c) => <td key={c.id} className="px-2 py-2.5 text-[13px] text-center font-mono font-bold text-slate-100 [direction:ltr] border-t border-slate-600">{fmt(report.colTotals[c.id] || 0)}</td>)}
                       <td className="px-2 py-2.5 text-[13px] text-center font-mono font-extrabold text-emerald-400 [direction:ltr] border-t border-slate-600">{fmt(report.grandActual)}</td>

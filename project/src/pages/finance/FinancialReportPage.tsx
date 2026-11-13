@@ -313,7 +313,7 @@ export default function FinancialReportPage() {
         <div className="text-xs font-bold text-white mb-2">نسب عمولة قنوات التوصيل <span className="text-slate-500 font-normal">(أي قناة توصيل تضيفها في تسوية المبيعات تظهر هنا)</span></div>
         <div className="flex flex-wrap gap-3">
           {commChannels.map((id) => (
-            <div key={id} className="flex items-center gap-2 bg-[#0b1220] border border-slate-700 rounded-xl px-3 py-2">
+            <div key={id} className="flex items-center gap-2 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2">
               <span className="text-xs text-slate-300 font-bold">{chName(id)}</span>
               <input type="number" value={comm[id] ?? ""} placeholder="0" onChange={(e) => setComm((p) => ({ ...p, [id]: e.target.value }))} className="w-16 bg-slate-900 border border-slate-700 rounded-lg text-white px-2 py-1 text-center font-mono text-xs [direction:ltr]" />
               <span className="text-xs text-slate-500">%</span>
@@ -339,7 +339,7 @@ export default function FinancialReportPage() {
             <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-blue-500" /><h2 className="text-sm font-bold text-white">قائمة الربح والخسارة</h2></div>
             <div className="overflow-x-auto">
               <table className="w-full border-collapse" style={{ minWidth: compare ? 640 : 380 }}>
-                <thead><tr>{["البند", monthLabel(month), ...(compare ? [monthLabel(pm), "ملاحظات"] : [])].map((h) => <th key={h} className="text-[10px] px-3 py-2.5 bg-[#0b1220] text-slate-500 whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
+                <thead><tr>{["البند", monthLabel(month), ...(compare ? [monthLabel(pm), "ملاحظات"] : [])].map((h) => <th key={h} className="text-[10px] px-3 py-2.5 bg-slate-950 text-slate-500 whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
                 <tbody>
                   {plRows.map((r, i) => (
                     <tr key={i} className={r.hl === "green" ? "bg-emerald-500/[0.07]" : r.hl === "gray" ? "bg-white/[0.02]" : ""}>

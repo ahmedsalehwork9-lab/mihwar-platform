@@ -97,7 +97,7 @@ export default function ReportsHubPage({ setPage }: Props) {
         <div className="flex flex-col gap-1">
           <label className="text-[10px] text-slate-500 font-bold">الشهر</label>
           <input type="month" value={month} onChange={(e) => onMonth(e.target.value)} disabled={custom}
-            className="bg-[#0b1220] border border-slate-700 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark] disabled:opacity-40" />
+            className="bg-slate-950 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark] disabled:opacity-40" />
         </div>
         <label className="flex items-center gap-2 text-xs text-slate-400 font-bold cursor-pointer select-none pb-2.5">
           <input type="checkbox" checked={custom} onChange={(e) => setCustom(e.target.checked)} className="accent-blue-500 w-4 h-4" />
@@ -106,12 +106,12 @@ export default function ReportsHubPage({ setPage }: Props) {
         <div className="flex flex-col gap-1">
           <label className="text-[10px] text-slate-500 font-bold">من</label>
           <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} disabled={!custom}
-            className="bg-[#0b1220] border border-slate-700 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark] disabled:opacity-40" />
+            className="bg-slate-950 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark] disabled:opacity-40" />
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-[10px] text-slate-500 font-bold">إلى</label>
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} disabled={!custom}
-            className="bg-[#0b1220] border border-slate-700 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark] disabled:opacity-40" />
+            className="bg-slate-950 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark] disabled:opacity-40" />
         </div>
         <div className="mr-auto text-[11px] text-slate-500 pb-2.5">
           الفترة: <b className="text-slate-300 [direction:ltr] inline-block">{rangeFrom} → {rangeTo}</b>

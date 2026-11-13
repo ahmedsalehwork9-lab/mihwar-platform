@@ -236,6 +236,13 @@ export default function SalesReconciliationPage() {
     return parts.join(" | ");
   };
 
+  const onCellEnter = (e: any) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const cells = Array.from(document.querySelectorAll(".sales-cell")) as HTMLInputElement[];
+    const i = cells.indexOf(e.currentTarget);
+    if (i >= 0 && i + 1 < cells.length) cells[i + 1].focus();
+  };
   const [saving, setSaving] = useState(false);
   const save = async () => {
     const entry: SavedEntry = {
@@ -455,7 +462,7 @@ export default function SalesReconciliationPage() {
                     <td className="text-right font-bold text-xs text-slate-400 bg-slate-950 px-3 py-2 whitespace-nowrap">السيستم</td>
                     {activeChannels.map((c) => (
                       <td key={c.id} className="px-1.5 py-2 text-center border-t border-slate-800">
-                        <input type="number" step="0.01" placeholder="0" value={getSys(c.id)} onChange={(e) => setSys(c.id, e.target.value)} className="w-24 bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr] focus:outline-none focus:border-emerald-500" />
+                        <input type="number" step="0.01" placeholder="0" value={getSys(c.id)} onKeyDown={onCellEnter} onChange={(e) => setSys(c.id, e.target.value)} className="w-24 sales-cell bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr] focus:outline-none focus:border-emerald-500" />
                       </td>
                     ))}
                     <td className="text-center border-t border-slate-800 font-mono font-bold text-emerald-300 text-xs [direction:ltr]">{fmt(calc.gSys)}</td>
@@ -487,7 +494,7 @@ export default function SalesReconciliationPage() {
                         <td className="text-right font-bold text-xs text-slate-400 bg-slate-950 px-3 py-2 whitespace-nowrap"><span className={`inline-block w-1.5 h-1.5 rounded-full ${sh.bar} ml-1`} />{sh.nm}</td>
                         {activeChannels.map((c) => (
                           <td key={c.id} className="px-1.5 py-2 text-center border-t border-slate-800">
-                            <input type="number" step="0.01" placeholder="0" value={getAct(sh.id, c.id)} onChange={(e) => setAct(sh.id, c.id, e.target.value)} className="w-24 bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr] focus:outline-none focus:border-blue-500" />
+                            <input type="number" step="0.01" placeholder="0" value={getAct(sh.id, c.id)} onKeyDown={onCellEnter} onChange={(e) => setAct(sh.id, c.id, e.target.value)} className="w-24 sales-cell bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr] focus:outline-none focus:border-blue-500" />
                           </td>
                         ))}
                         <td className="text-center border-t border-slate-800 font-mono text-slate-300 text-xs [direction:ltr]">{fmt(shTotal)}</td>

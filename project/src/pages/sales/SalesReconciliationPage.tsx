@@ -223,6 +223,18 @@ export default function SalesReconciliationPage() {
 
   const diffColor = (v: number) => (v > 0.009 ? "text-emerald-400" : v < -0.009 ? "text-red-400" : "text-slate-500");
   const diffTxt = (v: number) => (v > 0 ? "+" : "") + fmt(v);
+  const shiftLbl = (v: string) => { const o = SHIFT_OPTS.find((x) => x.v === v); return o && o.v ? o.l : ""; };
+  const noteOf = (e: SavedEntry) => {
+    const parts: string[] = [];
+    if (e.note && e.note.trim()) parts.push(e.note.trim());
+    (e.reasons || []).forEach((r) => {
+      const amt = num(r.amount);
+      if ((!r.note || !r.note.trim()) && !amt && (!r.employees || !r.employees.trim())) return;
+      const seg = [shiftLbl(r.shift), r.employees, r.reason, amt ? fmt(amt) + " ر.س" : ""].filter((x) => x && String(x).trim()).join(" · ");
+      parts.push(r.note && r.note.trim() ? seg + " — " + r.note.trim() : seg);
+    });
+    return parts.join(" | ");
+  };
 
   const [saving, setSaving] = useState(false);
   const save = async () => {
@@ -329,7 +341,7 @@ export default function SalesReconciliationPage() {
         `<b style="color:#0f1b2b;">${fmt(e.gAct)}</b>`,
         (e.err > 0 ? "+" : "") + e.err.toFixed(1) + "%",
         warn ? "⚠️ مراجعة" : "OK",
-        (e.note || "").replace(/</g, "&lt;"),
+        noteOf(e).replace(/</g, "&lt;"),
       ];
       return `<tr style="background:${bg};">${cells.map((v, i) =>
         `<td style="border:1px solid #e5e7eb;padding:5px 8px;font-size:11px;text-align:${i === cells.length - 1 ? "right" : "center"};">${v}</td>`
@@ -602,7 +614,7 @@ export default function SalesReconciliationPage() {
                           <td className={`px-2 py-2.5 text-[13px] text-center font-mono font-extrabold [direction:ltr] border-b border-slate-800 ${dc}`}>{e.net === 0 ? "—" : (e.net > 0 ? "+" : "") + fmt(e.net)}</td>
                           <td className={`px-2 py-2.5 text-[13px] text-center font-mono font-bold [direction:ltr] border-b border-slate-800 ${dc}`}>{(e.err > 0 ? "+" : "") + e.err.toFixed(1)}%</td>
                           <td className={`px-2 py-2.5 text-xs text-center font-extrabold border-b border-slate-800 ${warn ? "text-amber-400" : "text-emerald-400"}`}>{warn ? "⚠️" : "OK"}</td>
-                          <td className="px-2 py-2.5 text-[12px] text-right text-slate-300 max-w-[240px] border-b border-slate-800">{e.note || ""}</td>
+                          <td className="px-2 py-2.5 text-[12px] text-right text-slate-300 max-w-[240px] border-b border-slate-800">{noteOf(e)}</td>
                         </tr>
                       );
                     })}

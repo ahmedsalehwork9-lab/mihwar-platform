@@ -236,6 +236,12 @@ export default function SalesReconciliationPage() {
     return parts.join(" | ");
   };
 
+  const shiftDate = (d: number) => {
+    const [y, m, dd] = date.split("-").map(Number);
+    const dt = new Date(y, m - 1, dd + d);
+    const z = (n: number) => String(n).padStart(2, "0");
+    setDate(`${dt.getFullYear()}-${z(dt.getMonth() + 1)}-${z(dt.getDate())}`);
+  };
   const onCellEnter = (e: any) => {
     if (e.key !== "Enter") return;
     e.preventDefault();
@@ -429,7 +435,7 @@ export default function SalesReconciliationPage() {
           <div className="flex flex-wrap items-end gap-3 mb-4">
             <div className="flex flex-col gap-1">
               <label className="text-[10px] text-slate-500 font-bold">التاريخ</label>
-              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark]" />
+              <div className="flex items-center gap-1"><button type="button" onClick={() => shiftDate(-1)} title="اليوم السابق" className="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-base leading-none hover:bg-slate-700 shrink-0">‹</button><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark]" /><button type="button" onClick={() => shiftDate(1)} title="اليوم التالي" className="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-base leading-none hover:bg-slate-700 shrink-0">›</button></div>
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-[10px] text-slate-500 font-bold">إضافة قناة</label>

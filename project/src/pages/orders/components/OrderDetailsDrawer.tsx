@@ -13,8 +13,8 @@
 import { memo, useState } from "react";
 import { RefreshCw, X, Printer, Download } from "lucide-react";
 import type { ApprovedQtyMap, Order, OrderItem } from "../types";
+import { formatOrderNo } from "../types";
 import { calculateApprovedTotal } from "../utils/calculateApprovedTotal";
-import { buildDocumentNumber } from "../utils/buildDocumentNumber";
 import { StatusBadge } from "./StatusBadge";
 import { OrderProgressPanel } from "./OrderProgressPanel";
 import { OrderApprovalPanel } from "./OrderApprovalPanel";
@@ -74,7 +74,7 @@ function OrderDetailsDrawerBase({
   const detailDocTitle = detailOrder.request_type === "TRANSFER"
     ? t("Transfer Order", "طلب تحويل")
     : t("Purchase Order", "أمر شراء");
-  const detailDocNumber = buildDocumentNumber(detailOrder.id, detailOrder.request_type);
+  const detailDocNumber = formatOrderNo(detailOrder);
 
   const liveTotal = showPartialEditor
     ? detailItems.reduce((s, i) => s + i.price * (approvedQtyMap[i.id] ?? i.quantity), 0)
@@ -101,7 +101,7 @@ function OrderDetailsDrawerBase({
             <div className="flex items-center gap-3 flex-wrap">
               <h2 className="text-lg font-black text-white">
                 {detailDocTitle}
-                <span className="font-mono text-slate-400 text-base mx-2">#{detailDocNumber}</span>
+                <span className="font-mono text-slate-400 text-base mx-2">{detailDocNumber}</span>
               </h2>
               <StatusBadge status={detailOrder.status} isRTL={isRTL} />
             </div>

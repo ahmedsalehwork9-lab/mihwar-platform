@@ -212,6 +212,19 @@ export function useCreateOrder({
         );
       }
 
+      // رقم تسلسلي مستقل لهذا الفرع (الطالب) لهذه السنة: O-YYYY-NNNN
+      const year = new Date().getFullYear();
+      const { data: seqRows } = await supabase
+        .from("orders")
+        .select("branch_seq")
+        .eq("from_shop_id", ownedShopId)
+        .gte("created_at", `${year}-01-01T00:00:00`)
+        .lt("created_at", `${year + 1}-01-01T00:00:00`)
+        .not("branch_seq", "is", null)
+        .order("branch_seq", { ascending: false })
+        .limit(1);
+      const nextBranchSeq = ((seqRows?.[0]?.branch_seq as number | undefined) ?? 0) + 1;
+
       const insertPayload = {
         from_shop_id: ownedShopId,
         to_shop_id: supplierShopId,
@@ -219,6 +232,7 @@ export function useCreateOrder({
         status: "pending",
         total_amount: cartTotal,
         notes: orderNotes || null,
+        branch_seq: nextBranchSeq,
       };
 
       // TEMP DEBUG

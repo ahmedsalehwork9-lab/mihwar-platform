@@ -6,6 +6,7 @@
 import { memo } from "react";
 import { Eye, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Order } from "../types";
+import { formatOrderNo } from "../types";
 import { StatusBadge } from "./StatusBadge";
 
 type OrdersTableProps = {
@@ -43,7 +44,7 @@ function OrdersTableBase({
                 <tr><td colSpan={7} className="p-16 text-center text-slate-600 italic">{t("No orders matching your criteria", "لا توجد طلبات مطابقة")}</td></tr>
               ) : orders.map(o => (
                 <tr key={o.id} className="hover:bg-slate-800/20 transition-colors">
-                  <td className="p-4 font-mono font-bold text-slate-400 whitespace-nowrap">#{o.id.toString().padStart(5, "0")}</td>
+                  <td className="p-4 font-mono font-bold text-slate-400 whitespace-nowrap">{formatOrderNo(o)}</td>
                   <td className={`p-4 font-bold ${o.from_shop_id === ownedShopId ? "text-blue-400" : "text-white"}`}>
                     <span className="truncate block max-w-[140px]">{o.from_shop?.shop_name}</span>
                     {o.from_shop_id === ownedShopId && <span className="text-[9px] opacity-50 font-medium px-1 bg-blue-500/10 rounded">{t("You", "أنت")}</span>}

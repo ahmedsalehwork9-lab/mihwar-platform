@@ -25,6 +25,7 @@ export type ShopInfo = {
 
 export type Order = {
   id: number;
+  branch_seq?: number | null;   // رقم تسلسلي مستقل لكل فرع طالب (لكل سنة)
   from_shop_id: number;
   to_shop_id: number;
   status: OrderStatus;
@@ -37,6 +38,13 @@ export type Order = {
   to_shop?: ShopInfo;
 
   order_items?: { id: number }[];
+};
+
+// رقم الطلب المعروض: O-YYYY-NNNN لكل فرع، مع تراجع للـID القديم لو ما فيش ترقيم
+export const formatOrderNo = (o: { branch_seq?: number | null; created_at: string; id: number }): string => {
+  if (o.branch_seq == null) return `#${String(o.id).padStart(5, "0")}`;
+  const year = new Date(o.created_at).getFullYear();
+  return `O-${year}-${String(o.branch_seq).padStart(4, "0")}`;
 };
 
 export type Product = {

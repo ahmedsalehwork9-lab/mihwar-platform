@@ -101,6 +101,10 @@ export default function PurchasesPage() {
   // ── حالة التحديد الجماعي في سجل التقرير ──
   const [selIds, setSelIds] = useState<Set<string>>(new Set());
 
+  // ── حالة تعديل فاتورة محفوظة ──
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingInternalNo, setEditingInternalNo] = useState<string | undefined>(undefined);
+
   const addItem = () => setItems((p) => [...p, newItem()]);
   const delItem = (id: number) => setItems((p) => (p.length > 1 ? p.filter((r) => r.id !== id) : p));
   const editItem = (id: number, patch: Partial<PItem>) => setItems((p) => p.map((r) => (r.id === id ? { ...r, ...patch } : r)));
@@ -295,15 +299,35 @@ export default function PurchasesPage() {
     alert(`✓ تم حفظ ${ok} فاتورة${fail ? ` · فشل ${fail}` : ""}`);
   };
 
+  // تحميل فاتورة محفوظة للتعديل (من سجل التقرير أو البحث)
+  const startEditPurchase = (p: Purchase) => {
+    setEditingId(p.id);
+    setEditingInternalNo((p as any).internalNo);
+    setSupplier(p.supplier || "");
+    setInvoiceNo(p.invoiceNo || "");
+    setDate(p.date || new Date().toISOString().slice(0, 10));
+    setPayment(p.payment || PAY_OPTS[0]);
+    setTaxable(!!p.taxable);
+    setNote(p.note || "");
+    setItems((p.items && p.items.length ? p.items.map((it) => ({ ...it, id: Date.now() + Math.random() })) : [newItem()]));
+    setTab("entry");
+    try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (e) {}
+  };
+  const cancelEditPurchase = () => { setEditingId(null); setEditingInternalNo(undefined); clearForm(); };
+
   const canSave = supplier.trim() !== "" && filledItems.length > 0;
   const save = async () => {
     if (!supplier.trim()) { alert("اكتب اسم المورّد أولًا"); return; }
     if (filledItems.length === 0) { alert("أضف صنفًا واحدًا على الأقل (اسم الصنف + الكمية)"); return; }
-    if (invoiceExists(invoiceNo)) { alert(`رقم الفاتورة «${invoiceNo.trim()}» مسجّل من قبل لنفس الفرع. غيّر الرقم أو احذف الفاتورة القديمة.`); return; }
+    // منع التكرار على مرجع المورد مع استثناء الفاتورة الجاري تعديلها
+    const dupOther = invoiceNo.trim() !== "" && allPurchases.some((p) => p.id !== editingId && (p.invoiceNo || "").trim() === invoiceNo.trim());
+    if (dupOther) { alert(`مرجع المورد «${invoiceNo.trim()}» مسجّل من قبل لفاتورة أخرى. غيّر المرجع أو احذف الفاتورة القديمة.`); return; }
     const sub = filledItems.reduce((s, r) => s + lineTotal(r), 0);
     const v = taxable ? sub * (VAT_RATE / 100) : 0;
     const entry: Purchase = {
-      id: "p-" + Date.now(), internalNo: nextInternalNo(date), branchId: ownedShopId ?? null, branch, date,
+      id: editingId ?? "p-" + Date.now(),
+      internalNo: editingId ? editingInternalNo : nextInternalNo(date),
+      branchId: ownedShopId ?? null, branch, date,
       supplier: supplier.trim(), invoiceNo: invoiceNo.trim(), payment, note: note.trim(),
       taxable, vatRate: taxable ? VAT_RATE : 0, subtotal: sub, vat: v,
       items: filledItems, total: sub + v,
@@ -312,9 +336,11 @@ export default function PurchasesPage() {
     const ok = await upsertPurchase(ownedShopId ?? null, entry);
     setSaving(false);
     if (!ok) { alert("تعذّر حفظ الفاتورة — تأكد من اتصالك بالإنترنت وصلاحيتك على الفرع."); return; }
+    const wasEditing = !!editingId;
+    setEditingId(null); setEditingInternalNo(undefined);
     await reloadPurchases();
     clearForm();
-    alert("✓ تم حفظ الفاتورة");
+    alert(wasEditing ? "✓ تم تحديث الفاتورة" : "✓ تم حفظ الفاتورة");
   };
   const clearForm = () => { setSupplier(""); setInvoiceNo(""); setNote(""); setPayment(PAY_OPTS[0]); setTaxable(true); setItems([newItem()]); };
 
@@ -322,6 +348,8 @@ export default function PurchasesPage() {
   const monthStart = new Date().toISOString().slice(0, 8) + "01";
   const [from, setFrom] = useState(monthStart);
   const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [reportView, setReportView] = useState<"invoices" | "items">("invoices");
+  const [search, setSearch] = useState("");
 
   const report = useMemo(() => {
     const all = allPurchases.filter((e) => e.date >= from && e.date <= to).slice();
@@ -363,8 +391,36 @@ export default function PurchasesPage() {
       .filter((x) => x.seq.length > 1)
       .sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
 
-    return { rows: all, total, totalVat, count, avg, cats, priceChanges };
+    // تجميع كل صنف عبر كل الموردين في الفترة (الكمية والتكلفة الإجمالية)
+    const itemAggMap: Record<string, { name: string; category: string; unit: string; qty: number; cost: number; prices: number[]; invoices: Set<string>; suppliers: Set<string> }> = {};
+    all.forEach((e) => (e.items || []).forEach((it) => {
+      const nm = (it.name || "").trim(); if (!nm) return;
+      const key = normName(nm); if (!key) return;
+      if (!itemAggMap[key]) itemAggMap[key] = { name: nm, category: it.category || "أخرى", unit: it.unit || "", qty: 0, cost: 0, prices: [], invoices: new Set(), suppliers: new Set() };
+      const g = itemAggMap[key]; const q = num(it.qty), p = num(it.price);
+      g.qty += q; g.cost += q * p; if (p > 0) g.prices.push(p);
+      g.invoices.add(e.id); if (e.supplier) g.suppliers.add(e.supplier);
+    }));
+    const itemAgg = Object.values(itemAggMap).map((g) => ({
+      name: g.name, category: g.category, unit: g.unit, qty: g.qty, cost: g.cost,
+      avg: g.prices.length ? g.prices.reduce((s, x) => s + x, 0) / g.prices.length : 0,
+      invCount: g.invoices.size, supCount: g.suppliers.size,
+    })).sort((a, b) => b.cost - a.cost);
+
+    return { rows: all, total, totalVat, count, avg, cats, priceChanges, itemAgg };
   }, [from, to, allPurchases]);
+
+  // بحث داخل التقرير (بالفواتير أو بالأصناف)
+  const q = search.trim().toLowerCase();
+  const shownRows = q
+    ? report.rows.filter((e) => (e.invoiceNo || "").toLowerCase().includes(q) || ((e as any).internalNo || "").toLowerCase().includes(q) || (e.supplier || "").toLowerCase().includes(q))
+    : report.rows;
+  const shownItems = q
+    ? report.itemAgg.filter((g) => g.name.toLowerCase().includes(q) || (g.category || "").toLowerCase().includes(q))
+    : report.itemAgg;
+  const shownTotal = shownRows.reduce((s, e) => s + e.total, 0);
+  const shownVat = shownRows.reduce((s, e) => s + (e.vat || 0), 0);
+  const shownItemsCost = shownItems.reduce((s, g) => s + g.cost, 0);
 
   // ── تحديد/حذف جماعي ──
   const toggleSel = (id: string) =>
@@ -473,16 +529,43 @@ export default function PurchasesPage() {
       </div>`;
     return `<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;color:#1f2937;background:#fff;">${header}${cards}${table}${catBlock}${priceBlock}${footer}</div>`;
   };
+
+  // تصدير عرض «بالأصناف» (إجمالي كل صنف عبر الموردين)
+  const buildItemsExportHTML = () => {
+    const now = new Date().toLocaleString("ar-SA");
+    const totalCost = report.itemAgg.reduce((s, g) => s + g.cost, 0);
+    const card = (label: string, value: string, green = false) =>
+      `<div style="flex:1;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:10px 14px;"><div style="font-size:10px;color:#6b7280;font-weight:700;">${label}</div><div style="font-size:17px;font-weight:800;margin-top:3px;color:${green ? "#15a06a" : "#111827"};">${value}</div></div>`;
+    const header = `
+      <div style="background:#0f1b2b;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;">
+        <div style="text-align:left;"><div style="font-size:20px;font-weight:800;color:#34d399;">تقرير المشتريات — بالأصناف</div><div style="font-size:12px;color:#9fb3c8;">الفترة: ${from} إلى ${to} — ${now}</div></div>
+        <div style="display:flex;align-items:center;gap:10px;"><div style="text-align:right;"><div style="font-size:18px;font-weight:800;color:#fff;">محور</div><div style="font-size:9px;letter-spacing:3px;color:#9fb3c8;">MIHWAR PLATFORM</div></div>${logoBox(logoUrl)}</div>
+      </div>`;
+    const cards = `<div style="display:flex;gap:10px;padding:14px 20px;background:#f8fafc;">${card("الفرع", branch || "—")}${card("عدد الأصناف", String(report.itemAgg.length))}${card("إجمالي التكلفة (صافي)", fmt(totalCost) + " ر.س", true)}</div>`;
+    const ths = ["الصنف", "التصنيف", "إجمالي الكمية", "الوحدة", "متوسط السعر", "إجمالي التكلفة (ر.س)", "عدد الموردين", "عدد الفواتير"];
+    const thead = `<tr>${ths.map((h) => `<th style="border:1px solid #d1d5db;padding:7px 8px;background:#14304d;color:#fff;font-size:11px;font-weight:700;white-space:nowrap;">${h}</th>`).join("")}</tr>`;
+    const body = report.itemAgg.map((g, idx) => {
+      const bg = idx % 2 ? "#fff" : "#f9fafb";
+      const cells = [g.name, g.category, fmt(g.qty), g.unit || "—", fmt(g.avg), `<b style="color:#15a06a;">${fmt(g.cost)}</b>`, String(g.supCount), String(g.invCount)];
+      return `<tr style="background:${bg};">${cells.map((v, i) => `<td style="border:1px solid #e5e7eb;padding:5px 8px;font-size:11px;text-align:${i === 0 || i === 1 ? "right" : "center"};">${v}</td>`).join("")}</tr>`;
+    }).join("");
+    const totalRow = `<tr><td colspan="5" style="border:1px solid #cbd5e1;padding:6px 8px;font-size:11px;font-weight:800;text-align:right;background:#eef2f7;color:#0f1b2b;">إجمالي التكلفة (صافي)</td><td style="border:1px solid #cbd5e1;padding:6px 8px;font-size:12px;font-weight:800;text-align:center;background:#eef2f7;color:#15a06a;">${fmt(totalCost)}</td><td colspan="2" style="border:1px solid #cbd5e1;background:#eef2f7;"></td></tr>`;
+    const table = `<div style="padding:6px 20px 4px;"><table style="border-collapse:collapse;width:100%;"><thead>${thead}</thead><tbody>${body}${totalRow}</tbody></table><div style="margin-top:4px;font-size:10px;color:#9ca3af;">التكلفة = مجموع (الكمية × سعر الوحدة) بدون ضريبة لكل صنف عبر كل الفواتير في الفترة.</div></div>`;
+    const footer = `<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:10px;gap:12px;"><div><div>تم إنشاء هذا التقرير آليًا من صفحة المشتريات</div><div>منصة محور — MIHWAR B2B Marketplace</div></div>${contactFooter(waNum, qr)}</div>`;
+    return `<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;color:#1f2937;background:#fff;">${header}${cards}${table}${footer}</div>`;
+  };
+
+  const exportHTML = () => (reportView === "items" ? buildItemsExportHTML() : buildExportHTML());
   const exportPDF = () => {
     const w = window.open("", "_blank", "width=1000,height=900"); if (!w) return;
-    w.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar" style="color-scheme:light;background:#fff;"><head><meta charset="UTF-8"><meta name="color-scheme" content="light"><style>@page{size:A4 landscape;margin:8mm}@media print{html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style><title>تقرير المشتريات — ${branch}</title></head><body style="margin:0;background:#fff;">${buildExportHTML()}<script>window.onload=function(){window.print();}<\/script></body></html>`);
+    w.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar" style="color-scheme:light;background:#fff;"><head><meta charset="UTF-8"><meta name="color-scheme" content="light"><style>@page{size:A4 landscape;margin:8mm}@media print{html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style><title>تقرير المشتريات — ${branch}</title></head><body style="margin:0;background:#fff;">${exportHTML()}<script>window.onload=function(){window.print();}<\/script></body></html>`);
     w.document.close();
   };
   const exportExcel = () => {
-    const html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"></head><body style="margin:0;background:#fff;">${buildExportHTML()}</body></html>`;
+    const html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"></head><body style="margin:0;background:#fff;">${exportHTML()}</body></html>`;
     const blob = new Blob(["﻿" + html], { type: "application/vnd.ms-excel;charset=utf-8" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-    a.download = `مشتريات_${branch || "فرع"}_${from}_${to}.xls`; a.click(); URL.revokeObjectURL(a.href);
+    a.download = `مشتريات_${reportView === "items" ? "أصناف" : "فواتير"}_${branch || "فرع"}_${from}_${to}.xls`; a.click(); URL.revokeObjectURL(a.href);
   };
 
   // ================= UI =================
@@ -511,11 +594,18 @@ export default function PurchasesPage() {
       {/* ENTRY */}
       {tab === "entry" && (
         <>
-          <div className="mb-3 inline-flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5">
-            <span className="text-[10px] text-slate-500 font-bold">الرقم الداخلي التالي</span>
-            <span className="text-sm font-black font-mono text-blue-300 [direction:ltr]">{nextInternalNo(date)}</span>
-            <span className="text-[10px] text-slate-500">يُخصّص تلقائيًا عند الحفظ</span>
-          </div>
+          {editingId ? (
+            <div className="mb-3 flex flex-wrap items-center gap-3 bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-2.5">
+              <span className="text-amber-300 text-sm font-bold">✏️ تعديل فاتورة {editingInternalNo || ""}</span>
+              <button onClick={cancelEditPurchase} className="mr-auto px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 text-xs font-bold">إلغاء التعديل</button>
+            </div>
+          ) : (
+            <div className="mb-3 inline-flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5">
+              <span className="text-[10px] text-slate-500 font-bold">الرقم الداخلي التالي</span>
+              <span className="text-sm font-black font-mono text-blue-300 [direction:ltr]">{nextInternalNo(date)}</span>
+              <span className="text-[10px] text-slate-500">يُخصّص تلقائيًا عند الحفظ</span>
+            </div>
+          )}
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
             <div className="flex flex-col gap-1">
               <label className="text-[10px] text-slate-500 font-bold">التاريخ</label>
@@ -597,8 +687,8 @@ export default function PurchasesPage() {
 
           <div className="flex items-center gap-3 justify-end flex-wrap">
             {!canSave && <span className="text-[11px] text-amber-400/80 mr-auto">لإتمام الحفظ: اكتب اسم المورّد وأضف صنفًا واحدًا على الأقل (اسم + كمية)</span>}
-            <button onClick={clearForm} className="px-6 py-3 rounded-xl bg-slate-900 border border-slate-700 text-slate-400 font-bold text-sm">تفريغ</button>
-            <button onClick={save} disabled={saving} className={`px-6 py-3 rounded-xl font-extrabold text-sm transition-all ${canSave && !saving ? "bg-emerald-500 text-emerald-950" : "bg-emerald-500/40 text-emerald-100"}`}>{saving ? "جاري الحفظ…" : "💾 حفظ الفاتورة"}</button>
+            <button onClick={editingId ? cancelEditPurchase : clearForm} className="px-6 py-3 rounded-xl bg-slate-900 border border-slate-700 text-slate-400 font-bold text-sm">{editingId ? "إلغاء التعديل" : "تفريغ"}</button>
+            <button onClick={save} disabled={saving} className={`px-6 py-3 rounded-xl font-extrabold text-sm transition-all ${canSave && !saving ? "bg-emerald-500 text-emerald-950" : "bg-emerald-500/40 text-emerald-100"}`}>{saving ? "جاري الحفظ…" : (editingId ? "💾 تحديث الفاتورة" : "💾 حفظ الفاتورة")}</button>
           </div>
         </>
       )}
@@ -616,6 +706,18 @@ export default function PurchasesPage() {
             </div>
           </div>
 
+          <div className="flex flex-wrap items-center gap-3 mb-4">
+            <div className="inline-flex gap-1 bg-slate-900 border border-slate-800 rounded-xl p-1">
+              {([["invoices", "📄 بالفواتير"], ["items", "📦 بالأصناف"]] as const).map(([k, label]) => (
+                <button key={k} onClick={() => setReportView(k)} className={`px-4 py-2 rounded-lg font-bold text-xs transition-all ${reportView === k ? "bg-blue-600 text-white" : "text-slate-400 hover:text-slate-200"}`}>{label}</button>
+              ))}
+            </div>
+            <div className="relative flex-1 min-w-[180px] max-w-[320px]">
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={reportView === "items" ? "بحث باسم الصنف أو التصنيف…" : "بحث برقم داخلي / مرجع المورد / المورّد…"} className="w-full bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm" />
+              {search && <button onClick={() => setSearch("")} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white text-xs">✕</button>}
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5"><div className="text-[10px] text-slate-500 font-bold">عدد الفواتير</div><div className="text-xl font-black font-mono mt-1 text-white">{report.count}</div></div>
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5"><div className="text-[10px] text-slate-500 font-bold">الإجمالي (شامل الضريبة)</div><div className="text-xl font-black font-mono mt-1 text-emerald-400 [direction:ltr]">{fmt(report.total)}</div></div>
@@ -623,10 +725,11 @@ export default function PurchasesPage() {
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5"><div className="text-[10px] text-slate-500 font-bold">متوسط الفاتورة</div><div className="text-xl font-black font-mono mt-1 text-white [direction:ltr]">{fmt(report.avg)}</div></div>
           </div>
 
+          {reportView === "invoices" && (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden mb-4">
-            <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-blue-500" /><h2 className="text-sm font-bold text-white">سجل الفواتير</h2><span className="text-[11px] text-slate-500 mr-auto">{branch || "—"} · {report.count} فاتورة{selIds.size ? ` · محدد ${selIds.size}` : ""}</span></div>
-            {report.rows.length === 0 ? (
-              <div className="p-10 text-center text-slate-500 text-sm">لا توجد فواتير ضمن هذا النطاق. أضف فاتورة من تبويب «فاتورة جديدة».</div>
+            <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-blue-500" /><h2 className="text-sm font-bold text-white">سجل الفواتير</h2><span className="text-[11px] text-slate-500 mr-auto">{branch || "—"} · {shownRows.length} فاتورة{q ? ` من ${report.count}` : ""}{selIds.size ? ` · محدد ${selIds.size}` : ""}</span></div>
+            {shownRows.length === 0 ? (
+              <div className="p-10 text-center text-slate-500 text-sm">{q ? "لا توجد فواتير مطابقة للبحث." : "لا توجد فواتير ضمن هذا النطاق. أضف فاتورة من تبويب «فاتورة جديدة»."}</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse" style={{ minWidth: 800 }}>
@@ -635,7 +738,7 @@ export default function PurchasesPage() {
                     {["الرقم الداخلي", "التاريخ", "المورّد", "مرجع المورد", "النوع", "عدد الأصناف", "الضريبة", "الإجمالي", "الدفع", "ملاحظات", ""].map((h) => <th key={h} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 uppercase whitespace-nowrap border-b border-slate-700">{h}</th>)}
                   </tr></thead>
                   <tbody>
-                    {report.rows.map((e) => (
+                    {shownRows.map((e) => (
                       <tr key={e.id} className={selIds.has(e.id) ? "bg-blue-500/5" : "hover:bg-white/[0.02]"}>
                         <td className="px-2 py-2 text-center border-b border-slate-800"><input type="checkbox" checked={selIds.has(e.id)} onChange={() => toggleSel(e.id)} className="w-4 h-4 accent-blue-500 cursor-pointer align-middle" /></td>
                         <td className="px-2 py-2 text-[11px] text-center font-mono font-bold text-blue-300 [direction:ltr] whitespace-nowrap border-b border-slate-800">{e.internalNo || "—"}</td>
@@ -648,15 +751,15 @@ export default function PurchasesPage() {
                         <td className="px-2 py-2 text-xs text-center font-mono font-bold text-emerald-400 [direction:ltr] border-b border-slate-800">{fmt(e.total)}</td>
                         <td className="px-2 py-2 text-[11px] text-center text-slate-400 border-b border-slate-800 whitespace-nowrap">{e.payment}</td>
                         <td className="px-2 py-2 text-[11px] text-right text-slate-400 max-w-[200px] border-b border-slate-800">{e.note || ""}</td>
-                        <td className="px-2 py-2 text-center border-b border-slate-800"><button onClick={() => delPurchaseRow(e.id)} className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400">✕</button></td>
+                        <td className="px-2 py-2 text-center border-b border-slate-800 whitespace-nowrap"><button onClick={() => startEditPurchase(e)} title="تعديل الفاتورة" className="w-7 h-7 rounded-lg bg-blue-500/15 text-blue-300 ml-1">✏️</button><button onClick={() => delPurchaseRow(e.id)} title="حذف" className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400">✕</button></td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
                     <tr className="bg-slate-950 font-bold">
-                      <td colSpan={7} className="px-2 py-2.5 text-xs text-right text-slate-200 border-t border-slate-600">الإجمالي العام</td>
-                      <td className="px-2 py-2.5 text-xs text-center font-mono text-amber-400 [direction:ltr] border-t border-slate-600">{fmt(report.totalVat)}</td>
-                      <td className="px-2 py-2.5 text-xs text-center font-mono text-emerald-400 [direction:ltr] border-t border-slate-600">{fmt(report.total)}</td>
+                      <td colSpan={7} className="px-2 py-2.5 text-xs text-right text-slate-200 border-t border-slate-600">{q ? "إجمالي المعروض" : "الإجمالي العام"}</td>
+                      <td className="px-2 py-2.5 text-xs text-center font-mono text-amber-400 [direction:ltr] border-t border-slate-600">{fmt(shownVat)}</td>
+                      <td className="px-2 py-2.5 text-xs text-center font-mono text-emerald-400 [direction:ltr] border-t border-slate-600">{fmt(shownTotal)}</td>
                       <td colSpan={3} className="border-t border-slate-600" />
                     </tr>
                   </tfoot>
@@ -664,6 +767,44 @@ export default function PurchasesPage() {
               </div>
             )}
           </div>
+          )}
+
+          {reportView === "items" && (
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden mb-4">
+              <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-emerald-500" /><h2 className="text-sm font-bold text-white">إجمالي كل صنف عبر كل الموردين</h2><span className="text-[11px] text-slate-500 mr-auto">{shownItems.length} صنف{q ? ` من ${report.itemAgg.length}` : ""}</span></div>
+              {shownItems.length === 0 ? (
+                <div className="p-10 text-center text-slate-500 text-sm">{q ? "لا توجد أصناف مطابقة للبحث." : "لا توجد أصناف ضمن هذا النطاق."}</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse" style={{ minWidth: 720 }}>
+                    <thead><tr>{["الصنف", "التصنيف", "إجمالي الكمية", "الوحدة", "متوسط السعر", "إجمالي التكلفة", "عدد الموردين", "عدد الفواتير"].map((h) => <th key={h} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 uppercase whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
+                    <tbody>
+                      {shownItems.map((g, i) => (
+                        <tr key={g.name + i} className="hover:bg-white/[0.02]">
+                          <td className="px-2 py-2 text-xs text-right text-slate-100 font-semibold border-b border-slate-800">{g.name}</td>
+                          <td className="px-2 py-2 text-[11px] text-center text-slate-400 border-b border-slate-800">{g.category}</td>
+                          <td className="px-2 py-2 text-xs text-center font-mono text-slate-200 [direction:ltr] border-b border-slate-800">{fmt(g.qty)}</td>
+                          <td className="px-2 py-2 text-[11px] text-center text-slate-500 border-b border-slate-800">{g.unit || "—"}</td>
+                          <td className="px-2 py-2 text-xs text-center font-mono text-slate-300 [direction:ltr] border-b border-slate-800">{fmt(g.avg)}</td>
+                          <td className="px-2 py-2 text-xs text-center font-mono font-bold text-emerald-400 [direction:ltr] border-b border-slate-800">{fmt(g.cost)}</td>
+                          <td className="px-2 py-2 text-xs text-center text-slate-400 border-b border-slate-800">{g.supCount}</td>
+                          <td className="px-2 py-2 text-xs text-center text-slate-400 border-b border-slate-800">{g.invCount}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-slate-950 font-bold">
+                        <td colSpan={5} className="px-2 py-2.5 text-xs text-right text-slate-200 border-t border-slate-600">{q ? "إجمالي المعروض (تكلفة صافية)" : "إجمالي التكلفة (صافي)"}</td>
+                        <td className="px-2 py-2.5 text-xs text-center font-mono text-emerald-400 [direction:ltr] border-t border-slate-600">{fmt(shownItemsCost)}</td>
+                        <td colSpan={2} className="border-t border-slate-600" />
+                      </tr>
+                    </tfoot>
+                  </table>
+                  <div className="px-4 py-2 text-[11px] text-slate-500">التكلفة = مجموع (الكمية × سعر الوحدة) بدون ضريبة، لكل صنف عبر كل الفواتير في الفترة.</div>
+                </div>
+              )}
+            </div>
+          )}
 
           {report.priceChanges.length > 0 && (
             <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden mb-4">

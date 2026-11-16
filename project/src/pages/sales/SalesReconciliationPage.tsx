@@ -10,7 +10,7 @@ import { useMemo, useState, useEffect, useCallback } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import {
-  fetchSalesWithMigration, upsertSale,
+  fetchSalesWithMigration, upsertSale, deleteSale,
   getSetting, getSettingWithMigration, setSetting, SETTING_KEYS, LOCAL_KEYS,
 } from "../lib/cafeDb";
 import { logoBox, contactFooter, waQrDataUrl, SUPPORT_WA } from "../lib/reportChrome";
@@ -121,6 +121,8 @@ export default function SalesReconciliationPage() {
 
   // ── إدخال اليوم ──
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  // وضع تعديل يوم محفوظ: يحمل التاريخ الأصلي لليوم الجاري تعديله (null = وضع عادي)
+  const [editingDate, setEditingDate] = useState<string | null>(null);
   const [activeIds, setActiveIds] = useState<string[]>(["cash", "net"]);
   const [customChannels, setCustomChannels] = useState<Channel[]>([]);
   const [vals, setVals] = useState<Record<string, string>>({});
@@ -142,7 +144,9 @@ export default function SalesReconciliationPage() {
   }, [ownedShopId]);
 
   // تغيير التاريخ (أو تحديث البيانات) يحمّل تسوية اليوم من القائمة
+  // في وضع التعديل لا نعيد التحميل تلقائيًا حتى تتمكن من تغيير التاريخ (إعادة تأريخ)
   useEffect(() => {
+    if (editingDate !== null) return;
     const e = allEntries.find((x) => x.date === date);
     if (e) {
       setVals(migrateVals(e.vals ?? {}));
@@ -153,7 +157,7 @@ export default function SalesReconciliationPage() {
       setReasons([newReason()]);
       setNote("");
     }
-  }, [date, allEntries]);
+  }, [date, allEntries, editingDate]);
 
   const getSys = (c: string) => vals[`sys-${c}`] ?? "";
   const setSys = (c: string, v: string) => setVals((p) => ({ ...p, [`sys-${c}`]: v }));
@@ -250,17 +254,40 @@ export default function SalesReconciliationPage() {
     if (i >= 0 && i + 1 < cells.length) cells[i + 1].focus();
   };
   const [saving, setSaving] = useState(false);
+  // تحميل يوم محفوظ للتعديل (من التقرير)
+  const startEdit = (e: SavedEntry) => {
+    setEditingDate(e.date);
+    setDate(e.date);
+    setVals(migrateVals(e.vals ?? {}));
+    setReasons(e.reasons?.length ? e.reasons : [newReason()]);
+    setNote(e.note ?? "");
+    setTab("entry");
+    try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (err) {}
+  };
+  // إلغاء التعديل والعودة للوضع العادي (يوم اليوم)
+  const cancelEdit = () => {
+    setEditingDate(null);
+    setDate(new Date().toISOString().slice(0, 10));
+  };
   const save = async () => {
+    const reDating = editingDate != null && editingDate !== date;
+    // تنبيه لو التاريخ الجديد له تسوية محفوظة بالفعل
+    if (reDating && allEntries.some((x) => x.date === date)) {
+      if (!window.confirm(`يوجد تسوية محفوظة بالفعل بتاريخ ${date} — هل تريد استبدالها بهذه؟`)) return;
+    }
     const entry: SavedEntry = {
       branchId: ownedShopId ?? null, branch, date, channels: activeIds, customChannels, vals, reasons, note,
       gSys: calc.gSys, gAct: calc.gAct, net: calc.net, err: calc.err, perChannelActual: calc.perChannelActual,
     };
     setSaving(true);
     const ok = await upsertSale(ownedShopId ?? null, entry);
+    // عند إعادة التأريخ: احذف صف التاريخ القديم بعد نجاح الحفظ على التاريخ الجديد
+    if (ok && reDating) { await deleteSale(ownedShopId ?? null, editingDate as string); }
     setSaving(false);
     if (!ok) { alert("تعذّر حفظ التسوية — تأكد من اتصالك بالإنترنت وأن لديك صلاحية على هذا الفرع."); return; }
+    setEditingDate(null);
     await reloadEntries();
-    alert("✓ تم حفظ تسوية اليوم");
+    alert(reDating ? `✓ تم نقل التسوية إلى ${date}` : "✓ تم حفظ تسوية اليوم");
   };
   const clearForm = () => { setVals({}); setReasons([newReason()]); setNote(""); };
 
@@ -432,6 +459,12 @@ export default function SalesReconciliationPage() {
       {/* ENTRY */}
       {tab === "entry" && (
         <>
+          {editingDate && (
+            <div className="flex flex-wrap items-center gap-3 mb-4 bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-2.5">
+              <span className="text-amber-300 text-sm font-bold">✏️ وضع تعديل: يوم {editingDate}{date !== editingDate ? ` ← سيُنقل إلى ${date}` : ""}</span>
+              <button onClick={cancelEdit} className="mr-auto px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 text-xs font-bold">إلغاء التعديل</button>
+            </div>
+          )}
           <div className="flex flex-wrap items-end gap-3 mb-4">
             <div className="flex flex-col gap-1">
               <label className="text-[10px] text-slate-500 font-bold">التاريخ</label>
@@ -613,7 +646,7 @@ export default function SalesReconciliationPage() {
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse" style={{ minWidth: 700 + report.cols.length * 80 }}>
-                  <thead><tr>{["التاريخ", ...report.cols.map((c) => c.nm), "الفعلي", "السيستم", "الفرق", "الخطأ %", "الحالة", "ملاحظات"].map((h) => <th key={h} className="text-[11px] px-2 py-2.5 bg-slate-950 text-slate-300 font-bold uppercase whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
+                  <thead><tr>{["التاريخ", ...report.cols.map((c) => c.nm), "الفعلي", "السيستم", "الفرق", "الخطأ %", "الحالة", "ملاحظات"].map((h) => <th key={h} className="text-[11px] px-2 py-2.5 bg-slate-950 text-slate-300 font-bold uppercase whitespace-nowrap border-b border-slate-700">{h}</th>)}<th className="text-[11px] px-2 py-2.5 bg-slate-950 text-slate-300 font-bold uppercase whitespace-nowrap border-b border-slate-700">تعديل</th></tr></thead>
                   <tbody>
                     {report.rows.map((e) => {
                       const warn = Math.abs(e.err) > 5;
@@ -628,6 +661,7 @@ export default function SalesReconciliationPage() {
                           <td className={`px-2 py-2.5 text-[13px] text-center font-mono font-bold [direction:ltr] border-b border-slate-800 ${dc}`}>{(e.err > 0 ? "+" : "") + e.err.toFixed(1)}%</td>
                           <td className={`px-2 py-2.5 text-xs text-center font-extrabold border-b border-slate-800 ${warn ? "text-amber-400" : "text-emerald-400"}`}>{warn ? "⚠️" : "OK"}</td>
                           <td className="px-2 py-2.5 text-[12px] text-right text-slate-300 max-w-[240px] border-b border-slate-800">{noteOf(e)}</td>
+                          <td className="px-2 py-2.5 text-center border-b border-slate-800"><button onClick={() => startEdit(e)} title="تعديل / إعادة تأريخ هذا اليوم" className="px-2.5 py-1 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-300 text-[11px] font-bold whitespace-nowrap">✏️ تعديل</button></td>
                         </tr>
                       );
                     })}
@@ -640,13 +674,13 @@ export default function SalesReconciliationPage() {
                       <td className="px-2 py-2.5 text-[13px] text-center font-mono font-extrabold text-white [direction:ltr] border-t border-slate-600">{fmt(report.grandSystem)}</td>
                       <td className="px-2 py-2.5 text-[13px] text-center font-mono font-bold text-slate-100 [direction:ltr] border-t border-slate-600">{(grandDiff > 0 ? "+" : "") + fmt(grandDiff)}</td>
                       <td className="px-2 py-2.5 text-[13px] text-center font-mono font-bold text-slate-100 [direction:ltr] border-t border-slate-600">{(grandErr > 0 ? "+" : "") + grandErr.toFixed(1)}%</td>
-                      <td className="border-t border-slate-600" /><td className="border-t border-slate-600" />
+                      <td className="border-t border-slate-600" /><td className="border-t border-slate-600" /><td className="border-t border-slate-600" />
                     </tr>
                     <tr className="bg-emerald-600/15">
                       <td className="px-2 py-2.5 text-[13px] text-right font-extrabold text-emerald-300 whitespace-nowrap">نسبة القناة %</td>
                       {report.cols.map((c) => <td key={c.id} className="px-2 py-2.5 text-[13px] text-center font-mono font-bold text-emerald-300 [direction:ltr]">{pctOfTotal(report.colTotals[c.id] || 0).toFixed(1)}%</td>)}
                       <td className="px-2 py-2.5 text-[13px] text-center font-mono font-bold text-emerald-300 [direction:ltr]">100%</td>
-                      <td /><td /><td /><td /><td />
+                      <td /><td /><td /><td /><td /><td />
                     </tr>
                   </tfoot>
                 </table>

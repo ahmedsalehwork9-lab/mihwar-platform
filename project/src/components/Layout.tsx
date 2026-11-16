@@ -70,7 +70,7 @@ export type Page =
 
 const pageTitles: Record<Page, { en: string; ar: string }> = {
   'dashboard':       { en: 'Dashboard',       ar: 'الرئيسية'        },
-  'search':          { en: 'Products',         ar: 'المنتجات'        },
+  'search':          { en: 'Store',         ar: 'المتجر'        },
   'inventory':       { en: 'Inventory',        ar: 'المخزون'         },
   'orders':          { en: 'Orders',           ar: 'الطلبات'         },
   'reports':         { en: 'Reports',          ar: 'التقارير'        },
@@ -154,7 +154,7 @@ const navSections: NavSection[] = [
     adminOnly: false,
     items: [
       { id: 'dashboard',     icon: <LayoutDashboard size={17} />, label: 'Dashboard',      labelAr: 'الرئيسية',       adminOnly: false },
-      { id: 'search',        icon: <Search size={17} />,          label: 'Products',       labelAr: 'المنتجات',       adminOnly: false },
+      { id: 'search',        icon: <Search size={17} />,          label: 'Store',       labelAr: 'المتجر',       adminOnly: false },
       { id: 'inventory',     icon: <Package size={17} />,         label: 'Inventory',      labelAr: 'المخزون',        adminOnly: false },
       { id: 'orders',        icon: <ShoppingCart size={17} />,    label: 'Orders',         labelAr: 'الطلبات',        adminOnly: false },
       { id: 'reports',       icon: <TrendingUp size={17} />,      label: 'Reports',        labelAr: 'التقارير',       adminOnly: false },

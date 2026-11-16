@@ -6,8 +6,8 @@
 import { useState, useCallback } from "react";
 import { supabase } from "../../lib/supabase";
 import type { ApprovedQtyMap, Order, OrderItem } from "../types";
+import { formatOrderNo } from "../types";
 import { buildPrintHTML } from "../utils/buildPrintHTML";
-import { buildDocumentNumber } from "../utils/buildDocumentNumber";
 
 type UseOrderDetailsArgs = {
   t: (en: string, ar: string) => string;
@@ -268,7 +268,7 @@ export function useOrderDetails({ t, lang, setGlobalError }: UseOrderDetailsArgs
     }
 
     try {
-      const docNumber = buildDocumentNumber(detailOrder.id, detailOrder.request_type);
+      const docNumber = formatOrderNo(detailOrder);
       const qrDataUrl = await renderVerifyQrDataUrl(detailOrder.id);
 
       const itemsWithApproved = detailItems.map(i => ({

@@ -1,7 +1,7 @@
 import type { Order, OrderItem, OrderStatus } from "../types";
+import { formatOrderNo } from "../types";
 import { escapeHTML } from "../utils/orderHelpers";
 import { calculateApprovedTotal } from "../utils/calculateApprovedTotal";
-import { buildDocumentNumber } from "../utils/buildDocumentNumber";
 import { buildVerifyUrl } from "../utils/generateVerificationQR";
 
 const C128_PATTERNS = [
@@ -119,7 +119,7 @@ export function buildTransferOrderPrintHTML(order: Order, items: OrderItem[], pr
   const printDate  = now.toLocaleDateString(dateLocale, { year: "numeric", month: "long", day: "numeric" });
   const printTime  = now.toLocaleTimeString(dateLocale, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
-  const docNumber       = buildDocumentNumber(order.id, "TRANSFER");
+  const docNumber       = formatOrderNo(order);
   const subtotal        = calculateApprovedTotal(items);
   const verifyUrl       = buildVerifyUrl(order.id);
   const hasAnyApproved  = items.some(i => i.approved_quantity != null && i.approved_quantity > 0);

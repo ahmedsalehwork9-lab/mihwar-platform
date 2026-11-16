@@ -8,9 +8,9 @@
 // =============================================================
 
 import type { Order, OrderItem, ShopInfo } from "../types";
+import { formatOrderNo } from "../types";
 import { escapeHTML, effectiveApproved } from "../utils/orderHelpers";
 import { calculateApprovedTotal } from "../utils/calculateApprovedTotal";
-import { buildDocumentNumber } from "../utils/buildDocumentNumber";
 import { buildVerifyUrl } from "../utils/generateVerificationQR";
 import { buildPurchaseVerificationCard } from "./DocumentVerificationCard";
 import { buildPurchaseSignatureGrid, PURCHASE_SIGS_AR, PURCHASE_SIGS_EN } from "./DocumentSignatures";
@@ -121,7 +121,7 @@ export function buildPurchaseOrderPrintHTML(order: Order, items: OrderItem[], pr
   const printDate  = now.toLocaleDateString(dateLocale, { year: "numeric", month: "long", day: "numeric" });
   const printTime  = now.toLocaleTimeString(dateLocale, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
-  const docNumber         = buildDocumentNumber(order.id, "PURCHASE");
+  const docNumber         = formatOrderNo(order);
   const docTitlePrimary   = printLang === "en" ? "Purchase Order" : "أمر شراء";
   const docTitleSecondary = printLang === "en" ? "أمر شراء" : "Purchase Order";
 

@@ -18,7 +18,7 @@ import { logoBox, contactFooter, waQrDataUrl, SUPPORT_WA } from "../lib/reportCh
 
 type PItem = { id: number; name: string; category: string; qty: string; unit: string; price: string };
 type Purchase = {
-  id: string; branchId: number | null; branch: string; date: string;
+  id: string; internalNo?: string; branchId: number | null; branch: string; date: string;
   supplier: string; invoiceNo: string; payment: string; note: string;
   taxable: boolean; vatRate: number; subtotal: number; vat: number;
   items: PItem[]; total: number;
@@ -112,6 +112,22 @@ export default function PurchasesPage() {
   const invoiceExists = (no: string) =>
     no.trim() !== "" && allPurchases.some((p) => (p.invoiceNo || "").trim() === no.trim());
   const dupInvoice = invoiceExists(invoiceNo);
+
+  // ── الترقيم الداخلي التلقائي (P-YYYY-NNNN) لكل فرع/سنة ──
+  const maxSeqForYear = (year: string) => {
+    const prefix = `P-${year}-`;
+    let mx = 0;
+    allPurchases.forEach((p) => {
+      const n = (p as any).internalNo as string | undefined;
+      if (n && n.startsWith(prefix)) { const v = parseInt(n.slice(prefix.length), 10); if (!isNaN(v) && v > mx) mx = v; }
+    });
+    return mx;
+  };
+  const makeInternalNo = (year: string, seq: number) => `P-${year}-${String(seq).padStart(4, "0")}`;
+  const nextInternalNo = (dateStr: string) => {
+    const year = (dateStr || new Date().toISOString().slice(0, 10)).slice(0, 4);
+    return makeInternalNo(year, maxSeqForYear(year) + 1);
+  };
 
   const supplierSuggest = useMemo(() => {
     const set = new Set<string>();
@@ -254,13 +270,18 @@ export default function PurchasesPage() {
     if (!chosen.length) { alert("لم تختر أي فاتورة للحفظ."); return; }
     setSavingImport(true);
     let ok = 0, fail = 0;
+    const seqByYear: Record<string, number> = {};
     for (let i = 0; i < chosen.length; i++) {
       const g = chosen[i];
       const its = g.items.filter((r) => r.name.trim());
       const sub = its.reduce((s, r) => s + num(r.qty) * num(r.price), 0);
       const v = g.taxable ? sub * (VAT_RATE / 100) : 0;
+      const year = (g.date || new Date().toISOString().slice(0, 10)).slice(0, 4);
+      if (seqByYear[year] == null) seqByYear[year] = maxSeqForYear(year);
+      seqByYear[year] += 1;
       const entry: Purchase = {
-        id: "p-" + Date.now() + "-" + i, branchId: ownedShopId ?? null, branch, date: g.date,
+        id: "p-" + Date.now() + "-" + i, internalNo: makeInternalNo(year, seqByYear[year]),
+        branchId: ownedShopId ?? null, branch, date: g.date,
         supplier: g.supplier.trim(), invoiceNo: g.invoiceNo.trim(), payment: g.payment, note: "",
         taxable: g.taxable, vatRate: g.taxable ? VAT_RATE : 0, subtotal: sub, vat: v,
         items: its, total: sub + v,
@@ -282,7 +303,7 @@ export default function PurchasesPage() {
     const sub = filledItems.reduce((s, r) => s + lineTotal(r), 0);
     const v = taxable ? sub * (VAT_RATE / 100) : 0;
     const entry: Purchase = {
-      id: "p-" + Date.now(), branchId: ownedShopId ?? null, branch, date,
+      id: "p-" + Date.now(), internalNo: nextInternalNo(date), branchId: ownedShopId ?? null, branch, date,
       supplier: supplier.trim(), invoiceNo: invoiceNo.trim(), payment, note: note.trim(),
       taxable, vatRate: taxable ? VAT_RATE : 0, subtotal: sub, vat: v,
       items: filledItems, total: sub + v,
@@ -398,17 +419,17 @@ export default function PurchasesPage() {
         ${card("الإجمالي شامل الضريبة", fmt(report.total) + " ر.س", true)}
         ${card("متوسط الفاتورة", fmt(report.avg) + " ر.س")}
       </div>`;
-    const ths = ["التاريخ", "المورّد", "رقم الفاتورة", "النوع", "عدد الأصناف", "الضريبة", "الإجمالي (ر.س)", "طريقة الدفع", "ملاحظات"];
+    const ths = ["الرقم الداخلي", "التاريخ", "المورّد", "مرجع المورد", "النوع", "عدد الأصناف", "الضريبة", "الإجمالي (ر.س)", "طريقة الدفع", "ملاحظات"];
     const thead = `<tr>${ths.map((h) => `<th style="border:1px solid #d1d5db;padding:7px 8px;background:#14304d;color:#fff;font-size:11px;font-weight:700;white-space:nowrap;">${h}</th>`).join("")}</tr>`;
     const body = report.rows.map((e, idx) => {
       const bg = idx % 2 ? "#fff" : "#f9fafb";
-      const cells = [e.date, e.supplier, e.invoiceNo || "—", e.taxable ? "ضريبية" : "غير ضريبية", String((e.items || []).length),
+      const cells = [e.internalNo || "—", e.date, e.supplier, e.invoiceNo || "—", e.taxable ? "ضريبية" : "غير ضريبية", String((e.items || []).length),
         fmt(e.vat || 0), `<b style="color:#15a06a;">${fmt(e.total)}</b>`, e.payment, (e.note || "").replace(/</g, "&lt;")];
       return `<tr style="background:${bg};">${cells.map((v, i) =>
-        `<td style="border:1px solid #e5e7eb;padding:5px 8px;font-size:11px;text-align:${i === 1 || i === 8 ? "right" : "center"};">${v}</td>`).join("")}</tr>`;
+        `<td style="border:1px solid #e5e7eb;padding:5px 8px;font-size:11px;text-align:${i === 2 || i === 9 ? "right" : "center"};">${v}</td>`).join("")}</tr>`;
     }).join("");
     const totalRow = `<tr>
-        <td colspan="5" style="border:1px solid #cbd5e1;padding:6px 8px;font-size:11px;font-weight:800;text-align:right;background:#eef2f7;color:#0f1b2b;">الإجمالي العام</td>
+        <td colspan="6" style="border:1px solid #cbd5e1;padding:6px 8px;font-size:11px;font-weight:800;text-align:right;background:#eef2f7;color:#0f1b2b;">الإجمالي العام</td>
         <td style="border:1px solid #cbd5e1;padding:6px 8px;font-size:11px;font-weight:800;text-align:center;background:#eef2f7;color:#b45309;">${fmt(report.totalVat)}</td>
         <td style="border:1px solid #cbd5e1;padding:6px 8px;font-size:12px;font-weight:800;text-align:center;background:#eef2f7;color:#15a06a;">${fmt(report.total)}</td>
         <td colspan="2" style="border:1px solid #cbd5e1;background:#eef2f7;"></td>
@@ -490,6 +511,11 @@ export default function PurchasesPage() {
       {/* ENTRY */}
       {tab === "entry" && (
         <>
+          <div className="mb-3 inline-flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5">
+            <span className="text-[10px] text-slate-500 font-bold">الرقم الداخلي التالي</span>
+            <span className="text-sm font-black font-mono text-blue-300 [direction:ltr]">{nextInternalNo(date)}</span>
+            <span className="text-[10px] text-slate-500">يُخصّص تلقائيًا عند الحفظ</span>
+          </div>
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
             <div className="flex flex-col gap-1">
               <label className="text-[10px] text-slate-500 font-bold">التاريخ</label>
@@ -501,9 +527,9 @@ export default function PurchasesPage() {
               <datalist id="supList">{supplierSuggest.map((s) => <option key={s} value={s} />)}</datalist>
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] text-slate-500 font-bold">رقم الفاتورة</label>
-              <input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} placeholder="اختياري" className={`bg-slate-900 border rounded-xl text-white px-3 py-2 text-sm ${dupInvoice ? "border-red-500" : "border-slate-700"}`} />
-              {dupInvoice && <span className="text-[10px] text-red-400">⚠️ رقم مستخدم من قبل لنفس الفرع</span>}
+              <label className="text-[10px] text-slate-500 font-bold">مرجع المورد</label>
+              <input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} placeholder="رقم فاتورة المورّد (اختياري)" className={`bg-slate-900 border rounded-xl text-white px-3 py-2 text-sm ${dupInvoice ? "border-red-500" : "border-slate-700"}`} />
+              {dupInvoice && <span className="text-[10px] text-red-400">⚠️ مرجع مستخدم من قبل لنفس الفرع</span>}
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-[10px] text-slate-500 font-bold">نوع الفاتورة</label>
@@ -606,12 +632,13 @@ export default function PurchasesPage() {
                 <table className="w-full border-collapse" style={{ minWidth: 800 }}>
                   <thead><tr>
                     <th className="px-2 py-2.5 bg-slate-950 border-b border-slate-700 w-9"><input type="checkbox" checked={allRowsSelected} onChange={toggleSelAll} className="w-4 h-4 accent-blue-500 cursor-pointer align-middle" title="تحديد الكل" /></th>
-                    {["التاريخ", "المورّد", "رقم الفاتورة", "النوع", "عدد الأصناف", "الضريبة", "الإجمالي", "الدفع", "ملاحظات", ""].map((h) => <th key={h} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 uppercase whitespace-nowrap border-b border-slate-700">{h}</th>)}
+                    {["الرقم الداخلي", "التاريخ", "المورّد", "مرجع المورد", "النوع", "عدد الأصناف", "الضريبة", "الإجمالي", "الدفع", "ملاحظات", ""].map((h) => <th key={h} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 uppercase whitespace-nowrap border-b border-slate-700">{h}</th>)}
                   </tr></thead>
                   <tbody>
                     {report.rows.map((e) => (
                       <tr key={e.id} className={selIds.has(e.id) ? "bg-blue-500/5" : "hover:bg-white/[0.02]"}>
                         <td className="px-2 py-2 text-center border-b border-slate-800"><input type="checkbox" checked={selIds.has(e.id)} onChange={() => toggleSel(e.id)} className="w-4 h-4 accent-blue-500 cursor-pointer align-middle" /></td>
+                        <td className="px-2 py-2 text-[11px] text-center font-mono font-bold text-blue-300 [direction:ltr] whitespace-nowrap border-b border-slate-800">{e.internalNo || "—"}</td>
                         <td className="px-2 py-2 text-xs text-center font-mono [direction:ltr] whitespace-nowrap border-b border-slate-800">{e.date.slice(5)}</td>
                         <td className="px-2 py-2 text-xs text-right text-slate-200 border-b border-slate-800">{e.supplier}</td>
                         <td className="px-2 py-2 text-xs text-center text-slate-400 border-b border-slate-800">{e.invoiceNo || "—"}</td>
@@ -627,7 +654,7 @@ export default function PurchasesPage() {
                   </tbody>
                   <tfoot>
                     <tr className="bg-slate-950 font-bold">
-                      <td colSpan={6} className="px-2 py-2.5 text-xs text-right text-slate-200 border-t border-slate-600">الإجمالي العام</td>
+                      <td colSpan={7} className="px-2 py-2.5 text-xs text-right text-slate-200 border-t border-slate-600">الإجمالي العام</td>
                       <td className="px-2 py-2.5 text-xs text-center font-mono text-amber-400 [direction:ltr] border-t border-slate-600">{fmt(report.totalVat)}</td>
                       <td className="px-2 py-2.5 text-xs text-center font-mono text-emerald-400 [direction:ltr] border-t border-slate-600">{fmt(report.total)}</td>
                       <td colSpan={3} className="border-t border-slate-600" />

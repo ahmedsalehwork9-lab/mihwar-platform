@@ -112,8 +112,18 @@ type Notification = {
 type LayoutProps = {
   page: Page;
   setPage: (p: Page) => void;
+  accSection?: string;                       // القسم النشط داخل الحسابات
+  setAccSection?: (s: string) => void;
   children: React.ReactNode;
 };
+
+// الأقسام الفرعية لوحدة الحسابات (تظهر في الشريط تحت «الحسابات»)
+const ACC_SUBS: { k: string; en: string; ar: string }[] = [
+  { k: 'journal', en: 'Journal',       ar: 'القيود اليومية' },
+  { k: 'chart',   en: 'Chart',         ar: 'دليل الحسابات' },
+  { k: 'ledger',  en: 'Ledger',        ar: 'كشف حساب' },
+  { k: 'trial',   en: 'Trial Balance', ar: 'ميزان المراجعة' },
+];
 
 type NavItem = {
   id: Page;
@@ -241,7 +251,7 @@ const NavButton = ({
 // MAIN LAYOUT
 // ══════════════════════════════════════════════════════════════════════
 
-export default function Layout({ page, setPage, children }: LayoutProps) {
+export default function Layout({ page, setPage, accSection, setAccSection, children }: LayoutProps) {
   const { signOut, isAdmin, ownedShopId, permissions, branches } = useAuth();
   const { lang, setLang, t, isRTL }       = useLang();
   const [sidebarOpen, setSidebarOpen]     = useState(false);
@@ -311,13 +321,41 @@ export default function Layout({ page, setPage, children }: LayoutProps) {
                 <SectionLabel label={t(section.titleEn, section.titleAr)} />
                 <div className="space-y-0.5 px-1">
                   {visibleItems.map((item) => (
-                    <NavButton
-                      key={item.id}
-                      item={item}
-                      isActive={page === item.id}
-                      label={t(item.label, item.labelAr)}
-                      onClick={() => { setPage(item.id); setSidebarOpen(false); }}
-                    />
+                    item.id === 'accounting' ? (
+                      <div key={item.id} className="space-y-0.5">
+                        <NavButton
+                          item={item}
+                          isActive={page === item.id}
+                          label={t(item.label, item.labelAr)}
+                          onClick={() => { setPage('accounting'); setSidebarOpen(false); }}
+                        />
+                        {page === 'accounting' && (
+                          <div className="mr-4 pr-2 border-r-2 border-slate-700/50 space-y-0.5">
+                            {ACC_SUBS.map((s) => {
+                              const active = (accSection || 'journal') === s.k;
+                              return (
+                                <button
+                                  key={s.k}
+                                  onClick={() => { setAccSection?.(s.k); setPage('accounting'); setSidebarOpen(false); }}
+                                  className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${active ? 'bg-blue-500/15 text-blue-300' : 'text-slate-500 hover:text-slate-200 hover:bg-slate-800/50'}`}
+                                >
+                                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${active ? 'bg-blue-400' : 'bg-slate-600'}`} />
+                                  <span className="flex-1 text-right">{t(s.en, s.ar)}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <NavButton
+                        key={item.id}
+                        item={item}
+                        isActive={page === item.id}
+                        label={t(item.label, item.labelAr)}
+                        onClick={() => { setPage(item.id); setSidebarOpen(false); }}
+                      />
+                    )
                   ))}
                 </div>
               </div>

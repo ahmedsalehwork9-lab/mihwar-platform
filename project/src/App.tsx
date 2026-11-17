@@ -67,6 +67,7 @@ function AppContent() {
   const { session, loading, isAdmin } = useAuth();
 
   const [page, setPage] = useState<Page>('dashboard');
+  const [accSection, setAccSection] = useState<string>('journal'); // القسم النشط داخل الحسابات (يتحكم به الشريط الجانبي)
   const [showLanding, setShowLanding] = useState(true);
 
   if (loading) {
@@ -100,7 +101,7 @@ function AppContent() {
 
   return (
     <NotificationProvider>
-      <Layout page={page} setPage={setPage}>
+      <Layout page={page} setPage={setPage} accSection={accSection} setAccSection={setAccSection}>
         <Suspense fallback={<PageLoader />}>
 
           {/* USER PAGES */}
@@ -116,7 +117,7 @@ function AppContent() {
           {page === 'fixed-expenses' && <FixedExpensesPage />}
           {page === 'financial-report' && <FinancialReportPage />}
           {page === 'reports-center' && <ReportsHubPage setPage={setPage} />}
-          {page === 'accounting' && <AccountingPage />}
+          {page === 'accounting' && <AccountingPage section={accSection} onSection={setAccSection} />}
 
           {/* ADMIN */}
           {page === 'admin' &&

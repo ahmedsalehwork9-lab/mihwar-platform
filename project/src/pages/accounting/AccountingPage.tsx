@@ -58,12 +58,14 @@ function SectionHead({ icon: Icon, title, extra }: { icon: any; title: string; e
   );
 }
 
-export default function AccountingPage() {
+export default function AccountingPage({ section, onSection }: { section?: string; onSection?: (s: string) => void } = {}) {
   const { ownedShopId, branches } = (useAuth() as any) ?? {};
   const [org, setOrg] = useState<{ id: number; name: string } | null>(null);
   const [orgLoading, setOrgLoading] = useState(true);
   const [accounts, setAccounts] = useState<GLAccount[]>([]);
-  const [tab, setTab] = useState<Tab>("journal");
+  const [internalTab, setInternalTab] = useState<Tab>("journal");
+  const tab: Tab = (section as Tab) || internalTab;                       // يتحكم به الشريط الجانبي إن وُجد
+  const setTab = (k: Tab) => { if (onSection) onSection(k); else setInternalTab(k); };
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {

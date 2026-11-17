@@ -98,6 +98,7 @@ export default function AccountingPage({ section, onSection }: { section?: strin
   );
 
   const activeTab = TABS.find((t) => t.k === tab)!;
+  const ActiveIcon = activeTab.icon;
 
   return (
     <div className="p-4 lg:p-6 min-h-screen" dir="rtl">
@@ -110,13 +111,13 @@ export default function AccountingPage({ section, onSection }: { section?: strin
         <span className="text-blue-400 font-bold">{activeTab.label}</span>
       </nav>
 
-      {/* الترويسة */}
+      {/* الترويسة — تعكس القسم النشط (التنقّل من الشريط الجانبي) */}
       <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
         <div className="flex items-center gap-3">
-          <span className="w-11 h-11 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-400"><Calculator size={22} /></span>
+          <span className="w-11 h-11 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-400"><ActiveIcon size={22} /></span>
           <div>
-            <h1 className="text-2xl font-black text-white leading-tight">الحسابات</h1>
-            <p className="text-slate-500 text-xs mt-0.5">الدفاتر المحاسبية — دفتر موحّد على مستوى المؤسسة</p>
+            <h1 className="text-2xl font-black text-white leading-tight">{activeTab.label}</h1>
+            <p className="text-slate-500 text-xs mt-0.5">الحسابات — دفتر موحّد على مستوى المؤسسة</p>
           </div>
         </div>
         <div className="inline-flex items-center gap-2.5 bg-slate-900 border border-slate-800 rounded-xl px-4 py-2">
@@ -126,16 +127,6 @@ export default function AccountingPage({ section, onSection }: { section?: strin
             <div className="text-sm font-bold text-white">{org.name}</div>
           </div>
         </div>
-      </div>
-
-      {/* قائمة فرعية للحسابات */}
-      <div className="inline-flex flex-wrap gap-1 bg-slate-900 border border-slate-800 rounded-2xl p-1 mb-5">
-        {TABS.map(({ k, label, icon: Icon }) => (
-          <button key={k} onClick={() => setTab(k)}
-            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all ${tab === k ? "bg-blue-600 text-[#fff] shadow" : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.03]"}`}>
-            <Icon size={15} /> {label}
-          </button>
-        ))}
       </div>
 
       {tab === "chart" && <ChartTab org={org} accounts={accounts} reload={reloadAccounts} busy={busy} setBusy={setBusy} />}

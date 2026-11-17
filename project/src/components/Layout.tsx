@@ -28,6 +28,7 @@ import {
   QrCode,
   FileBarChart,
   FolderOpen,
+  Calculator,
 } from 'lucide-react';
 
 import { supabase } from '../pages/lib/supabase';
@@ -52,6 +53,7 @@ export type Page =
   | 'fixed-expenses'
   | 'financial-report'
   | 'reports-center'
+  | 'accounting'
   | 'alerts'
   | 'shop-settings'       // ← إعدادات المحل + QR
   | 'admin'
@@ -79,6 +81,7 @@ const pageTitles: Record<Page, { en: string; ar: string }> = {
   'fixed-expenses': { en: 'Fixed Expenses', ar: 'المصروفات الثابتة' },
   'financial-report': { en: 'Financial Report', ar: 'التقرير المالي' },
   'reports-center':  { en: 'Reports Center',   ar: 'مركز التقارير'   },
+  'accounting':      { en: 'Accounting',       ar: 'الحسابات'        },
   'alerts':          { en: 'Alerts',           ar: 'التنبيهات'       },
   'shop-settings':   { en: 'Shop Settings',    ar: 'إعدادات المحل'   },
   'admin':           { en: 'Admin Dashboard',  ar: 'لوحة الأدمن'     },
@@ -163,6 +166,7 @@ const navSections: NavSection[] = [
       { id: 'fixed-expenses', icon: <Landmark size={17} />, label: 'Fixed Expenses', labelAr: 'المصروفات الثابتة', adminOnly: false },
       { id: 'financial-report', icon: <FileBarChart size={17} />, label: 'Financial Report', labelAr: 'التقرير المالي', adminOnly: false },
       { id: 'reports-center', icon: <FolderOpen size={17} />, label: 'Reports Center', labelAr: 'مركز التقارير', adminOnly: false },
+      { id: 'accounting', icon: <Calculator size={17} />, label: 'Accounting', labelAr: 'الحسابات', adminOnly: false },
       { id: 'alerts',        icon: <Bell size={17} />,            label: 'Alerts',         labelAr: 'التنبيهات',      adminOnly: false },
       { id: 'shop-settings', icon: <QrCode size={17} />,          label: 'Shop Settings',  labelAr: 'إعدادات المحل',  adminOnly: false },
     ],

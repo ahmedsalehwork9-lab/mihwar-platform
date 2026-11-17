@@ -61,6 +61,60 @@ function SectionHead({ icon: Icon, title, extra }: { icon: any; title: string; e
   );
 }
 
+// منتقي حساب قابل للبحث (بالاسم أو رقم الحساب) — يحل محل select الطويل
+function AccountPicker({ value, onChange, options, placeholder = "— اختر حساب", size = "sm" }: {
+  value: number | ""; onChange: (v: number | "") => void; options: GLAccount[]; placeholder?: string; size?: "sm" | "md";
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
+  const selected = options.find((a) => a.id === value);
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return options;
+    return options.filter((a) => (a.code + " " + a.name).toLowerCase().includes(s));
+  }, [q, options]);
+  const openIt = () => {
+    const r = btnRef.current?.getBoundingClientRect();
+    if (r) setRect({ top: r.bottom + 4, left: r.left, width: r.width });
+    setQ(""); setOpen(true);
+  };
+  const pick = (id: number | "") => { onChange(id); setOpen(false); };
+  const btnCls = size === "sm"
+    ? "w-full min-w-[180px] bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs outline-none focus:border-blue-500"
+    : "w-full bg-slate-950 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm outline-none focus:border-blue-500";
+  return (
+    <>
+      <button ref={btnRef} type="button" onClick={openIt} className={btnCls + " text-right flex items-center gap-1"}>
+        <span className={`flex-1 truncate ${selected ? "" : "text-slate-500"}`}>{selected ? `${selected.code} - ${selected.name}` : placeholder}</span>
+        <ChevronLeft size={12} className="text-slate-500 -rotate-90 shrink-0" />
+      </button>
+      {open && rect && (
+        <div className="fixed inset-0 z-[95]" onClick={() => setOpen(false)}>
+          <div className="absolute bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden" style={{ top: rect.top, left: rect.left, width: Math.max(rect.width, 240), maxWidth: "90vw" }} onClick={(e) => e.stopPropagation()} dir="rtl">
+            <div className="flex items-center gap-2 px-2.5 py-2 border-b border-slate-800">
+              <Search size={13} className="text-slate-500 shrink-0" />
+              <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (filtered[0]) pick(filtered[0].id); } else if (e.key === "Escape") setOpen(false); }} placeholder="ابحث بالاسم أو الرقم…" className="flex-1 bg-transparent text-white text-xs outline-none placeholder:text-slate-600" />
+            </div>
+            <div className="max-h-60 overflow-y-auto py-1">
+              {placeholder && <button type="button" onClick={() => pick("")} className="w-full text-right px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-800/60">{placeholder}</button>}
+              {filtered.length === 0 ? <div className="px-3 py-3 text-center text-slate-500 text-xs">لا نتائج</div> : (
+                filtered.map((a) => (
+                  <button key={a.id} type="button" onClick={() => pick(a.id)} className={`w-full flex items-center gap-2 px-3 py-1.5 text-right text-xs hover:bg-slate-800/60 ${a.id === value ? "bg-blue-500/10" : ""}`}>
+                    <span className="font-mono text-slate-400 [direction:ltr] shrink-0">{a.code}</span>
+                    <span className="flex-1 text-slate-200 truncate">{a.name}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function AccountingPage({ section, onSection }: { section?: string; onSection?: (s: string) => void } = {}) {
   const { ownedShopId, branches } = (useAuth() as any) ?? {};
   const [org, setOrg] = useState<{ id: number; name: string } | null>(null);
@@ -556,7 +610,7 @@ function JournalTab({ org, postable, accById, branches, branchName }: any) {
                 {lines.map((l, i) => (
                   <tr key={i} className="border-t border-slate-800">
                     <td className="px-2 py-1.5 text-center text-[11px] text-slate-600 font-mono">{i + 1}</td>
-                    <td className="px-2 py-1.5"><select value={l.account_id} onChange={(e) => setLine(i, { account_id: e.target.value ? Number(e.target.value) : "" })} className="w-full min-w-[180px] bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs outline-none focus:border-blue-500"><option value="">— اختر حساب</option>{postable.map((a: GLAccount) => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}</select></td>
+                    <td className="px-2 py-1.5"><AccountPicker value={l.account_id} onChange={(v) => setLine(i, { account_id: v })} options={postable} size="sm" /></td>
                     <td className="px-2 py-1.5"><input type="number" step="0.01" value={l.debit} onChange={(e) => setLine(i, { debit: e.target.value, credit: e.target.value ? "" : l.credit })} placeholder="0" className="w-28 bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr] outline-none focus:border-emerald-500" /></td>
                     <td className="px-2 py-1.5"><input type="number" step="0.01" value={l.credit} onChange={(e) => setLine(i, { credit: e.target.value, debit: e.target.value ? "" : l.debit })} placeholder="0" className="w-28 bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr] outline-none focus:border-amber-500" /></td>
                     {multiBranch && <td className="px-2 py-1.5"><select value={l.branch_id} onChange={(e) => setLine(i, { branch_id: e.target.value ? Number(e.target.value) : "" })} className="w-full min-w-[120px] bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs outline-none focus:border-blue-500"><option value="">افتراضي</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></td>}
@@ -708,7 +762,7 @@ function LedgerTab({ org, postable, branches, branchName }: any) {
     <div>
       <div className={`${CARD} p-3 mb-4`}>
         <div className="flex flex-wrap items-end gap-3">
-          <div><label className={LABEL}>الحساب</label><select value={accId} onChange={(e) => setAccId(e.target.value)} className={SELECT + " min-w-[220px]"}><option value="">— اختر حساب</option>{postable.map((a: GLAccount) => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}</select></div>
+          <div className="min-w-[240px]"><label className={LABEL}>الحساب</label><AccountPicker value={accId ? Number(accId) : ""} onChange={(v) => setAccId(v === "" ? "" : String(v))} options={postable} size="md" /></div>
           <div><label className={LABEL}>من</label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={DATE} /></div>
           <div><label className={LABEL}>إلى</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={DATE} /></div>
           {multiBranch && <div><label className={LABEL}>الفرع</label><select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className={SELECT}><option value="">كل الفروع</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
@@ -951,7 +1005,7 @@ function AssetsTab({ org, postable, branches, branchName }: any) {
                 <div><label className={LABEL}>العمر (سنوات)</label><input type="number" step="1" value={(edit.useful_life_years as any) ?? ""} onChange={(e) => setEdit({ ...edit, useful_life_years: e.target.value as any })} className={INPUT + " [direction:ltr] text-center"} /></div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className={LABEL}>حساب الأصل (اختياري)</label><select value={edit.account_id ?? ""} onChange={(e) => setEdit({ ...edit, account_id: e.target.value ? Number(e.target.value) : null })} className={SELECT}><option value="">— بدون</option>{postable.map((a: GLAccount) => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}</select></div>
+                <div><label className={LABEL}>حساب الأصل (اختياري)</label><AccountPicker value={edit.account_id ?? ""} onChange={(v) => setEdit({ ...edit, account_id: v === "" ? null : v })} options={postable} placeholder="— بدون" size="md" /></div>
                 {multiBranch && <div><label className={LABEL}>مركز التكلفة (فرع)</label><select value={edit.branch_id ?? ""} onChange={(e) => setEdit({ ...edit, branch_id: e.target.value ? Number(e.target.value) : null })} className={SELECT}><option value="">— بدون</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
               </div>
               <div><label className={LABEL}>ملاحظات</label><input value={edit.notes || ""} onChange={(e) => setEdit({ ...edit, notes: e.target.value })} className={INPUT} /></div>
@@ -1155,7 +1209,7 @@ function TreasuryTab({ org, postable, accById, branches, branchName: _branchName
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
           <div><label className={LABEL}>الخزنة / البنك</label><select value={vTreasuryId} onChange={(e) => setVTreasuryId(e.target.value)} className={SELECT}><option value="">— اختر</option>{treasuries.filter((t) => t.is_active).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
-          <div><label className={LABEL}>{vKind === "receipt" ? "الحساب المقابل (المصدر)" : "الحساب المقابل (الجهة)"}</label><select value={vCounterId} onChange={(e) => setVCounterId(e.target.value)} className={SELECT}><option value="">— اختر حساب</option>{counterOptions.map((a: GLAccount) => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}</select></div>
+          <div><label className={LABEL}>{vKind === "receipt" ? "الحساب المقابل (المصدر)" : "الحساب المقابل (الجهة)"}</label><AccountPicker value={vCounterId ? Number(vCounterId) : ""} onChange={(v) => setVCounterId(v === "" ? "" : String(v))} options={counterOptions} size="md" /></div>
           <div><label className={LABEL}>المبلغ</label><input type="number" step="0.01" value={vAmount} onChange={(e) => setVAmount(e.target.value)} placeholder="0.00" className={INPUT + " [direction:ltr] text-center font-mono"} /></div>
           <div><label className={LABEL}>التاريخ</label><input type="date" value={vDate} onChange={(e) => setVDate(e.target.value)} className={DATE} /></div>
           <div><label className={LABEL}>الطرف (من/إلى)</label><input value={vParty} onChange={(e) => setVParty(e.target.value)} placeholder="اسم العميل/المورد…" className={INPUT} /></div>
@@ -1228,7 +1282,7 @@ function TreasuryTab({ org, postable, accById, branches, branchName: _branchName
                 <div><label className={LABEL}>النوع</label><select value={edit.kind || "cash"} onChange={(e) => setEdit({ ...edit, kind: e.target.value })} className={SELECT}><option value="cash">خزنة نقدية</option><option value="bank">بنك</option></select></div>
                 <div><label className={LABEL}>رصيد افتتاحي</label><input type="number" step="0.01" value={(edit.opening_balance as any) ?? ""} onChange={(e) => setEdit({ ...edit, opening_balance: e.target.value as any })} className={INPUT + " [direction:ltr] text-center"} /></div>
               </div>
-              <div><label className={LABEL}>الحساب المرتبط (من دليل الحسابات)</label><select value={edit.account_id ?? ""} onChange={(e) => setEdit({ ...edit, account_id: e.target.value ? Number(e.target.value) : null })} className={SELECT}><option value="">— بدون (لن تُرحّل سندات)</option>{postable.map((a: GLAccount) => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}</select><p className="text-[10px] text-slate-500 mt-1">اربطها عادةً بحساب الصندوق (1101) أو البنك (1102).</p></div>
+              <div><label className={LABEL}>الحساب المرتبط (من دليل الحسابات)</label><AccountPicker value={edit.account_id ?? ""} onChange={(v) => setEdit({ ...edit, account_id: v === "" ? null : v })} options={postable} placeholder="— بدون (لن تُرحّل سندات)" size="md" /><p className="text-[10px] text-slate-500 mt-1">اربطها عادةً بحساب الصندوق (1101) أو البنك (1102).</p></div>
               {multiBranch && <div><label className={LABEL}>الفرع</label><select value={edit.branch_id ?? ""} onChange={(e) => setEdit({ ...edit, branch_id: e.target.value ? Number(e.target.value) : null })} className={SELECT}><option value="">— بدون</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
               <label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={edit.is_active !== false} onChange={(e) => setEdit({ ...edit, is_active: e.target.checked })} className="w-4 h-4 accent-blue-500" /> نشط</label>
             </div>

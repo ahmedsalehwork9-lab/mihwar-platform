@@ -188,7 +188,7 @@ export default function AccountingPage({ section, onSection }: { section?: strin
 
       {tab === "chart" && <ChartTab org={org} accounts={accounts} reload={reloadAccounts} busy={busy} setBusy={setBusy} />}
       {tab === "journal" && <JournalTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} />}
-      {tab === "ledger" && <LedgerTab org={org} postable={postable} branches={branches} branchName={branchName} />}
+      {tab === "ledger" && <LedgerTab org={org} postable={postable} accounts={accounts} accById={accById} branches={branches} branchName={branchName} />}
       {tab === "trial" && <TrialTab org={org} accById={accById} postable={postable} branches={branches} />}
       {tab === "assets" && <AssetsTab org={org} postable={postable} branches={branches} branchName={branchName} />}
       {tab === "treasury" && <TreasuryTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} />}
@@ -735,7 +735,7 @@ function JournalTab({ org, postable, accById, branches, branchName }: any) {
 }
 
 // ══════════════ كشف حساب ══════════════
-function LedgerTab({ org, postable, branches, branchName }: any) {
+function LedgerTab({ org, postable, accounts, accById, branches, branchName }: any) {
   const multiBranch = branches && branches.length > 1;
   const [accId, setAccId] = useState<string>("");
   const [from, setFrom] = useState(monthStart());
@@ -744,25 +744,33 @@ function LedgerTab({ org, postable, branches, branchName }: any) {
   const [rows, setRows] = useState<LedgerLine[]>([]);
   const [opening, setOpening] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [ranAcc, setRanAcc] = useState<GLAccount | null>(null);   // الحساب المعروض فعليًا
+
+  const allAccounts = useMemo(() => [...accounts].sort((a: GLAccount, b: GLAccount) => a.code.localeCompare(b.code)), [accounts]);
 
   const run = async () => {
     if (!accId) { alert("اختر الحساب"); return; }
+    const acc = accById.get(Number(accId)) as GLAccount | undefined;
+    const ids = acc?.is_group ? DB.descendantPostableIds(accounts, Number(accId)) : [Number(accId)];
+    if (!ids.length) { alert("لا توجد حسابات قابلة للترحيل تحت هذا الحساب"); return; }
     setLoading(true);
     const br = fBranch ? Number(fBranch) : null;
-    const before = await DB.fetchLedger(org.id, Number(accId), "2000-01-01", dayBefore(from), br);
+    const before = await DB.fetchLedgerMulti(org.id, ids, "2000-01-01", dayBefore(from), br);
     const ob = before.reduce((s, r) => s + r.debit - r.credit, 0);
-    const period = await DB.fetchLedger(org.id, Number(accId), from, to, br);
-    setOpening(ob); setRows(period); setLoading(false);
+    const period = await DB.fetchLedgerMulti(org.id, ids, from, to, br);
+    setOpening(ob); setRows(period); setRanAcc(acc || null); setLoading(false);
   };
 
   let running = opening;
-  const acc = postable.find((a: GLAccount) => a.id === Number(accId));
+  const isGroup = !!ranAcc?.is_group;
+  const cols = isGroup ? ["التاريخ", "القيد", "الحساب", "البيان", "مدين", "دائن", "الرصيد"] : ["التاريخ", "القيد", "البيان", "مدين", "دائن", "الرصيد"];
+  const span = cols.length;
 
   return (
     <div>
       <div className={`${CARD} p-3 mb-4`}>
         <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-[240px]"><label className={LABEL}>الحساب</label><AccountPicker value={accId ? Number(accId) : ""} onChange={(v) => setAccId(v === "" ? "" : String(v))} options={postable} size="md" /></div>
+          <div className="min-w-[240px]"><label className={LABEL}>الحساب (يمكن اختيار حساب تجميعي لتجميع فروعه)</label><AccountPicker value={accId ? Number(accId) : ""} onChange={(v) => setAccId(v === "" ? "" : String(v))} options={allAccounts} size="md" /></div>
           <div><label className={LABEL}>من</label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={DATE} /></div>
           <div><label className={LABEL}>إلى</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={DATE} /></div>
           {multiBranch && <div><label className={LABEL}>الفرع</label><select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className={SELECT}><option value="">كل الفروع</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
@@ -771,23 +779,24 @@ function LedgerTab({ org, postable, branches, branchName }: any) {
       </div>
 
       <div className={`${CARD} overflow-hidden`}>
-        <SectionHead icon={FileText} title={`كشف حساب${acc ? ` — ${acc.code} ${acc.name}` : ""}`} />
+        <SectionHead icon={FileText} title={`كشف حساب${ranAcc ? ` — ${ranAcc.code} ${ranAcc.name}` : ""}${isGroup ? " (مُجمّع للفروع)" : ""}`} />
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse" style={{ minWidth: 640 }}>
-            <thead><tr>{["التاريخ", "القيد", "البيان", "مدين", "دائن", "الرصيد"].map((h) => <th key={h} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
+          <table className="w-full border-collapse" style={{ minWidth: isGroup ? 740 : 640 }}>
+            <thead><tr>{cols.map((h) => <th key={h} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
             <tbody>
-              <tr className="bg-slate-950/40"><td colSpan={5} className="px-2 py-2 text-xs text-right text-slate-400 border-b border-slate-800">رصيد افتتاحي</td><td className="px-2 py-2 text-center font-mono text-xs font-bold text-slate-200 [direction:ltr] border-b border-slate-800">{fmt(opening)}</td></tr>
-              {rows.map((r, i) => { running += r.debit - r.credit; return (
+              <tr className="bg-slate-950/40"><td colSpan={span - 1} className="px-2 py-2 text-xs text-right text-slate-400 border-b border-slate-800">رصيد افتتاحي</td><td className="px-2 py-2 text-center font-mono text-xs font-bold text-slate-200 [direction:ltr] border-b border-slate-800">{fmt(opening)}</td></tr>
+              {rows.map((r, i) => { running += r.debit - r.credit; const sub = accById.get(r.account_id) as GLAccount | undefined; return (
                 <tr key={i} className="hover:bg-white/[0.02]">
                   <td className="px-2 py-2 text-xs text-center font-mono text-slate-400 [direction:ltr] border-b border-slate-800">{r.date}</td>
                   <td className="px-2 py-2 text-xs text-center font-mono text-blue-300 [direction:ltr] border-b border-slate-800">{String(r.entry_no).padStart(4, "0")}</td>
+                  {isGroup && <td className="px-2 py-2 text-xs text-right text-slate-400 border-b border-slate-800"><span className="font-mono [direction:ltr]">{sub?.code}</span> {sub?.name || ""}</td>}
                   <td className="px-2 py-2 text-xs text-right text-slate-300 border-b border-slate-800">{r.description || "—"}{r.note ? <span className="text-slate-500"> · {r.note}</span> : null}</td>
                   <td className="px-2 py-2 text-xs text-center font-mono text-emerald-400 [direction:ltr] border-b border-slate-800">{r.debit ? fmt(r.debit) : ""}</td>
                   <td className="px-2 py-2 text-xs text-center font-mono text-amber-400 [direction:ltr] border-b border-slate-800">{r.credit ? fmt(r.credit) : ""}</td>
                   <td className="px-2 py-2 text-xs text-center font-mono font-bold text-white [direction:ltr] border-b border-slate-800">{fmt(running)}</td>
                 </tr>
               ); })}
-              {rows.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-slate-500 text-sm">اختر حسابًا واضغط «عرض الكشف».</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={span} className="p-8 text-center text-slate-500 text-sm">اختر حسابًا واضغط «عرض الكشف».</td></tr>}
             </tbody>
           </table>
         </div>

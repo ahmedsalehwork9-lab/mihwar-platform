@@ -377,24 +377,43 @@ export async function deleteEntry(id: number): Promise<{ ok: boolean; error?: st
 }
 
 // حركة حساب (لكشف الحساب) ضمن فترة — ترجع السطور مع تاريخ ووصف القيد
-export type LedgerLine = { date: string; entry_no: number; description: string | null; branch_id: number | null; debit: number; credit: number; note: string | null };
-export async function fetchLedger(orgId: number, accountId: number, from: string, to: string, branchId?: number | null): Promise<LedgerLine[]> {
+export type LedgerLine = { date: string; entry_no: number; description: string | null; branch_id: number | null; account_id: number; debit: number; credit: number; note: string | null };
+
+// كشف حركة عدة حسابات معًا (يُستخدم لتجميع حركة حساب أب وكل فروعه)
+export async function fetchLedgerMulti(orgId: number, accountIds: number[], from: string, to: string, branchId?: number | null): Promise<LedgerLine[]> {
+  if (!accountIds.length) return [];
   let q = supabase
     .from("gl_journal_lines")
-    .select("debit, credit, branch_id, note, entry:gl_journal_entries!inner(date, entry_no, description, organization_id)")
-    .eq("account_id", accountId)
+    .select("account_id, debit, credit, branch_id, note, entry:gl_journal_entries!inner(date, entry_no, description, organization_id)")
+    .in("account_id", accountIds)
     .gte("entry.date", from)
     .lte("entry.date", to)
     .eq("entry.organization_id", orgId);
   if (branchId != null) q = q.eq("branch_id", branchId);
   const { data, error } = await q;
-  if (error) { console.error("fetchLedger", error); return []; }
+  if (error) { console.error("fetchLedgerMulti", error); return []; }
   const rows = ((data as any[]) || []).map((r) => ({
     date: r.entry?.date, entry_no: r.entry?.entry_no, description: r.entry?.description,
-    branch_id: r.branch_id, debit: Number(r.debit) || 0, credit: Number(r.credit) || 0, note: r.note,
+    branch_id: r.branch_id, account_id: r.account_id, debit: Number(r.debit) || 0, credit: Number(r.credit) || 0, note: r.note,
   }));
   rows.sort((a, b) => (a.date || "").localeCompare(b.date || "") || (a.entry_no - b.entry_no));
   return rows;
+}
+
+export async function fetchLedger(orgId: number, accountId: number, from: string, to: string, branchId?: number | null): Promise<LedgerLine[]> {
+  return fetchLedgerMulti(orgId, [accountId], from, to, branchId);
+}
+
+// معرّفات الحساب نفسه + كل الحسابات الورقية تحته (لتجميع كشف حساب أب)
+export function descendantPostableIds(accounts: GLAccount[], rootId: number): number[] {
+  const childrenOf = new Map<number | null, GLAccount[]>();
+  accounts.forEach((a) => { const k = a.parent_id ?? null; if (!childrenOf.has(k)) childrenOf.set(k, []); childrenOf.get(k)!.push(a); });
+  const ids = new Set<number>([rootId]);   // اشمل الحساب نفسه (قد يحمل حركة قديمة قبل تحويله لتجميعي)
+  const walk = (id: number) => {
+    (childrenOf.get(id) || []).forEach((c) => { if (!c.is_group) ids.add(c.id); walk(c.id); });
+  };
+  walk(rootId);
+  return [...ids];
 }
 
 // ── الأصول الثابتة + الإهلاك (قسط ثابت) ──

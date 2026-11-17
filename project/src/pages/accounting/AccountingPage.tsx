@@ -981,6 +981,23 @@ function TreasuryTab({ org, postable, accById, branches, branchName: _branchName
   const [vBranch, setVBranch] = useState<string>("");
   const [saving, setSaving] = useState(false);
 
+  // مرفقات السند (إيصال تحويل/استلام)
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [attMap, setAttMap] = useState<Record<number, number>>({});
+  const attRef = useRef<HTMLInputElement>(null);
+  const addFiles = (files: FileList | null) => {
+    if (!files || !files.length) return;
+    const arr = Array.from(files);
+    const tooBig = arr.find((f) => f.size > 10 * 1024 * 1024);
+    if (tooBig) { alert("حجم الملف أكبر من 10 ميجابايت: " + tooBig.name); return; }
+    setPendingFiles((p) => [...p, ...arr]);
+  };
+  const openVoucherAtts = async (entryId: number) => {
+    const atts = await DB.fetchAttachments(entryId);
+    if (!atts.length) { alert("لا توجد مرفقات لهذا السند."); return; }
+    for (const a of atts) { const url = await DB.signedUrl(a.file_path); if (url) window.open(url, "_blank"); }
+  };
+
   const reloadT = useCallback(async () => {
     setLoadingT(true);
     const ts = await DB.fetchTreasuries(org.id, fBranch ? Number(fBranch) : null);
@@ -996,7 +1013,9 @@ function TreasuryTab({ org, postable, accById, branches, branchName: _branchName
 
   const reloadV = useCallback(async () => {
     const es = await DB.fetchEntries(org.id, monthStart(), today(), fBranch ? Number(fBranch) : null);
-    setVouchers(es.filter((e) => e.entry_type === "receipt" || e.entry_type === "payment"));
+    const vs = es.filter((e) => e.entry_type === "receipt" || e.entry_type === "payment");
+    setVouchers(vs);
+    setAttMap(await DB.countAttachments(vs.map((e) => e.id)));
   }, [org.id, fBranch]);
 
   useEffect(() => { reloadT(); reloadV(); }, [reloadT, reloadV]);
@@ -1036,9 +1055,16 @@ function TreasuryTab({ org, postable, accById, branches, branchName: _branchName
       kind: vKind, date: vDate, treasury_account_id: tr.account_id!, counter_account_id: Number(vCounterId),
       amount: amt, description: desc, notes, branch_id: (vBranch ? Number(vBranch) : tr.branch_id) ?? null,
     });
+    if (!r.ok) { setSaving(false); alert("تعذّر حفظ السند: " + (r.error || "")); return; }
+    // رفع الإيصالات المرفقة على قيد السند
+    if (r.id && pendingFiles.length) {
+      for (const f of pendingFiles) {
+        const up = await DB.uploadAttachment(org.id, r.id, f);
+        if (!up.ok) alert(`تعذّر رفع «${f.name}»: ${up.error || ""}`);
+      }
+    }
     setSaving(false);
-    if (!r.ok) { alert("تعذّر حفظ السند: " + (r.error || "")); return; }
-    setVAmount(""); setVParty(""); setVDesc(""); setVCounterId("");
+    setVAmount(""); setVParty(""); setVDesc(""); setVCounterId(""); setPendingFiles([]);
     await reloadT(); await reloadV();
     alert("✓ تم حفظ السند وترحيله للدفتر");
   };
@@ -1116,6 +1142,27 @@ function TreasuryTab({ org, postable, accById, branches, branchName: _branchName
           {multiBranch && <div><label className={LABEL}>مركز التكلفة (فرع)</label><select value={vBranch} onChange={(e) => setVBranch(e.target.value)} className={SELECT}><option value="">— افتراضي</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
         </div>
 
+        {/* إرفاق إيصال (تحويل بنكي / استلام نقدي) */}
+        <div className="mt-3">
+          <label className={LABEL}>الإيصال / المرفق (صورة أو PDF، اختياري)</label>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => attRef.current?.click()} className={BTN_GHOST_BL}><Paperclip size={14} /> إرفاق إيصال</button>
+            <input ref={attRef} type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+          </div>
+          {pendingFiles.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {pendingFiles.map((f, i) => (
+                <div key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs">
+                  <Paperclip size={13} className="text-blue-400 shrink-0" />
+                  <span className="text-blue-200 max-w-[170px] truncate">{f.name}</span>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-500/15 text-blue-300 shrink-0">سيُرفع</span>
+                  <button type="button" onClick={() => setPendingFiles((p) => p.filter((_, idx) => idx !== i))} title="إزالة" className="text-red-400 hover:text-red-300 shrink-0"><X size={13} /></button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className="flex items-center gap-2 mt-4 flex-wrap">
           <p className="text-[11px] text-slate-500">{vKind === "receipt" ? "القيد: من ح/ الخزنة إلى ح/ الحساب المقابل" : "القيد: من ح/ الحساب المقابل إلى ح/ الخزنة"}</p>
           <button onClick={saveVoucher} disabled={saving} className={`mr-auto ${vKind === "receipt" ? BTN_SUCCESS : "inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-[#fff] font-extrabold text-sm transition-colors disabled:opacity-50"}`}><Check size={16} /> {saving ? "جارٍ…" : "حفظ وترحيل السند"}</button>
@@ -1139,6 +1186,7 @@ function TreasuryTab({ org, postable, accById, branches, branchName: _branchName
                   <span className="text-sm text-slate-200">{e.description || "—"}</span>
                   {e.notes ? <span className="text-[10px] text-slate-500">· {e.notes}</span> : null}
                   <span className={`mr-auto font-mono text-sm font-bold [direction:ltr] ${isR ? "text-emerald-400" : "text-red-400"}`}>{isR ? "+" : "−"}{fmt(amt)} ر.س</span>
+                  {attMap[e.id] ? <button onClick={() => openVoucherAtts(e.id)} title="عرض الإيصال" className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-300 hover:bg-blue-500/20"><Paperclip size={10} /> {attMap[e.id]}</button> : null}
                   <button onClick={() => delVoucher(e.id)} title="حذف" className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400 flex items-center justify-center hover:bg-red-500/20"><Trash2 size={13} /></button>
                 </div>
               );

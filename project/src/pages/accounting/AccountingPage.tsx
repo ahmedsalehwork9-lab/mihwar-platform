@@ -153,6 +153,28 @@ function ChartTab({ org, accounts, reload, busy, setBusy }: { org: { id: number;
     return m;
   }, [accounts]);
 
+  // توليد الكود التالي تلقائيًا تحت حساب أب (أو جذر)
+  const nextChildCode = (parentId: number | null): string => {
+    const parent = parentId != null ? accounts.find((a) => a.id === parentId) : null;
+    const siblings = accounts.filter((a) => (a.parent_id ?? null) === (parentId ?? null));
+    if (parent) {
+      const pc = parent.code;
+      const kids = siblings.filter((s) => s.code.length > pc.length && s.code.startsWith(pc));
+      if (kids.length) {
+        const sfx = kids.map((k) => k.code.slice(pc.length));
+        const width = sfx[0].length;
+        const maxN = Math.max(...sfx.map((s) => parseInt(s, 10) || 0));
+        return pc + String(maxN + 1).padStart(width, "0");
+      }
+      return pc + "01";
+    }
+    const roots = siblings.map((s) => parseInt(s.code, 10) || 0);
+    return String((roots.length ? Math.max(...roots) : 0) + 1);
+  };
+  // النوع يُورَّث من الأب
+  const typeOfParent = (parentId: number | null): AccType | undefined =>
+    parentId != null ? accounts.find((a) => a.id === parentId)?.type : undefined;
+
   const seed = async () => {
     if (!window.confirm("تهيئة دليل الحسابات السعودي القياسي لهذه المؤسسة؟")) return;
     setBusy(true);
@@ -270,7 +292,7 @@ function ChartTab({ org, accounts, reload, busy, setBusy }: { org: { id: number;
           <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${typeChip(a)}`}>{a.is_group ? "تجميعي" : DB.TYPE_LABEL[a.type]}</span>
           {!a.is_active && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-400">موقوف</span>}
           <div className="mr-auto flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
-            <button onClick={() => setEdit({ parent_id: a.id, type: a.type, is_group: false, is_active: true })} title="إضافة حساب فرعي" className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center hover:bg-emerald-500/20"><Plus size={13} /></button>
+            <button onClick={() => setEdit({ parent_id: a.id, type: a.type, is_group: false, is_active: true, code: nextChildCode(a.id) })} title="إضافة حساب فرعي" className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center hover:bg-emerald-500/20"><Plus size={13} /></button>
             <button onClick={() => setEdit({ ...a })} title="تعديل" className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-300 flex items-center justify-center hover:bg-blue-500/20"><Pencil size={13} /></button>
             <button onClick={() => del(a)} title="حذف" className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400 flex items-center justify-center hover:bg-red-500/20"><Trash2 size={13} /></button>
           </div>
@@ -285,7 +307,7 @@ function ChartTab({ org, accounts, reload, busy, setBusy }: { org: { id: number;
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2 mb-4">
-        <button onClick={() => setEdit({ type: "asset", is_group: false, is_active: true, parent_id: null })} className={BTN_GHOST_EM}><Plus size={14} /> حساب جديد</button>
+        <button onClick={() => setEdit({ type: "asset", is_group: false, is_active: true, parent_id: null, code: nextChildCode(null) })} className={BTN_GHOST_EM}><Plus size={14} /> حساب جديد</button>
         {accounts.length === 0 && <button onClick={seed} disabled={busy} className={BTN_PRIMARY}><Network size={14} /> {busy ? "جارٍ…" : "تهيئة الدليل السعودي القياسي"}</button>}
         <button onClick={downloadTemplate} className={BTN_SOFT}><Download size={14} /> نموذج Excel</button>
         <button onClick={() => fileRef.current?.click()} disabled={busy} className={BTN_GHOST_BL}><Upload size={14} /> رفع دليل حسابات</button>
@@ -310,7 +332,7 @@ function ChartTab({ org, accounts, reload, busy, setBusy }: { org: { id: number;
                 <div><label className={LABEL}>النوع</label><select value={edit.type || "asset"} onChange={(e) => setEdit({ ...edit, type: e.target.value as AccType })} className={SELECT}>{TYPE_OPTS.map((t) => <option key={t} value={t}>{DB.TYPE_LABEL[t]}</option>)}</select></div>
               </div>
               <div><label className={LABEL}>اسم الحساب</label><input value={edit.name || ""} onChange={(e) => setEdit({ ...edit, name: e.target.value })} className={INPUT} /></div>
-              <div><label className={LABEL}>الحساب الأب</label><select value={edit.parent_id ?? ""} onChange={(e) => setEdit({ ...edit, parent_id: e.target.value ? Number(e.target.value) : null })} className={SELECT}><option value="">— رئيسي (بدون أب)</option>{groups.filter((g) => g.id !== edit.id).map((g) => <option key={g.id} value={g.id}>{g.code} - {g.name}</option>)}</select></div>
+              <div><label className={LABEL}>الحساب الأب</label><select value={edit.parent_id ?? ""} onChange={(e) => { const pid = e.target.value ? Number(e.target.value) : null; const patch: any = { ...edit, parent_id: pid }; if (!edit.id) { patch.code = nextChildCode(pid); const t = typeOfParent(pid); if (t) patch.type = t; } setEdit(patch); }} className={SELECT}><option value="">— رئيسي (بدون أب)</option>{groups.filter((g) => g.id !== edit.id).map((g) => <option key={g.id} value={g.id}>{g.code} - {g.name}</option>)}</select></div>
               <div className="flex items-center gap-4 flex-wrap">
                 <label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={!!edit.is_group} onChange={(e) => setEdit({ ...edit, is_group: e.target.checked })} className="w-4 h-4 accent-blue-500" /> حساب تجميعي (غير قابل للترحيل)</label>
                 <label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={edit.is_active !== false} onChange={(e) => setEdit({ ...edit, is_active: e.target.checked })} className="w-4 h-4 accent-blue-500" /> نشط</label>

@@ -14,9 +14,10 @@ import {
   Home, ChevronLeft, Calculator, Network, BookOpen, FileText, Scale,
   Plus, Pencil, Trash2, Download, Upload, Save, X, Check, Search,
   Building2, FileCheck2, Send, Layers, Paperclip, ExternalLink,
-  Wallet, Landmark, ArrowDownCircle, ArrowUpCircle, Users, Phone,
+  Wallet, Landmark, ArrowDownCircle, ArrowUpCircle, Users, Phone, Printer,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
+import { supabase } from "../lib/supabase";
 import * as DB from "../lib/accountingDb";
 import type { GLAccount, GLLine, EntryWithLines, LedgerLine, AccType } from "../lib/accountingDb";
 
@@ -60,6 +61,74 @@ function SectionHead({ icon: Icon, title, extra }: { icon: any; title: string; e
       {extra && <div className="mr-auto">{extra}</div>}
     </div>
   );
+}
+
+// ── طباعة كشف الحساب بترويسة المؤسسة (اسم/رقم ضريبي/سجل تجاري/شعار) ──
+function logoImg(url?: string | null) {
+  return url
+    ? `<img src="${url}" style="width:54px;height:54px;border-radius:10px;object-fit:cover;border:1px solid #e5e7eb;" />`
+    : `<div style="width:54px;height:54px;border-radius:10px;background:#0f1b2b;color:#34d399;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;">م</div>`;
+}
+type PrintRow = { date: string; no: string; acc?: string; desc: string; debit: number; credit: number; running: number };
+function printStatement(shop: any, o: {
+  heading: string; account: string; from?: string; to?: string;
+  showAccountCol?: boolean; opening?: number | null;
+  rows: PrintRow[]; totalDebit: number; totalCredit: number; finalBalance: number;
+}) {
+  const win = window.open("", "_blank");
+  if (!win) { alert("فضلاً اسمح بالنوافذ المنبثقة لهذا الموقع لتفعيل الطباعة."); return; }
+  const now = new Date().toLocaleString("ar-SA");
+  const name = shop?.shop_name || "المؤسسة";
+  const info: string[] = [];
+  if (shop?.tax_number) info.push(`الرقم الضريبي: ${shop.tax_number}`);
+  if (shop?.commercial_registration) info.push(`س.ت: ${shop.commercial_registration}`);
+  if (shop?.phone) info.push(`هاتف: ${shop.phone}`);
+  const period = (o.from && o.to) ? `الفترة: ${o.from} إلى ${o.to}` : (o.to ? `حتى: ${o.to}` : "");
+  const th = ["التاريخ", "القيد", ...(o.showAccountCol ? ["الحساب"] : []), "البيان", "مدين", "دائن", "الرصيد"];
+  const cell = "border:1px solid #e5e7eb;padding:4px 8px;font-size:11px;";
+  const openRow = (o.opening != null)
+    ? `<tr style="background:#f3f4f6;"><td colspan="${th.length - 1}" style="${cell}text-align:right;">رصيد افتتاحي</td><td style="${cell}text-align:center;font-weight:700;">${fmt(o.opening)}</td></tr>`
+    : "";
+  const body = o.rows.map((r) => `<tr>
+    <td style="${cell}text-align:center;">${r.date || ""}</td>
+    <td style="${cell}text-align:center;">${r.no}</td>
+    ${o.showAccountCol ? `<td style="${cell}text-align:right;">${r.acc || ""}</td>` : ""}
+    <td style="${cell}text-align:right;">${(r.desc || "—").replace(/</g, "&lt;")}</td>
+    <td style="${cell}text-align:center;">${r.debit ? fmt(r.debit) : ""}</td>
+    <td style="${cell}text-align:center;">${r.credit ? fmt(r.credit) : ""}</td>
+    <td style="${cell}text-align:center;font-weight:700;">${fmt(r.running)}</td>
+  </tr>`).join("");
+  const html = `<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>${o.heading} - ${name}</title>
+<style>@page{size:A4;margin:14mm;} body{font-family:'Segoe UI',Tahoma,sans-serif;color:#111827;margin:0;} table{border-collapse:collapse;width:100%;}</style></head>
+<body>
+  <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #0f1b2b;padding-bottom:12px;margin-bottom:14px;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      ${logoImg(shop?.logo_url)}
+      <div><div style="font-size:19px;font-weight:800;">${name}</div><div style="font-size:11px;color:#6b7280;margin-top:3px;">${info.join(" · ")}</div></div>
+    </div>
+    <div style="text-align:left;">
+      <div style="font-size:16px;font-weight:800;">${o.heading}</div>
+      <div style="font-size:11px;color:#6b7280;">${o.account}</div>
+      <div style="font-size:10px;color:#9ca3af;">${period}</div>
+    </div>
+  </div>
+  <table>
+    <thead><tr>${th.map((h) => `<th style="border:1px solid #d1d5db;background:#0f1b2b;color:#fff;padding:6px 8px;font-size:11px;">${h}</th>`).join("")}</tr></thead>
+    <tbody>${openRow}${body}</tbody>
+    <tfoot><tr style="background:#f3f4f6;font-weight:800;">
+      <td colspan="${o.showAccountCol ? 3 : 2}" style="border:1px solid #d1d5db;padding:6px 8px;text-align:right;font-size:11px;">الإجمالي</td>
+      <td style="border:1px solid #d1d5db;padding:6px 8px;text-align:center;font-size:11px;">${fmt(o.totalDebit)}</td>
+      <td style="border:1px solid #d1d5db;padding:6px 8px;text-align:center;font-size:11px;">${fmt(o.totalCredit)}</td>
+      <td style="border:1px solid #d1d5db;padding:6px 8px;text-align:center;font-size:12px;">${fmt(o.finalBalance)}</td>
+    </tr></tfoot>
+  </table>
+  <div style="margin-top:18px;display:flex;justify-content:space-between;font-size:10px;color:#9ca3af;">
+    <div>طُبع في: ${now}</div>
+    <div>إعداد: المحاسب أحمد صالح / Prepared by: Accountant Ahmed Saleh</div>
+  </div>
+  <script>window.onload=function(){setTimeout(function(){window.print();},300);};</script>
+</body></html>`;
+  win.document.write(html); win.document.close();
 }
 
 // منتقي حساب قابل للبحث (بالاسم أو رقم الحساب) — يحل محل select الطويل
@@ -141,6 +210,14 @@ export default function AccountingPage({ section, onSection }: { section?: strin
 
   const reloadAccounts = useCallback(async () => { if (org) setAccounts(await DB.fetchAccounts(org.id)); }, [org]);
 
+  // بيانات المؤسسة/الفرع للطباعة (اسم/شعار/رقم ضريبي/سجل تجاري)
+  const [shopInfo, setShopInfo] = useState<any>(null);
+  useEffect(() => {
+    if (!ownedShopId) { setShopInfo(null); return; }
+    supabase.from("shops").select("shop_name, logo_url, tax_number, commercial_registration, phone, address").eq("id", ownedShopId).single()
+      .then(({ data }) => setShopInfo(data || null));
+  }, [ownedShopId]);
+
   const postable = useMemo(() => accounts.filter((a) => !a.is_group).sort((a, b) => a.code.localeCompare(b.code)), [accounts]);
   const accById = useMemo(() => new Map(accounts.map((a) => [a.id, a] as const)), [accounts]);
   const branchName = (id: number | null | undefined) => (id == null ? "" : (branches || []).find((b: any) => b.id === id)?.name || ("فرع " + id));
@@ -189,11 +266,11 @@ export default function AccountingPage({ section, onSection }: { section?: strin
 
       {tab === "chart" && <ChartTab org={org} accounts={accounts} reload={reloadAccounts} busy={busy} setBusy={setBusy} />}
       {tab === "journal" && <JournalTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} />}
-      {tab === "ledger" && <LedgerTab org={org} postable={postable} accounts={accounts} accById={accById} branches={branches} branchName={branchName} />}
+      {tab === "ledger" && <LedgerTab org={org} postable={postable} accounts={accounts} accById={accById} branches={branches} branchName={branchName} shop={shopInfo} />}
       {tab === "trial" && <TrialTab org={org} accById={accById} postable={postable} branches={branches} />}
       {tab === "assets" && <AssetsTab org={org} postable={postable} branches={branches} branchName={branchName} />}
       {tab === "treasury" && <TreasuryTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} />}
-      {tab === "parties" && <PartiesTab org={org} postable={postable} accounts={accounts} accById={accById} branches={branches} />}
+      {tab === "parties" && <PartiesTab org={org} postable={postable} accounts={accounts} accById={accById} branches={branches} shop={shopInfo} />}
     </div>
   );
 }
@@ -737,7 +814,7 @@ function JournalTab({ org, postable, accById, branches, branchName }: any) {
 }
 
 // ══════════════ كشف حساب ══════════════
-function LedgerTab({ org, postable, accounts, accById, branches, branchName }: any) {
+function LedgerTab({ org, postable, accounts, accById, branches, branchName, shop }: any) {
   const multiBranch = branches && branches.length > 1;
   const [accId, setAccId] = useState<string>("");
   const [from, setFrom] = useState(monthStart());
@@ -768,6 +845,20 @@ function LedgerTab({ org, postable, accounts, accById, branches, branchName }: a
   const cols = isGroup ? ["التاريخ", "القيد", "الحساب", "البيان", "مدين", "دائن", "الرصيد"] : ["التاريخ", "القيد", "البيان", "مدين", "دائن", "الرصيد"];
   const span = cols.length;
 
+  const doPrint = () => {
+    let r = opening;
+    const prows = rows.map((row) => {
+      r += row.debit - row.credit;
+      const sub = accById.get(row.account_id);
+      return { date: row.date, no: String(row.entry_no).padStart(4, "0"), acc: isGroup ? `${sub?.code || ""} ${sub?.name || ""}` : undefined, desc: (row.description || "") + (row.note ? ` · ${row.note}` : ""), debit: row.debit, credit: row.credit, running: r };
+    });
+    printStatement(shop, {
+      heading: "كشف حساب", account: ranAcc ? `${ranAcc.code} ${ranAcc.name}${isGroup ? " (مُجمّع)" : ""}` : "", from, to,
+      showAccountCol: isGroup, opening,
+      rows: prows, totalDebit: rows.reduce((s, x) => s + x.debit, 0), totalCredit: rows.reduce((s, x) => s + x.credit, 0), finalBalance: r,
+    });
+  };
+
   return (
     <div>
       <div className={`${CARD} p-3 mb-4`}>
@@ -781,7 +872,7 @@ function LedgerTab({ org, postable, accounts, accById, branches, branchName }: a
       </div>
 
       <div className={`${CARD} overflow-hidden`}>
-        <SectionHead icon={FileText} title={`كشف حساب${ranAcc ? ` — ${ranAcc.code} ${ranAcc.name}` : ""}${isGroup ? " (مُجمّع للفروع)" : ""}`} />
+        <SectionHead icon={FileText} title={`كشف حساب${ranAcc ? ` — ${ranAcc.code} ${ranAcc.name}` : ""}${isGroup ? " (مُجمّع للفروع)" : ""}`} extra={ranAcc && rows.length > 0 ? <button onClick={doPrint} className={BTN_SOFT}><Printer size={13} /> طباعة</button> : null} />
         <div className="overflow-x-auto">
           <table className="w-full border-collapse" style={{ minWidth: isGroup ? 740 : 640 }}>
             <thead><tr>{cols.map((h) => <th key={h} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
@@ -1309,7 +1400,7 @@ function TreasuryTab({ org, postable, accById, branches, branchName: _branchName
 }
 
 // ══════════════ العملاء والموردين (الذمم + أعمار الدين) ══════════════
-function PartiesTab({ org, postable, accounts, accById, branches }: any) {
+function PartiesTab({ org, postable, accounts, accById, branches, shop }: any) {
   const multiBranch = branches && branches.length > 1;
   const [ptype, setPtype] = useState<"customer" | "supplier">("customer");
   const [asOf, setAsOf] = useState(today());
@@ -1473,13 +1564,19 @@ function PartiesTab({ org, postable, accounts, accById, branches }: any) {
         const cd = stmt.type === "customer";
         let run = 0;
         const ag = DB.partyAging(stmtLines, stmt.type, stmt.credit_days, asOf);
+        const doPrintParty = () => {
+          let r = 0;
+          const prows = stmtLines.map((l) => { r += cd ? (l.debit - l.credit) : (l.credit - l.debit); return { date: l.date, no: String(l.entry_no).padStart(4, "0"), desc: (l.description || "") + (l.note ? ` · ${l.note}` : ""), debit: l.debit, credit: l.credit, running: r }; });
+          printStatement(shop, { heading: "كشف حساب", account: stmt.name, to: asOf, showAccountCol: false, opening: null, rows: prows, totalDebit: stmtLines.reduce((s, x) => s + x.debit, 0), totalCredit: stmtLines.reduce((s, x) => s + x.credit, 0), finalBalance: r });
+        };
         return (
           <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" dir="rtl" onClick={() => setStmt(null)}>
             <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl shadow-2xl max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center gap-2.5 px-4 py-3 border-b border-slate-800">
                 <Users size={17} className="text-blue-400" />
                 <div><div className="text-sm font-bold text-white">كشف حساب — {stmt.name}</div><div className="text-[10px] text-slate-500">{stmt.phone ? <span className="[direction:ltr]">{stmt.phone}</span> : ""}{stmt.account_id ? ` · ${accById.get(stmt.account_id)?.code} ${accById.get(stmt.account_id)?.name}` : ""}</div></div>
-                <button onClick={() => setStmt(null)} className="mr-auto w-8 h-8 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center"><X size={15} /></button>
+                <button onClick={doPrintParty} disabled={stmtLines.length === 0} className={"mr-auto " + BTN_SOFT}><Printer size={13} /> طباعة</button>
+                <button onClick={() => setStmt(null)} className="w-8 h-8 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center"><X size={15} /></button>
               </div>
               <div className="px-4 py-3 border-b border-slate-800 grid grid-cols-3 sm:grid-cols-6 gap-2 text-center">
                 {[["الرصيد", ag.total], ["جاري", ag.current], ["1-30", ag.d30], ["31-60", ag.d60], ["61-90", ag.d90], ["+90", ag.d90p]].map(([lbl, v], i) => (

@@ -5,7 +5,7 @@ import { useLang } from '../context/LanguageContext';
 import {
   Store, QrCode, Download, Copy, Check, ExternalLink,
   RefreshCw, AlertCircle, Phone, MapPin, Save,
-  MessageCircle, Link, CheckCircle, XCircle, Loader,
+  MessageCircle, Link, CheckCircle, XCircle, Loader, FileText,
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────
@@ -93,6 +93,8 @@ export default function ShopSettingsPage() {
     phone:           '',
     whatsapp:        '',
     google_maps_url: '',
+    tax_number:              '',
+    commercial_registration: '',
   });
 
   // Slug state
@@ -109,7 +111,7 @@ export default function ShopSettingsPage() {
     setLoading(true);
     const { data, error: err } = await supabase
       .from('shops')
-      .select('id, shop_name, phone, whatsapp, google_maps_url, logo_url, visibility_mode, default_margin_percent, is_active, slug')
+      .select('id, shop_name, phone, whatsapp, google_maps_url, logo_url, visibility_mode, default_margin_percent, is_active, slug, tax_number, commercial_registration')
       .eq('id', ownedShopId)
       .single();
     if (err || !data) {
@@ -121,6 +123,8 @@ export default function ShopSettingsPage() {
         phone:           data.phone            ?? '',
         whatsapp:        data.whatsapp         ?? '',
         google_maps_url: data.google_maps_url  ?? '',
+        tax_number:              (data as any).tax_number              ?? '',
+        commercial_registration: (data as any).commercial_registration ?? '',
       });
       setSlugInput(data.slug ?? '');
     }
@@ -142,6 +146,8 @@ export default function ShopSettingsPage() {
         phone:           form.phone.trim(),
         whatsapp:        form.whatsapp.trim() || null,
         google_maps_url: form.google_maps_url.trim() || null,
+        tax_number:              form.tax_number.trim() || null,
+        commercial_registration: form.commercial_registration.trim() || null,
       })
       .eq('id', ownedShopId);
     if (err) setError(err.message);
@@ -459,6 +465,8 @@ export default function ShopSettingsPage() {
             { label: t('Phone', 'رقم الجوال'),           key: 'phone',           placeholder: '05xxxxxxxx',                                                       icon: Phone,          inputType: 'tel',  inputMode: 'tel'  },
             { label: t('WhatsApp', 'واتساب'),            key: 'whatsapp',        placeholder: t('WhatsApp number (if different)', 'واتساب (لو مختلف عن الجوال)'), icon: MessageCircle,  inputType: 'tel',  inputMode: 'tel'  },
             { label: t('Google Maps URL', 'رابط الخريطة'), key: 'google_maps_url', placeholder: 'https://maps.google.com/...',                                    icon: MapPin,         inputType: 'url',  inputMode: 'url'  },
+            { label: t('VAT Number', 'الرقم الضريبي'),   key: 'tax_number',              placeholder: '3xxxxxxxxxxxxx3',                                                 icon: FileText,       inputType: 'text', inputMode: 'numeric' },
+            { label: t('Commercial Registration', 'السجل التجاري'), key: 'commercial_registration', placeholder: t('CR number', 'رقم السجل التجاري'),                     icon: FileText,       inputType: 'text', inputMode: 'text' },
           ].map(({ label, key, placeholder, icon: Icon, inputType, inputMode }) => (
             <div key={key}>
               <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">

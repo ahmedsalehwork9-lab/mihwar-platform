@@ -1,12 +1,20 @@
 // =============================================================
 // src/pages/accounting/AccountingPage.tsx
-// وحدة المحاسبة — صفحة متكاملة بتبويبات:
-// شجرة الحسابات · القيود اليومية · كشف حساب · ميزان المراجعة.
-// الدفاتر على مستوى المؤسسة (من الفرع النشط)، مع تصفية بالفرع.
+// وحدة المحاسبة — واجهة مُحسّنة (تعمل في الثيمين الفاتح والداكن):
+//   دليل الحسابات · القيود اليومية · كشف حساب · ميزان المراجعة.
+// الدفاتر على مستوى المؤسسة (من الفرع النشط)، مع مركز تكلفة بالفرع.
+// عناصر جديدة: مسار تنقّل (breadcrumb) · بطاقة رقم القيد (JV) ·
+//   نوع القيد · مركز تكلفة لكل سطر · حفظ كمسودة/ترحيل · ملاحظات عامة ·
+//   فلاتر (نوع/حالة/بحث) · تعديل قيد.
 // =============================================================
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import * as XLSX from "xlsx";
+import {
+  Home, ChevronLeft, Calculator, Network, BookOpen, FileText, Scale,
+  Plus, Pencil, Trash2, Download, Upload, Save, X, Check, Search,
+  Building2, FileCheck2, Send, Layers,
+} from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import * as DB from "../lib/accountingDb";
 import type { GLAccount, GLLine, EntryWithLines, LedgerLine, AccType } from "../lib/accountingDb";
@@ -15,17 +23,47 @@ const fmt = (n: number) => (Math.round(n * 100) / 100).toLocaleString("en-US", {
 const num = (v: any) => parseFloat(v) || 0;
 const today = () => new Date().toISOString().slice(0, 10);
 const monthStart = () => new Date().toISOString().slice(0, 8) + "01";
+const yearOf = (d: string) => Number((d || "").slice(0, 4)) || new Date().getFullYear();
+const jvLabel = (year: number, no: number) => `JV-${year}-${String(no).padStart(4, "0")}`;
 const dayBefore = (d: string) => { const [y, m, dd] = d.split("-").map(Number); const t = new Date(y, m - 1, dd - 1); const z = (n: number) => String(n).padStart(2, "0"); return `${t.getFullYear()}-${z(t.getMonth() + 1)}-${z(t.getDate())}`; };
+
+// ── رموز تنسيق موحّدة (كلاسات قياسية يعيد theme.css تلوينها للثيمين) ──
+const CARD = "bg-slate-900 border border-slate-800 rounded-2xl";
+const INPUT = "w-full bg-slate-950 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm outline-none focus:border-blue-500 transition-colors";
+const SELECT = INPUT;
+const DATE = INPUT + " [color-scheme:dark]";
+const LABEL = "text-[10px] text-slate-500 font-bold mb-1 block";
+const BTN_PRIMARY = "inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-[#fff] font-bold text-xs transition-colors disabled:opacity-50";
+const BTN_SOFT = "inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-slate-300 hover:text-white font-bold text-xs transition-colors disabled:opacity-50";
+const BTN_SUCCESS = "inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-emerald-950 font-extrabold text-sm transition-colors disabled:opacity-50";
+const BTN_GHOST_EM = "inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-xs transition-colors disabled:opacity-50 hover:bg-emerald-500/20";
+const BTN_GHOST_BL = "inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-300 font-bold text-xs transition-colors disabled:opacity-50 hover:bg-blue-500/20";
 
 type Tab = "chart" | "journal" | "ledger" | "trial";
 const TYPE_OPTS: AccType[] = ["asset", "liability", "equity", "revenue", "expense"];
+const TABS: { k: Tab; label: string; icon: any }[] = [
+  { k: "chart", label: "دليل الحسابات", icon: Network },
+  { k: "journal", label: "القيود اليومية", icon: BookOpen },
+  { k: "ledger", label: "كشف حساب", icon: FileText },
+  { k: "trial", label: "ميزان المراجعة", icon: Scale },
+];
+
+function SectionHead({ icon: Icon, title, extra }: { icon: any; title: string; extra?: any }) {
+  return (
+    <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2.5">
+      <span className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400"><Icon size={16} /></span>
+      <h2 className="text-sm font-bold text-white">{title}</h2>
+      {extra && <div className="mr-auto">{extra}</div>}
+    </div>
+  );
+}
 
 export default function AccountingPage() {
   const { ownedShopId, branches } = (useAuth() as any) ?? {};
   const [org, setOrg] = useState<{ id: number; name: string } | null>(null);
   const [orgLoading, setOrgLoading] = useState(true);
   const [accounts, setAccounts] = useState<GLAccount[]>([]);
-  const [tab, setTab] = useState<Tab>("chart");
+  const [tab, setTab] = useState<Tab>("journal");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -57,25 +95,44 @@ export default function AccountingPage() {
     </div>
   );
 
+  const activeTab = TABS.find((t) => t.k === tab)!;
+
   return (
     <div className="p-4 lg:p-6 min-h-screen" dir="rtl">
+      {/* مسار التنقّل */}
+      <nav className="flex items-center gap-1.5 text-[11px] text-slate-500 mb-3 flex-wrap">
+        <span className="inline-flex items-center gap-1"><Home size={12} /> الرئيسية</span>
+        <ChevronLeft size={12} className="opacity-60" />
+        <span className="text-slate-400 font-bold">الحسابات</span>
+        <ChevronLeft size={12} className="opacity-60" />
+        <span className="text-blue-400 font-bold">{activeTab.label}</span>
+      </nav>
+
+      {/* الترويسة */}
       <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
-        <div>
-          <h1 className="text-2xl font-black text-white flex items-center gap-3">
-            <span className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-xl">📒</span>
-            الحسابات
-          </h1>
-          <p className="text-slate-500 text-sm mt-1">الدفاتر المحاسبية — {org.name}</p>
+        <div className="flex items-center gap-3">
+          <span className="w-11 h-11 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-400"><Calculator size={22} /></span>
+          <div>
+            <h1 className="text-2xl font-black text-white leading-tight">الحسابات</h1>
+            <p className="text-slate-500 text-xs mt-0.5">الدفاتر المحاسبية — دفتر موحّد على مستوى المؤسسة</p>
+          </div>
         </div>
-        <div className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-2">
-          <div className="text-[10px] text-slate-500 font-bold">المؤسسة</div>
-          <div className="text-sm font-bold text-white">{org.name}</div>
+        <div className="inline-flex items-center gap-2.5 bg-slate-900 border border-slate-800 rounded-xl px-4 py-2">
+          <Building2 size={16} className="text-slate-500" />
+          <div>
+            <div className="text-[10px] text-slate-500 font-bold">المؤسسة</div>
+            <div className="text-sm font-bold text-white">{org.name}</div>
+          </div>
         </div>
       </div>
 
+      {/* قائمة فرعية للحسابات */}
       <div className="inline-flex flex-wrap gap-1 bg-slate-900 border border-slate-800 rounded-2xl p-1 mb-5">
-        {([["chart", "🌳 شجرة الحسابات"], ["journal", "📝 القيود اليومية"], ["ledger", "📄 كشف حساب"], ["trial", "⚖️ ميزان المراجعة"]] as const).map(([k, label]) => (
-          <button key={k} onClick={() => setTab(k)} className={`px-4 py-2.5 rounded-xl font-bold text-sm transition-all ${tab === k ? "bg-blue-600 text-white" : "text-slate-400 hover:text-slate-200"}`}>{label}</button>
+        {TABS.map(({ k, label, icon: Icon }) => (
+          <button key={k} onClick={() => setTab(k)}
+            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all ${tab === k ? "bg-blue-600 text-[#fff] shadow" : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.03]"}`}>
+            <Icon size={15} /> {label}
+          </button>
         ))}
       </div>
 
@@ -87,7 +144,7 @@ export default function AccountingPage() {
   );
 }
 
-// ══════════════ شجرة الحسابات ══════════════
+// ══════════════ دليل الحسابات ══════════════
 function ChartTab({ org, accounts, reload, busy, setBusy }: { org: { id: number; name: string }; accounts: GLAccount[]; reload: () => Promise<void>; busy: boolean; setBusy: (b: boolean) => void }) {
   const [edit, setEdit] = useState<Partial<GLAccount> | null>(null);
   const groups = useMemo(() => accounts.filter((a) => a.is_group), [accounts]);
@@ -99,7 +156,7 @@ function ChartTab({ org, accounts, reload, busy, setBusy }: { org: { id: number;
   }, [accounts]);
 
   const seed = async () => {
-    if (!window.confirm("تهيئة شجرة الحسابات السعودية القياسية لهذه المؤسسة؟")) return;
+    if (!window.confirm("تهيئة دليل الحسابات السعودي القياسي لهذه المؤسسة؟")) return;
     setBusy(true);
     const r = await DB.seedStandardChart(org.id);
     setBusy(false);
@@ -133,7 +190,7 @@ function ChartTab({ org, accounts, reload, busy, setBusy }: { org: { id: number;
     await reload();
   };
 
-  // ── رفع/تنزيل/تصدير شجرة الحسابات من Excel ──
+  // ── رفع/تنزيل/تصدير دليل الحسابات من Excel ──
   const fileRef = useRef<HTMLInputElement>(null);
   const typeFromLabel = (s: string): AccType | null => {
     const t = (s || "").trim().toLowerCase();
@@ -155,8 +212,8 @@ function ChartTab({ org, accounts, reload, busy, setBusy }: { org: { id: number;
       ["5201", "الرواتب والأجور", "مصروفات", "", "لا"],
     ]);
     ws["!cols"] = [{ wch: 10 }, { wch: 28 }, { wch: 14 }, { wch: 10 }, { wch: 8 }];
-    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "شجرة الحسابات");
-    XLSX.writeFile(wb, "نموذج_شجرة_الحسابات.xlsx");
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "دليل الحسابات");
+    XLSX.writeFile(wb, "نموذج_دليل_الحسابات.xlsx");
   };
   const importFile = (file: File) => {
     const reader = new FileReader();
@@ -197,23 +254,27 @@ function ChartTab({ org, accounts, reload, busy, setBusy }: { org: { id: number;
       aoa.push([a.code, a.name, DB.TYPE_LABEL[a.type], a.parent_id ? (byId.get(a.parent_id)?.code || "") : "", a.is_group ? "نعم" : "لا"]);
     });
     const ws = XLSX.utils.aoa_to_sheet(aoa); ws["!cols"] = [{ wch: 10 }, { wch: 28 }, { wch: 14 }, { wch: 10 }, { wch: 8 }];
-    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "شجرة الحسابات");
-    XLSX.writeFile(wb, "شجرة_الحسابات.xlsx");
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "دليل الحسابات");
+    XLSX.writeFile(wb, "دليل_الحسابات.xlsx");
   };
+
+  const typeChip = (a: GLAccount) =>
+    a.is_group ? "bg-blue-500/15 text-blue-300" : "bg-slate-700/40 text-slate-400";
 
   const renderNode = (a: GLAccount, depth: number): any => {
     const kids = childrenOf.get(a.id) || [];
     return (
       <div key={a.id}>
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-800 hover:bg-white/[0.02]" style={{ paddingRight: 12 + depth * 20 }}>
+        <div className="group flex items-center gap-2 px-3 py-2 border-b border-slate-800 hover:bg-white/[0.02]" style={{ paddingRight: 12 + depth * 20 }}>
+          {a.is_group ? <Layers size={13} className="text-blue-400/70 shrink-0" /> : <span className="w-[13px] shrink-0" />}
           <span className={`font-mono text-xs ${a.is_group ? "text-blue-300 font-bold" : "text-slate-400"}`} style={{ direction: "ltr" }}>{a.code}</span>
           <span className={`text-sm ${a.is_group ? "text-white font-bold" : "text-slate-200"}`}>{a.name}</span>
-          <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${a.is_group ? "bg-blue-500/15 text-blue-300" : "bg-slate-700/40 text-slate-400"}`}>{a.is_group ? "تجميعي" : DB.TYPE_LABEL[a.type]}</span>
+          <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${typeChip(a)}`}>{a.is_group ? "تجميعي" : DB.TYPE_LABEL[a.type]}</span>
           {!a.is_active && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-400">موقوف</span>}
-          <div className="mr-auto flex items-center gap-1">
-            <button onClick={() => setEdit({ parent_id: a.id, type: a.type, is_group: false, is_active: true })} title="إضافة حساب فرعي" className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-400 text-xs">＋</button>
-            <button onClick={() => setEdit({ ...a })} title="تعديل" className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-300 text-xs">✏️</button>
-            <button onClick={() => del(a)} title="حذف" className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400 text-xs">✕</button>
+          <div className="mr-auto flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+            <button onClick={() => setEdit({ parent_id: a.id, type: a.type, is_group: false, is_active: true })} title="إضافة حساب فرعي" className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center hover:bg-emerald-500/20"><Plus size={13} /></button>
+            <button onClick={() => setEdit({ ...a })} title="تعديل" className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-300 flex items-center justify-center hover:bg-blue-500/20"><Pencil size={13} /></button>
+            <button onClick={() => del(a)} title="حذف" className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400 flex items-center justify-center hover:bg-red-500/20"><Trash2 size={13} /></button>
           </div>
         </div>
         {kids.map((k) => renderNode(k, depth + 1))}
@@ -226,40 +287,40 @@ function ChartTab({ org, accounts, reload, busy, setBusy }: { org: { id: number;
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2 mb-4">
-        <button onClick={() => setEdit({ type: "asset", is_group: false, is_active: true, parent_id: null })} className="px-4 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-xs">＋ حساب جديد</button>
-        {accounts.length === 0 && <button onClick={seed} disabled={busy} className="px-4 py-2.5 rounded-xl bg-blue-600 text-white font-bold text-xs disabled:opacity-50">{busy ? "جارٍ…" : "🌳 تهيئة الشجرة السعودية القياسية"}</button>}
-        <button onClick={downloadTemplate} className="px-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-slate-300 font-bold text-xs">⬇ نموذج Excel</button>
-        <button onClick={() => fileRef.current?.click()} disabled={busy} className="px-3 py-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-300 font-bold text-xs disabled:opacity-50">⬆ رفع شجرة حسابات</button>
-        {accounts.length > 0 && <button onClick={exportChart} className="px-3 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-xs">⬇ تصدير الشجرة</button>}
+        <button onClick={() => setEdit({ type: "asset", is_group: false, is_active: true, parent_id: null })} className={BTN_GHOST_EM}><Plus size={14} /> حساب جديد</button>
+        {accounts.length === 0 && <button onClick={seed} disabled={busy} className={BTN_PRIMARY}><Network size={14} /> {busy ? "جارٍ…" : "تهيئة الدليل السعودي القياسي"}</button>}
+        <button onClick={downloadTemplate} className={BTN_SOFT}><Download size={14} /> نموذج Excel</button>
+        <button onClick={() => fileRef.current?.click()} disabled={busy} className={BTN_GHOST_BL}><Upload size={14} /> رفع دليل حسابات</button>
+        {accounts.length > 0 && <button onClick={exportChart} className={BTN_GHOST_EM}><Download size={14} /> تصدير الدليل</button>}
         <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) importFile(f); e.target.value = ""; }} />
         <span className="text-[11px] text-slate-500 mr-auto">{accounts.length} حساب</span>
       </div>
 
       {accounts.length === 0 ? (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-10 text-center text-slate-500 text-sm">لا توجد حسابات بعد. ابدأ بزر «تهيئة الشجرة السعودية القياسية» ثم عدّلها كما تريد.</div>
+        <div className={`${CARD} p-10 text-center text-slate-500 text-sm`}>لا توجد حسابات بعد. ابدأ بزر «تهيئة الدليل السعودي القياسي» ثم عدّله كما تريد.</div>
       ) : (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">{roots.map((r) => renderNode(r, 0))}</div>
+        <div className={`${CARD} overflow-hidden`}>{roots.map((r) => renderNode(r, 0))}</div>
       )}
 
       {edit && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" dir="rtl">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-5">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-5 shadow-2xl">
             <h3 className="text-white font-bold text-base mb-4">{edit.id ? "تعديل حساب" : "حساب جديد"}</h3>
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="text-[10px] text-slate-500 font-bold">الكود</label><input value={edit.code || ""} onChange={(e) => setEdit({ ...edit, code: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm [direction:ltr]" /></div>
-                <div><label className="text-[10px] text-slate-500 font-bold">النوع</label><select value={edit.type || "asset"} onChange={(e) => setEdit({ ...edit, type: e.target.value as AccType })} className="w-full bg-slate-950 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm">{TYPE_OPTS.map((t) => <option key={t} value={t}>{DB.TYPE_LABEL[t]}</option>)}</select></div>
+                <div><label className={LABEL}>الكود</label><input value={edit.code || ""} onChange={(e) => setEdit({ ...edit, code: e.target.value })} className={INPUT + " [direction:ltr]"} /></div>
+                <div><label className={LABEL}>النوع</label><select value={edit.type || "asset"} onChange={(e) => setEdit({ ...edit, type: e.target.value as AccType })} className={SELECT}>{TYPE_OPTS.map((t) => <option key={t} value={t}>{DB.TYPE_LABEL[t]}</option>)}</select></div>
               </div>
-              <div><label className="text-[10px] text-slate-500 font-bold">اسم الحساب</label><input value={edit.name || ""} onChange={(e) => setEdit({ ...edit, name: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm" /></div>
-              <div><label className="text-[10px] text-slate-500 font-bold">الحساب الأب</label><select value={edit.parent_id ?? ""} onChange={(e) => setEdit({ ...edit, parent_id: e.target.value ? Number(e.target.value) : null })} className="w-full bg-slate-950 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm"><option value="">— رئيسي (بدون أب)</option>{groups.filter((g) => g.id !== edit.id).map((g) => <option key={g.id} value={g.id}>{g.code} - {g.name}</option>)}</select></div>
-              <div className="flex items-center gap-4">
+              <div><label className={LABEL}>اسم الحساب</label><input value={edit.name || ""} onChange={(e) => setEdit({ ...edit, name: e.target.value })} className={INPUT} /></div>
+              <div><label className={LABEL}>الحساب الأب</label><select value={edit.parent_id ?? ""} onChange={(e) => setEdit({ ...edit, parent_id: e.target.value ? Number(e.target.value) : null })} className={SELECT}><option value="">— رئيسي (بدون أب)</option>{groups.filter((g) => g.id !== edit.id).map((g) => <option key={g.id} value={g.id}>{g.code} - {g.name}</option>)}</select></div>
+              <div className="flex items-center gap-4 flex-wrap">
                 <label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={!!edit.is_group} onChange={(e) => setEdit({ ...edit, is_group: e.target.checked })} className="w-4 h-4 accent-blue-500" /> حساب تجميعي (غير قابل للترحيل)</label>
                 <label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={edit.is_active !== false} onChange={(e) => setEdit({ ...edit, is_active: e.target.checked })} className="w-4 h-4 accent-blue-500" /> نشط</label>
               </div>
             </div>
             <div className="flex gap-2 justify-end mt-5">
-              <button onClick={() => setEdit(null)} className="px-5 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-slate-300 font-bold text-sm">إلغاء</button>
-              <button onClick={saveAcc} disabled={busy} className="px-6 py-2.5 rounded-xl bg-emerald-500 text-emerald-950 font-extrabold text-sm disabled:opacity-50">{busy ? "جارٍ…" : "حفظ"}</button>
+              <button onClick={() => setEdit(null)} className={BTN_SOFT}><X size={14} /> إلغاء</button>
+              <button onClick={saveAcc} disabled={busy} className={BTN_SUCCESS}><Save size={15} /> {busy ? "جارٍ…" : "حفظ"}</button>
             </div>
           </div>
         </div>
@@ -269,297 +330,270 @@ function ChartTab({ org, accounts, reload, busy, setBusy }: { org: { id: number;
 }
 
 // ══════════════ القيود اليومية ══════════════
-type DraftLine = { account_id: number | ""; debit: string; credit: string; note: string };
-const emptyLine = (): DraftLine => ({ account_id: "", debit: "", credit: "", note: "" });
+type DraftLine = { account_id: number | ""; debit: string; credit: string; branch_id: number | ""; note: string };
+const emptyLine = (): DraftLine => ({ account_id: "", debit: "", credit: "", branch_id: "", note: "" });
 
 function JournalTab({ org, postable, accById, branches, branchName }: any) {
+  const multiBranch = branches && branches.length > 1;
+
+  // فلاتر العرض
   const [from, setFrom] = useState(monthStart());
   const [to, setTo] = useState(today());
   const [fBranch, setFBranch] = useState<string>("");
+  const [fType, setFType] = useState<string>("");
+  const [fStatus, setFStatus] = useState<string>("");
+  const [search, setSearch] = useState<string>("");
   const [entries, setEntries] = useState<EntryWithLines[]>([]);
+
+  // نموذج الإدخال/التعديل
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingNo, setEditingNo] = useState<string>("");       // JV ثابت عند التعديل
+  const [nextNo, setNextNo] = useState<number>(0);              // JV متوقع عند الإضافة
   const [saving, setSaving] = useState(false);
-  const [loading, setLoading] = useState(false);
 
   const [date, setDate] = useState(today());
+  const [eType, setEType] = useState<string>("general");
   const [desc, setDesc] = useState("");
-  const [eBranch, setEBranch] = useState<string>("");
+  const [notes, setNotes] = useState("");
+  const [eBranch, setEBranch] = useState<string>("");          // مركز التكلفة الافتراضي
   const [lines, setLines] = useState<DraftLine[]>([emptyLine(), emptyLine()]);
 
   const reload = useCallback(async () => {
-    setLoading(true);
-    try {
-      setEntries(await DB.fetchEntries(org.id, from, to, fBranch ? Number(fBranch) : null));
-    } finally {
-      setLoading(false);
-    }
+    setEntries(await DB.fetchEntries(org.id, from, to, fBranch ? Number(fBranch) : null));
   }, [org.id, from, to, fBranch]);
   useEffect(() => { reload(); }, [reload]);
 
+  // JV المتوقع عند الإضافة (يتحدّث مع تغيّر السنة)
+  useEffect(() => {
+    if (!showForm || editingId != null) return;
+    let active = true;
+    (async () => { const n = await DB.nextEntryNo(org.id, yearOf(date)); if (active) setNextNo(n); })();
+    return () => { active = false; };
+  }, [showForm, editingId, date, org.id]);
+
   const sumD = lines.reduce((s, l) => s + num(l.debit), 0);
   const sumC = lines.reduce((s, l) => s + num(l.credit), 0);
-  const difference = sumD - sumC;
-  const hasUnassignedAmount = lines.some((l) => !l.account_id && (num(l.debit) || num(l.credit)));
-  const hasNegativeAmount = lines.some((l) => num(l.debit) < 0 || num(l.credit) < 0);
-  const balanced = Math.abs(difference) < 0.005 && sumD > 0 && !hasUnassignedAmount && !hasNegativeAmount;
-  const validLineCount = lines.filter((l) => l.account_id && (num(l.debit) || num(l.credit))).length;
-  const setLine = (i: number, patch: Partial<DraftLine>) =>
-    setLines((p) => p.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
+  const balanced = Math.abs(sumD - sumC) < 0.005 && sumD > 0;
+  const setLine = (i: number, patch: Partial<DraftLine>) => setLines((p) => p.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
 
-  const save = async () => {
+  const resetForm = () => { setDate(today()); setEType("general"); setDesc(""); setNotes(""); setEBranch(""); setLines([emptyLine(), emptyLine()]); };
+
+  const openNew = () => { setEditingId(null); setEditingNo(""); resetForm(); setShowForm(true); };
+  const closeForm = () => { setShowForm(false); setEditingId(null); setEditingNo(""); resetForm(); };
+
+  const startEdit = (e: EntryWithLines) => {
+    setEditingId(e.id);
+    setEditingNo(jvLabel(e.entry_year, e.entry_no));
+    setDate(e.date);
+    setEType(e.entry_type || "general");
+    setDesc(e.description || "");
+    setNotes(e.notes || "");
+    setEBranch(e.branch_id != null ? String(e.branch_id) : "");
+    const ls: DraftLine[] = (e.lines || []).map((l) => ({
+      account_id: l.account_id, debit: l.debit ? String(l.debit) : "", credit: l.credit ? String(l.credit) : "",
+      branch_id: l.branch_id != null ? Number(l.branch_id) : "", note: l.note || "",
+    }));
+    setLines(ls.length >= 2 ? ls : [...ls, emptyLine(), emptyLine()].slice(0, Math.max(2, ls.length)));
+    setShowForm(true);
+    try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { /* noop */ }
+  };
+
+  const persist = async (status: "posted" | "draft") => {
     const valid = lines.filter((l) => l.account_id && (num(l.debit) || num(l.credit)));
     if (valid.length < 2) { alert("أضف سطرين على الأقل بحساب ومبلغ"); return; }
-    if (!balanced) { alert("القيد غير متوازن: مجموع المدين يجب أن يساوي مجموع الدائن"); return; }
+    if (status === "posted" && !balanced) { alert("القيد غير متوازن: مجموع المدين يجب أن يساوي مجموع الدائن"); return; }
+    const header: DB.EntryHeader = {
+      date, description: desc || null, branch_id: eBranch ? Number(eBranch) : null,
+      entry_type: eType, notes: notes || null, status,
+    };
+    const glLines: GLLine[] = valid.map((l) => ({
+      account_id: Number(l.account_id), debit: num(l.debit), credit: num(l.credit),
+      branch_id: l.branch_id === "" ? null : Number(l.branch_id), note: l.note || null,
+    }));
     setSaving(true);
-    const r = await DB.createEntry(org.id, date, desc, eBranch ? Number(eBranch) : null,
-      valid.map((l) => ({ account_id: Number(l.account_id), debit: num(l.debit), credit: num(l.credit), note: l.note || null })));
+    const r = editingId != null ? await DB.updateEntry(editingId, header, glLines) : await DB.createEntry(org.id, header, glLines);
     setSaving(false);
-    if (!r.ok) { alert("تعذّر حفظ القيد: " + (r.error || "")); return; }
-    setShowForm(false); setDesc(""); setLines([emptyLine(), emptyLine()]); setEBranch("");
+    if (!r.ok) { alert("تعذّر حفظ القيد: " + ((r as any).error || "")); return; }
+    closeForm();
     await reload();
-    alert("✓ تم حفظ القيد");
   };
 
-  const del = async (id: number) => {
-    if (!window.confirm("حذف هذا القيد؟")) return;
-    const r = await DB.deleteEntry(id);
-    if (r.ok) await reload(); else alert("تعذّر الحذف: " + (r.error || ""));
-  };
+  const post = async (id: number) => { const r = await DB.setEntryStatus(id, "posted"); if (r.ok) await reload(); else alert("تعذّر الترحيل: " + (r.error || "")); };
+  const del = async (id: number) => { if (!window.confirm("حذف هذا القيد؟")) return; const r = await DB.deleteEntry(id); if (r.ok) await reload(); else alert("تعذّر الحذف: " + (r.error || "")); };
 
-  const fieldClass = "w-full bg-slate-950/80 border border-slate-700/80 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 rounded-xl text-slate-100 px-3 py-2.5 text-sm outline-none transition";
-  const labelClass = "block text-[11px] font-bold text-slate-400 mb-1.5";
-  const totalDebits = entries.reduce((sum, e) => sum + (e.lines || []).reduce((n, l) => n + Number(l.debit || 0), 0), 0);
+  // تصفية العرض (نوع/حالة/بحث)
+  const shown = useMemo(() => entries.filter((e) => {
+    if (fType && (e.entry_type || "general") !== fType) return false;
+    if (fStatus && (e.status || "posted") !== fStatus) return false;
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      const hay = `${e.entry_no} ${e.description || ""} ${e.notes || ""} ${jvLabel(e.entry_year, e.entry_no)}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  }), [entries, fType, fStatus, search]);
+
+  const draftCount = entries.filter((e) => (e.status || "posted") === "draft").length;
 
   return (
-    <div className="space-y-5">
-      {/* أدوات دفتر اليومية */}
-      <section className="rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-4 lg:p-5 shadow-xl shadow-black/10">
-        <div className="flex flex-col xl:flex-row xl:items-end gap-4">
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="w-9 h-9 rounded-xl bg-blue-500/15 text-blue-300 flex items-center justify-center text-lg">📘</span>
-              <div>
-                <h2 className="text-base font-extrabold text-white">دفتر القيود اليومية</h2>
-                <p className="text-[11px] text-slate-500 mt-0.5">إدارة القيود المحاسبية ومراجعتها حسب الفترة والفرع</p>
-              </div>
+    <div>
+      {/* شريط الفلاتر */}
+      <div className={`${CARD} p-3 mb-4`}>
+        <div className="flex flex-wrap items-end gap-3">
+          <div><label className={LABEL}>من</label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={DATE} /></div>
+          <div><label className={LABEL}>إلى</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={DATE} /></div>
+          {multiBranch && (
+            <div><label className={LABEL}>الفرع</label><select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className={SELECT}><option value="">كل الفروع</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
+          )}
+          <div><label className={LABEL}>النوع</label><select value={fType} onChange={(e) => setFType(e.target.value)} className={SELECT}><option value="">كل الأنواع</option>{DB.ENTRY_TYPE_OPTS.map((t) => <option key={t} value={t}>{DB.ENTRY_TYPE_LABEL[t]}</option>)}</select></div>
+          <div><label className={LABEL}>الحالة</label><select value={fStatus} onChange={(e) => setFStatus(e.target.value)} className={SELECT}><option value="">الكل</option><option value="posted">مُرحّل</option><option value="draft">مسودة</option></select></div>
+          <div className="flex-1 min-w-[160px]"><label className={LABEL}>بحث</label>
+            <div className="relative">
+              <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="رقم / بيان / ملاحظة" className={INPUT + " pr-9"} />
             </div>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 xl:min-w-[520px]">
-            <div>
-              <label className={labelClass}>من تاريخ</label>
-              <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={`${fieldClass} [color-scheme:dark]`} />
-            </div>
-            <div>
-              <label className={labelClass}>إلى تاريخ</label>
-              <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={`${fieldClass} [color-scheme:dark]`} />
-            </div>
-            {branches && branches.length > 1 ? (
-              <div className="col-span-2 sm:col-span-1">
-                <label className={labelClass}>تصفية الفرع</label>
-                <select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className={fieldClass}>
-                  <option value="">كل الفروع</option>
-                  {branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                </select>
-              </div>
-            ) : (
-              <div className="col-span-2 sm:col-span-1 rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2 flex flex-col justify-center">
-                <span className="text-[10px] text-slate-500">عدد القيود</span>
-                <span className="text-lg font-black text-white tabular-nums">{entries.length}</span>
-              </div>
-            )}
-          </div>
-          <button
-            onClick={() => setShowForm((v) => !v)}
-            className={`h-[42px] px-5 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2 ${showForm ? "bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700" : "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-950/30"}`}
-          >
-            <span className="text-lg leading-none">{showForm ? "×" : "＋"}</span>
-            {showForm ? "إغلاق النموذج" : "إنشاء قيد جديد"}
-          </button>
+          <button onClick={openNew} className={BTN_PRIMARY}><Plus size={14} /> قيد جديد</button>
         </div>
-      </section>
+      </div>
 
-      {/* نموذج إنشاء القيد */}
+      {/* نموذج الإدخال/التعديل */}
       {showForm && (
-        <section className="rounded-2xl border border-blue-500/25 bg-slate-900 shadow-2xl shadow-black/20 overflow-hidden">
-          <div className="px-4 lg:px-5 py-4 border-b border-slate-800 bg-blue-500/[0.06] flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <span className="w-10 h-10 rounded-xl bg-blue-500/15 text-blue-300 flex items-center justify-center text-xl">✎</span>
+        <div className={`${CARD} p-4 mb-4`}>
+          {/* بطاقة رقم القيد + النوع + الحالة */}
+          <div className="flex flex-wrap items-center gap-3 mb-4">
+            <div className="inline-flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-blue-500/10 border border-blue-500/20">
+              <FileCheck2 size={18} className="text-blue-400" />
               <div>
-                <h3 className="font-extrabold text-white">إدخال قيد محاسبي</h3>
-                <p className="text-[11px] text-slate-500 mt-0.5">أدخل بيانات القيد ثم أضف أطراف العملية المدينة والدائنة</p>
+                <div className="text-[10px] text-blue-300/70 font-bold leading-none mb-1">رقم القيد</div>
+                <div className="font-mono font-black text-blue-300 text-sm [direction:ltr] leading-none">{editingId != null ? editingNo : jvLabel(yearOf(date), nextNo)}</div>
               </div>
             </div>
-            <span className="text-[10px] rounded-full px-3 py-1.5 bg-slate-950 border border-slate-700 text-slate-400">مسودة جديدة</span>
+            <span className="text-sm font-bold text-white">{editingId != null ? "تعديل قيد يومية" : "إدخال قيد يومية جديد"}</span>
+            {editingId != null && <span className="text-[10px] px-2 py-1 rounded-full bg-amber-500/15 text-amber-400 font-bold">وضع التعديل</span>}
+            <button onClick={closeForm} className="mr-auto w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 text-slate-400 hover:text-white flex items-center justify-center"><X size={15} /></button>
           </div>
 
-          <div className="p-4 lg:p-5 space-y-5">
-            <div className={`grid grid-cols-1 ${branches && branches.length > 1 ? "md:grid-cols-3" : "md:grid-cols-2"} gap-3`}>
-              <div>
-                <label className={labelClass}>تاريخ القيد <span className="text-red-400">*</span></label>
-                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={`${fieldClass} [color-scheme:dark]`} />
-              </div>
-              <div>
-                <label className={labelClass}>وصف القيد</label>
-                <input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="مثال: إثبات مشتريات نقدية" className={fieldClass} />
-              </div>
-              {branches && branches.length > 1 && (
-                <div>
-                  <label className={labelClass}>الفرع / مركز التكلفة</label>
-                  <select value={eBranch} onChange={(e) => setEBranch(e.target.value)} className={fieldClass}>
-                    <option value="">بدون تحديد فرع</option>
-                    {branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                  </select>
-                </div>
-              )}
-            </div>
+          {/* ترويسة القيد */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+            <div><label className={LABEL}>التاريخ</label><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={DATE} /></div>
+            <div><label className={LABEL}>نوع القيد</label><select value={eType} onChange={(e) => setEType(e.target.value)} className={SELECT}>{DB.ENTRY_TYPE_OPTS.map((t) => <option key={t} value={t}>{DB.ENTRY_TYPE_LABEL[t]}</option>)}</select></div>
+            <div className={multiBranch ? "" : "lg:col-span-2"}><label className={LABEL}>البيان</label><input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="وصف القيد" className={INPUT} /></div>
+            {multiBranch && <div><label className={LABEL}>مركز التكلفة الافتراضي</label><select value={eBranch} onChange={(e) => setEBranch(e.target.value)} className={SELECT}><option value="">— بدون</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
+          </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h4 className="text-sm font-extrabold text-white">تفاصيل القيد</h4>
-                <p className="text-[11px] text-slate-500 mt-1">اختر حسابًا لكل سطر، ثم أدخل المبلغ في المدين أو الدائن فقط</p>
-              </div>
-              <span className="text-[11px] text-slate-400 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5">{validLineCount} سطر مكتمل</span>
-            </div>
+          {/* سطور القيد */}
+          <div className="overflow-x-auto rounded-xl border border-slate-800">
+            <table className="w-full border-collapse" style={{ minWidth: multiBranch ? 760 : 620 }}>
+              <thead>
+                <tr className="bg-slate-950">
+                  {["#", "الحساب", "مدين", "دائن", ...(multiBranch ? ["مركز التكلفة"] : []), "ملاحظة", ""].map((h, i) => (
+                    <th key={i} className="text-right text-[10px] font-bold text-slate-500 px-2 py-2.5">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((l, i) => (
+                  <tr key={i} className="border-t border-slate-800">
+                    <td className="px-2 py-1.5 text-center text-[11px] text-slate-600 font-mono">{i + 1}</td>
+                    <td className="px-2 py-1.5"><select value={l.account_id} onChange={(e) => setLine(i, { account_id: e.target.value ? Number(e.target.value) : "" })} className="w-full min-w-[180px] bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs outline-none focus:border-blue-500"><option value="">— اختر حساب</option>{postable.map((a: GLAccount) => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}</select></td>
+                    <td className="px-2 py-1.5"><input type="number" step="0.01" value={l.debit} onChange={(e) => setLine(i, { debit: e.target.value, credit: e.target.value ? "" : l.credit })} placeholder="0" className="w-28 bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr] outline-none focus:border-emerald-500" /></td>
+                    <td className="px-2 py-1.5"><input type="number" step="0.01" value={l.credit} onChange={(e) => setLine(i, { credit: e.target.value, debit: e.target.value ? "" : l.debit })} placeholder="0" className="w-28 bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr] outline-none focus:border-amber-500" /></td>
+                    {multiBranch && <td className="px-2 py-1.5"><select value={l.branch_id} onChange={(e) => setLine(i, { branch_id: e.target.value ? Number(e.target.value) : "" })} className="w-full min-w-[120px] bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs outline-none focus:border-blue-500"><option value="">افتراضي</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></td>}
+                    <td className="px-2 py-1.5"><input value={l.note} onChange={(e) => setLine(i, { note: e.target.value })} placeholder="—" className="w-full min-w-[110px] bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs outline-none focus:border-blue-500" /></td>
+                    <td className="px-2 py-1.5 text-center"><button onClick={() => setLines((p) => (p.length > 2 ? p.filter((_, idx) => idx !== i) : p))} title="حذف السطر" className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400 flex items-center justify-center mx-auto hover:bg-red-500/20"><X size={13} /></button></td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="bg-slate-950 font-bold">
+                  <td className="px-2 py-2.5 text-center" />
+                  <td className="px-2 py-2.5 text-right text-xs text-slate-300">الإجمالي</td>
+                  <td className={`px-2 py-2.5 text-center font-mono text-xs [direction:ltr] ${balanced ? "text-emerald-400" : "text-amber-400"}`}>{fmt(sumD)}</td>
+                  <td className={`px-2 py-2.5 text-center font-mono text-xs [direction:ltr] ${balanced ? "text-emerald-400" : "text-amber-400"}`}>{fmt(sumC)}</td>
+                  <td colSpan={multiBranch ? 3 : 2} className={`px-2 py-2.5 text-xs ${balanced ? "text-emerald-400" : "text-amber-400"}`}>{balanced ? "✓ القيد متوازن" : `الفرق: ${fmt(sumD - sumC)}`}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
 
-            <div className="space-y-3">
-              <div className="hidden lg:grid grid-cols-[minmax(220px,2.2fr)_minmax(120px,1fr)_minmax(120px,1fr)_minmax(150px,1.2fr)_42px] gap-2 px-3 text-[10px] font-bold text-slate-500">
-                <span>الحساب</span><span>مدين (ر.س)</span><span>دائن (ر.س)</span><span>البيان / ملاحظة</span><span />
-              </div>
-              {lines.map((l, i) => (
-                <div key={i} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[minmax(220px,2.2fr)_minmax(120px,1fr)_minmax(120px,1fr)_minmax(150px,1.2fr)_42px] gap-2 p-3 rounded-xl border border-slate-800 bg-slate-950/55 hover:border-slate-700 transition">
-                  <div className="sm:col-span-2 lg:col-span-1">
-                    <label className={`${labelClass} lg:hidden`}>الحساب</label>
-                    <select value={l.account_id} onChange={(e) => setLine(i, { account_id: e.target.value ? Number(e.target.value) : "" })} className={fieldClass}>
-                      <option value="">اختر الحساب المحاسبي</option>
-                      {postable.map((a: GLAccount) => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={`${labelClass} lg:hidden`}>مدين (ر.س)</label>
-                    <input type="number" min="0" step="0.01" value={l.debit} onChange={(e) => setLine(i, { debit: e.target.value, credit: e.target.value ? "" : l.credit })} placeholder="0.00" className={`${fieldClass} text-center font-mono tabular-nums [direction:ltr]`} />
-                  </div>
-                  <div>
-                    <label className={`${labelClass} lg:hidden`}>دائن (ر.س)</label>
-                    <input type="number" min="0" step="0.01" value={l.credit} onChange={(e) => setLine(i, { credit: e.target.value, debit: e.target.value ? "" : l.debit })} placeholder="0.00" className={`${fieldClass} text-center font-mono tabular-nums [direction:ltr]`} />
-                  </div>
-                  <div>
-                    <label className={`${labelClass} lg:hidden`}>البيان / ملاحظة</label>
-                    <input value={l.note} onChange={(e) => setLine(i, { note: e.target.value })} placeholder="ملاحظة اختيارية" className={fieldClass} />
-                  </div>
-                  <div className="flex items-center justify-end lg:justify-center">
-                    <button type="button" onClick={() => setLines((p) => (p.length > 2 ? p.filter((_, idx) => idx !== i) : p))} disabled={lines.length <= 2} title="حذف السطر" className="w-9 h-9 rounded-lg border border-red-500/15 bg-red-500/10 text-red-400 hover:bg-red-500/20 disabled:opacity-25 disabled:cursor-not-allowed">✕</button>
-                  </div>
-                </div>
-              ))}
-            </div>
+          {/* ملاحظات عامة */}
+          <div className="mt-3">
+            <label className={LABEL}>ملاحظات عامة (اختياري)</label>
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="ملاحظات إضافية على القيد…" className={INPUT + " resize-y"} />
+          </div>
 
-            <button onClick={() => setLines((p) => [...p, emptyLine()])} className="w-full rounded-xl border border-dashed border-blue-500/50 bg-blue-500/[0.04] hover:bg-blue-500/[0.08] text-blue-300 font-bold text-xs py-3 transition">
-              ＋ إضافة سطر جديد للقيد
-            </button>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.07] p-4">
-                <div className="text-[11px] text-emerald-300/80 font-bold mb-1">إجمالي المدين</div>
-                <div className="text-xl font-black text-emerald-300 font-mono tabular-nums [direction:ltr] text-right">{fmt(sumD)} <span className="text-[10px] font-bold">SAR</span></div>
-              </div>
-              <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.07] p-4">
-                <div className="text-[11px] text-amber-300/80 font-bold mb-1">إجمالي الدائن</div>
-                <div className="text-xl font-black text-amber-300 font-mono tabular-nums [direction:ltr] text-right">{fmt(sumC)} <span className="text-[10px] font-bold">SAR</span></div>
-              </div>
-              <div className={`rounded-xl border p-4 ${balanced ? "border-emerald-500/25 bg-emerald-500/[0.08]" : "border-slate-700 bg-slate-950/70"}`}>
-                <div className="text-[11px] text-slate-400 font-bold mb-1">حالة توازن القيد</div>
-                <div className={`text-sm font-extrabold flex items-center gap-2 ${balanced ? "text-emerald-300" : "text-slate-300"}`}>
-                  <span className={`w-2 h-2 rounded-full ${balanced ? "bg-emerald-400" : "bg-amber-400"}`} />
-                  {balanced ? "القيد متوازن وجاهز للحفظ" : hasUnassignedAmount ? "أكمل اختيار الحساب للأسطر التي تحتوي مبالغ" : hasNegativeAmount ? "لا يُسمح بإدخال مبالغ سالبة" : `الفرق ${fmt(Math.abs(difference))} ر.س`}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center gap-2 pt-1">
-              <button onClick={() => { setShowForm(false); setDesc(""); setLines([emptyLine(), emptyLine()]); setEBranch(""); }} className="px-5 py-3 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-sm">إلغاء</button>
-              <button onClick={save} disabled={saving || !balanced || validLineCount < 2} className="sm:mr-auto px-7 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-sm shadow-lg shadow-blue-950/30 disabled:opacity-40 disabled:cursor-not-allowed transition">
-                {saving ? "جارٍ حفظ القيد…" : "💾 حفظ القيد"}
-              </button>
+          {/* أزرار الحفظ */}
+          <div className="flex items-center gap-2 mt-4 flex-wrap">
+            <button onClick={() => setLines((p) => [...p, emptyLine()])} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600/10 border border-dashed border-blue-500 text-blue-300 font-bold text-xs hover:bg-blue-600/20"><Plus size={13} /> سطر</button>
+            <div className="mr-auto flex items-center gap-2 flex-wrap">
+              <button onClick={() => persist("draft")} disabled={saving} className={BTN_SOFT}><Save size={14} /> حفظ كمسودة</button>
+              <button onClick={() => persist("posted")} disabled={saving || !balanced} className={BTN_SUCCESS}><Check size={16} /> {saving ? "جارٍ…" : editingId != null ? "حفظ وترحيل" : "ترحيل القيد"}</button>
             </div>
           </div>
-        </section>
+        </div>
       )}
 
-      {/* ملخص القيود المسجلة */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div className="rounded-xl border border-slate-800 bg-slate-900 p-4 flex items-center justify-between">
-          <div><p className="text-[11px] text-slate-500 font-bold">عدد القيود خلال الفترة</p><p className="text-2xl font-black text-white mt-1 tabular-nums">{entries.length}</p></div>
-          <span className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-300 flex items-center justify-center text-xl">▤</span>
-        </div>
-        <div className="rounded-xl border border-slate-800 bg-slate-900 p-4 flex items-center justify-between">
-          <div><p className="text-[11px] text-slate-500 font-bold">إجمالي الحركات المدينة</p><p className="text-2xl font-black text-emerald-300 mt-1 font-mono tabular-nums">{fmt(totalDebits)} <span className="text-[10px]">ر.س</span></p></div>
-          <span className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-300 flex items-center justify-center text-xl">↙</span>
-        </div>
-      </section>
-
-      {/* سجل القيود */}
-      <section className="rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden shadow-lg shadow-black/10">
-        <div className="px-4 lg:px-5 py-4 border-b border-slate-800 flex flex-wrap items-center gap-2">
-          <span className="w-1 h-5 rounded-full bg-blue-500" />
-          <div><h2 className="text-sm font-extrabold text-white">القيود المسجلة</h2><p className="text-[10px] text-slate-500 mt-0.5">تفاصيل القيود المحفوظة ضمن الفترة المحددة</p></div>
-          <span className="mr-auto text-[11px] rounded-full bg-slate-950 border border-slate-800 text-slate-400 px-3 py-1">{entries.length} قيد</span>
-        </div>
-        {loading ? (
-          <div className="p-12 text-center text-slate-500 text-sm">جارٍ تحميل القيود…</div>
-        ) : entries.length === 0 ? (
-          <div className="p-12 text-center">
-            <div className="w-14 h-14 mx-auto rounded-2xl bg-slate-800/80 text-slate-500 flex items-center justify-center text-2xl mb-3">📭</div>
-            <p className="text-sm font-bold text-slate-300">لا توجد قيود في هذه الفترة</p>
-            <p className="text-xs text-slate-500 mt-1">غيّر نطاق التاريخ أو أنشئ قيدًا جديدًا</p>
+      {/* دفتر اليومية */}
+      <div className={`${CARD} overflow-hidden`}>
+        <SectionHead icon={BookOpen} title="دفتر اليومية" extra={
+          <div className="flex items-center gap-2 text-[11px]">
+            {draftCount > 0 && <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 font-bold">{draftCount} مسودة</span>}
+            <span className="text-slate-500">{shown.length} قيد</span>
           </div>
+        } />
+        {shown.length === 0 ? (
+          <div className="p-10 text-center text-slate-500 text-sm">لا توجد قيود مطابقة ضمن هذه الفترة/الفلاتر.</div>
         ) : (
           <div className="divide-y divide-slate-800">
-            {entries.map((e) => {
-              const d = (e.lines || []).reduce((sum, l) => sum + Number(l.debit || 0), 0);
+            {shown.map((e) => {
+              const d = (e.lines || []).reduce((s, l) => s + Number(l.debit || 0), 0);
+              const isDraft = (e.status || "posted") === "draft";
               return (
-                <article key={e.id} className="p-4 lg:px-5 hover:bg-white/[0.015] transition">
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3">
-                    <span className="font-mono text-xs font-extrabold text-blue-300 bg-blue-500/10 rounded-lg px-2.5 py-1.5 [direction:ltr]">JV-{e.entry_year}-{String(e.entry_no).padStart(4, "0")}</span>
-                    <span className="font-mono text-[11px] text-slate-500 [direction:ltr]">{e.date}</span>
-                    <span className="text-sm font-bold text-slate-200">{e.description || "قيد يومية"}</span>
-                    {e.branch_id != null && <span className="text-[10px] px-2.5 py-1 rounded-full bg-slate-800 text-slate-400">{branchName(e.branch_id)}</span>}
-                    <div className="flex items-center gap-3 mr-auto">
-                      <span className="font-mono text-sm font-extrabold text-emerald-300 [direction:ltr]">{fmt(d)} <span className="text-[10px]">SAR</span></span>
-                      <button onClick={() => del(e.id)} title="حذف القيد" className="w-8 h-8 rounded-lg border border-red-500/15 bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs">✕</button>
+                <div key={e.id} className="p-3">
+                  <div className="flex items-center gap-2.5 flex-wrap mb-2">
+                    <span className="font-mono text-xs font-bold text-blue-300 [direction:ltr]">{jvLabel(e.entry_year, e.entry_no)}</span>
+                    <span className="font-mono text-xs text-slate-400 [direction:ltr]">{e.date}</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-700/40 text-slate-300">{DB.ENTRY_TYPE_LABEL[e.entry_type || "general"]}</span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${isDraft ? "bg-amber-500/15 text-amber-400" : "bg-emerald-500/15 text-emerald-400"}`}>{isDraft ? "مسودة" : "مُرحّل"}</span>
+                    <span className="text-sm text-slate-200">{e.description || "—"}</span>
+                    {e.branch_id != null && <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-300">{branchName(e.branch_id)}</span>}
+                    <span className="mr-auto font-mono text-xs font-bold text-emerald-400 [direction:ltr]">{fmt(d)} ر.س</span>
+                    <div className="flex items-center gap-1">
+                      {isDraft && <button onClick={() => post(e.id)} title="ترحيل" className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center hover:bg-emerald-500/20"><Send size={13} /></button>}
+                      <button onClick={() => startEdit(e)} title="تعديل" className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-300 flex items-center justify-center hover:bg-blue-500/20"><Pencil size={13} /></button>
+                      <button onClick={() => del(e.id)} title="حذف" className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400 flex items-center justify-center hover:bg-red-500/20"><Trash2 size={13} /></button>
                     </div>
                   </div>
-                  <div className="overflow-x-auto rounded-xl border border-slate-800">
-                    <table className="w-full border-collapse min-w-[520px]">
-                      <thead><tr className="bg-slate-950/80">
-                        {["كود الحساب", "اسم الحساب", "مدين", "دائن"].map((h) => <th key={h} className="px-3 py-2 text-[10px] text-slate-500 font-bold text-right">{h}</th>)}
-                      </tr></thead>
+                  <div className="overflow-x-auto rounded-lg border border-slate-800/60">
+                    <table className="w-full border-collapse" style={{ minWidth: 480 }}>
                       <tbody>
-                        {(e.lines || []).map((l, i) => {
-                          const a = accById.get(l.account_id);
-                          return (
-                            <tr key={i} className="border-t border-slate-800/80 text-xs">
-                              <td className="px-3 py-2 text-slate-500 font-mono [direction:ltr] text-right">{a?.code || "—"}</td>
-                              <td className="px-3 py-2 text-slate-200">{a?.name || l.account_id}{l.note ? <span className="text-slate-500"> — {l.note}</span> : null}</td>
-                              <td className="px-3 py-2 text-emerald-300 font-mono [direction:ltr] text-right">{Number(l.debit) ? fmt(Number(l.debit)) : "—"}</td>
-                              <td className="px-3 py-2 text-amber-300 font-mono [direction:ltr] text-right">{Number(l.credit) ? fmt(Number(l.credit)) : "—"}</td>
-                            </tr>
-                          );
-                        })}
+                        {(e.lines || []).map((l, i) => { const a = accById.get(l.account_id); return (
+                          <tr key={i} className="text-xs border-b border-slate-800/60 last:border-0">
+                            <td className="px-2 py-1 text-slate-400 font-mono [direction:ltr] w-16">{a?.code}</td>
+                            <td className="px-2 py-1 text-slate-200">{a?.name || l.account_id}{l.note ? <span className="text-slate-500"> — {l.note}</span> : null}{l.branch_id != null ? <span className="text-blue-300/70 text-[10px]"> · {branchName(l.branch_id)}</span> : null}</td>
+                            <td className="px-2 py-1 text-center font-mono text-emerald-300/90 [direction:ltr] w-24">{Number(l.debit) ? fmt(Number(l.debit)) : ""}</td>
+                            <td className="px-2 py-1 text-center font-mono text-amber-300/90 [direction:ltr] w-24">{Number(l.credit) ? fmt(Number(l.credit)) : ""}</td>
+                          </tr>
+                        ); })}
                       </tbody>
                     </table>
                   </div>
-                </article>
+                  {e.notes ? <div className="mt-1.5 text-[11px] text-slate-500">📝 {e.notes}</div> : null}
+                </div>
               );
             })}
           </div>
         )}
-      </section>
+      </div>
     </div>
   );
 }
 
 // ══════════════ كشف حساب ══════════════
 function LedgerTab({ org, postable, branches, branchName }: any) {
+  const multiBranch = branches && branches.length > 1;
   const [accId, setAccId] = useState<string>("");
   const [from, setFrom] = useState(monthStart());
   const [to, setTo] = useState(today());
@@ -583,21 +617,21 @@ function LedgerTab({ org, postable, branches, branchName }: any) {
 
   return (
     <div>
-      <div className="flex flex-wrap items-end gap-3 mb-4">
-        <div className="flex flex-col gap-1"><label className="text-[10px] text-slate-500 font-bold">الحساب</label><select value={accId} onChange={(e) => setAccId(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm min-w-[200px]"><option value="">— اختر حساب</option>{postable.map((a: GLAccount) => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}</select></div>
-        <div className="flex flex-col gap-1"><label className="text-[10px] text-slate-500 font-bold">من</label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark]" /></div>
-        <div className="flex flex-col gap-1"><label className="text-[10px] text-slate-500 font-bold">إلى</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark]" /></div>
-        {branches && branches.length > 1 && (
-          <div className="flex flex-col gap-1"><label className="text-[10px] text-slate-500 font-bold">الفرع</label><select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm"><option value="">كل الفروع</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
-        )}
-        <button onClick={run} disabled={loading} className="px-5 py-2.5 rounded-xl bg-blue-600 text-white font-bold text-xs disabled:opacity-50">{loading ? "جارٍ…" : "عرض الكشف"}</button>
+      <div className={`${CARD} p-3 mb-4`}>
+        <div className="flex flex-wrap items-end gap-3">
+          <div><label className={LABEL}>الحساب</label><select value={accId} onChange={(e) => setAccId(e.target.value)} className={SELECT + " min-w-[220px]"}><option value="">— اختر حساب</option>{postable.map((a: GLAccount) => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}</select></div>
+          <div><label className={LABEL}>من</label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={DATE} /></div>
+          <div><label className={LABEL}>إلى</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={DATE} /></div>
+          {multiBranch && <div><label className={LABEL}>الفرع</label><select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className={SELECT}><option value="">كل الفروع</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
+          <button onClick={run} disabled={loading} className={BTN_PRIMARY}><FileText size={14} /> {loading ? "جارٍ…" : "عرض الكشف"}</button>
+        </div>
       </div>
 
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-blue-500" /><h2 className="text-sm font-bold text-white">كشف حساب{acc ? ` — ${acc.code} ${acc.name}` : ""}</h2></div>
+      <div className={`${CARD} overflow-hidden`}>
+        <SectionHead icon={FileText} title={`كشف حساب${acc ? ` — ${acc.code} ${acc.name}` : ""}`} />
         <div className="overflow-x-auto">
           <table className="w-full border-collapse" style={{ minWidth: 640 }}>
-            <thead><tr>{["التاريخ", "القيد", "البيان", "مدين", "دائن", "الرصيد"].map((h) => <th key={h} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 uppercase whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
+            <thead><tr>{["التاريخ", "القيد", "البيان", "مدين", "دائن", "الرصيد"].map((h) => <th key={h} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
             <tbody>
               <tr className="bg-slate-950/40"><td colSpan={5} className="px-2 py-2 text-xs text-right text-slate-400 border-b border-slate-800">رصيد افتتاحي</td><td className="px-2 py-2 text-center font-mono text-xs font-bold text-slate-200 [direction:ltr] border-b border-slate-800">{fmt(opening)}</td></tr>
               {rows.map((r, i) => { running += r.debit - r.credit; return (
@@ -620,7 +654,8 @@ function LedgerTab({ org, postable, branches, branchName }: any) {
 }
 
 // ══════════════ ميزان المراجعة ══════════════
-function TrialTab({ org, accById, postable, branches }: any) {
+function TrialTab({ org, accById, branches }: any) {
+  const multiBranch = branches && branches.length > 1;
   const [from, setFrom] = useState(monthStart());
   const [to, setTo] = useState(today());
   const [fBranch, setFBranch] = useState<string>("");
@@ -655,23 +690,27 @@ function TrialTab({ org, accById, postable, branches }: any) {
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `ميزان_المراجعة_${from}_${to}.xls`; a.click(); URL.revokeObjectURL(a.href);
   };
 
+  const diff = Math.abs(totD - totC) < 0.01;
+
   return (
     <div>
-      <div className="flex flex-wrap items-end gap-3 mb-4">
-        <div className="flex flex-col gap-1"><label className="text-[10px] text-slate-500 font-bold">من</label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark]" /></div>
-        <div className="flex flex-col gap-1"><label className="text-[10px] text-slate-500 font-bold">إلى</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark]" /></div>
-        {branches && branches.length > 1 && (
-          <div className="flex flex-col gap-1"><label className="text-[10px] text-slate-500 font-bold">الفرع</label><select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm"><option value="">كل الفروع</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
-        )}
-        <button onClick={run} disabled={loading} className="px-5 py-2.5 rounded-xl bg-blue-600 text-white font-bold text-xs disabled:opacity-50">{loading ? "جارٍ…" : "عرض الميزان"}</button>
-        <button onClick={exportExcel} disabled={!rows.length} className="px-4 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-xs disabled:opacity-40">⬇ Excel</button>
+      <div className={`${CARD} p-3 mb-4`}>
+        <div className="flex flex-wrap items-end gap-3">
+          <div><label className={LABEL}>من</label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={DATE} /></div>
+          <div><label className={LABEL}>إلى</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={DATE} /></div>
+          {multiBranch && <div><label className={LABEL}>الفرع</label><select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className={SELECT}><option value="">كل الفروع</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
+          <button onClick={run} disabled={loading} className={BTN_PRIMARY}><Scale size={14} /> {loading ? "جارٍ…" : "عرض الميزان"}</button>
+          <button onClick={exportExcel} disabled={!rows.length} className={BTN_GHOST_EM}><Download size={14} /> Excel</button>
+        </div>
       </div>
 
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-blue-500" /><h2 className="text-sm font-bold text-white">ميزان المراجعة</h2><span className={`text-[11px] font-bold mr-auto ${Math.abs(totD - totC) < 0.01 ? "text-emerald-400" : "text-amber-400"}`}>{Math.abs(totD - totC) < 0.01 ? "✓ متوازن" : `فرق: ${fmt(totD - totC)}`}</span></div>
+      <div className={`${CARD} overflow-hidden`}>
+        <SectionHead icon={Scale} title="ميزان المراجعة" extra={
+          <span className={`text-[11px] font-bold ${diff ? "text-emerald-400" : "text-amber-400"}`}>{diff ? "✓ متوازن" : `فرق: ${fmt(totD - totC)}`}</span>
+        } />
         <div className="overflow-x-auto">
           <table className="w-full border-collapse" style={{ minWidth: 560 }}>
-            <thead><tr>{["الكود", "الحساب", "مدين", "دائن", "الرصيد"].map((h) => <th key={h} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 uppercase whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
+            <thead><tr>{["الكود", "الحساب", "مدين", "دائن", "الرصيد"].map((h) => <th key={h} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
             <tbody>
               {rows.map((r) => { const bal = r.debit - r.credit; return (
                 <tr key={r.id} className="hover:bg-white/[0.02]">

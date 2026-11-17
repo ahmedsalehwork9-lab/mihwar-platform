@@ -221,13 +221,13 @@ const OPERATIONS: OpEntry[] = [
     { labelEn: 'Reports Center',   labelAr: 'مركز التقارير',  page: 'reports-center' },
   ] },
 
-  { type: 'item', id: 'fixed-expenses', icon: <Landmark size={17} />, labelEn: 'Fixed Expenses', labelAr: 'المصروفات الثابتة' },
-
   { type: 'group', key: 'accounting', icon: <Calculator size={17} />, labelEn: 'Accounting', labelAr: 'الحسابات', homePage: 'accounting', homeSection: 'journal', children: [
-    { labelEn: 'Journal',       labelAr: 'القيود اليومية', section: 'journal' },
-    { labelEn: 'Chart',         labelAr: 'دليل الحسابات',  section: 'chart' },
-    { labelEn: 'Ledger',        labelAr: 'كشف حساب',       section: 'ledger' },
-    { labelEn: 'Trial Balance', labelAr: 'ميزان المراجعة', section: 'trial' },
+    { labelEn: 'Journal',        labelAr: 'القيود اليومية',   section: 'journal' },
+    { labelEn: 'Chart',          labelAr: 'دليل الحسابات',    section: 'chart' },
+    { labelEn: 'Ledger',         labelAr: 'كشف حساب',         section: 'ledger' },
+    { labelEn: 'Trial Balance',  labelAr: 'ميزان المراجعة',   section: 'trial' },
+    { labelEn: 'Assets',         labelAr: 'الأصول',           section: 'assets' },
+    { labelEn: 'Fixed Expenses', labelAr: 'المصروفات الثابتة', page: 'fixed-expenses' },
   ] },
 
   { type: 'item', id: 'alerts',        icon: <Bell size={17} />,   labelEn: 'Alerts',        labelAr: 'التنبيهات' },
@@ -406,16 +406,16 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
                   }
                   // مجموعة قابلة للتوسّع
                   const isAcc = !!entry.homeSection;
-                  const groupVisible = isAcc
-                    ? (!permissions || permissions.includes('accounting'))
-                    : entry.children.some((c) => c.page && !c.placeholder && (!permissions || permissions.includes(c.page)));
+                  const accOk = !permissions || permissions.includes('accounting');     // صلاحية الوصول للأقسام الداخلية للحسابات
+                  const anyRealChild = entry.children.some((c) => c.page && !c.placeholder && (!permissions || permissions.includes(c.page)));
+                  const groupVisible = isAcc ? (accOk || anyRealChild) : anyRealChild;
                   if (!groupVisible) return null;
 
                   const childActive = (c: OpChild) =>
                     c.section ? (page === 'accounting' && (accSection || 'journal') === c.section) : (page === c.page);
                   const groupActive = entry.children.some(childActive);
                   const childVisible = (c: OpChild) =>
-                    c.section ? true : (c.placeholder ? true : (!permissions || permissions.includes(c.page!)));
+                    c.section ? accOk : (c.placeholder ? true : (!permissions || permissions.includes(c.page!)));
                   const onParent = () => {
                     if (entry.homeSection) { setAccSection?.(entry.homeSection); setPage('accounting'); }
                     else if (entry.homePage) { setPage(entry.homePage); }

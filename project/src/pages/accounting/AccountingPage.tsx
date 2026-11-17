@@ -39,13 +39,14 @@ const BTN_SUCCESS = "inline-flex items-center justify-center gap-1.5 px-5 py-2.5
 const BTN_GHOST_EM = "inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-xs transition-colors disabled:opacity-50 hover:bg-emerald-500/20";
 const BTN_GHOST_BL = "inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-300 font-bold text-xs transition-colors disabled:opacity-50 hover:bg-blue-500/20";
 
-type Tab = "chart" | "journal" | "ledger" | "trial";
+type Tab = "chart" | "journal" | "ledger" | "trial" | "assets";
 const TYPE_OPTS: AccType[] = ["asset", "liability", "equity", "revenue", "expense"];
 const TABS: { k: Tab; label: string; icon: any }[] = [
   { k: "chart", label: "دليل الحسابات", icon: Network },
   { k: "journal", label: "القيود اليومية", icon: BookOpen },
   { k: "ledger", label: "كشف حساب", icon: FileText },
   { k: "trial", label: "ميزان المراجعة", icon: Scale },
+  { k: "assets", label: "الأصول", icon: Building2 },
 ];
 
 function SectionHead({ icon: Icon, title, extra }: { icon: any; title: string; extra?: any }) {
@@ -133,6 +134,7 @@ export default function AccountingPage({ section, onSection }: { section?: strin
       {tab === "journal" && <JournalTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} />}
       {tab === "ledger" && <LedgerTab org={org} postable={postable} branches={branches} branchName={branchName} />}
       {tab === "trial" && <TrialTab org={org} accById={accById} postable={postable} branches={branches} />}
+      {tab === "assets" && <AssetsTab org={org} postable={postable} branches={branches} branchName={branchName} />}
     </div>
   );
 }
@@ -796,6 +798,158 @@ function TrialTab({ org, accById, branches }: any) {
           </table>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ══════════════ الأصول الثابتة ══════════════
+function AssetsTab({ org, postable, branches, branchName }: any) {
+  const multiBranch = branches && branches.length > 1;
+  const [assets, setAssets] = useState<DB.GLAsset[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [asOf, setAsOf] = useState(today());
+  const [fBranch, setFBranch] = useState<string>("");
+  const [edit, setEdit] = useState<Partial<DB.GLAsset> | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const reload = useCallback(async () => {
+    setLoading(true);
+    setAssets(await DB.fetchAssets(org.id, fBranch ? Number(fBranch) : null));
+    setLoading(false);
+  }, [org.id, fBranch]);
+  useEffect(() => { reload(); }, [reload]);
+
+  const rows = useMemo(() => assets.map((a) => ({ a, dep: DB.depreciation(a, asOf) })), [assets, asOf]);
+  const totCost = rows.reduce((s, r) => s + (Number(r.a.cost) || 0), 0);
+  const totAcc = rows.reduce((s, r) => s + r.dep.accumulated, 0);
+  const totBook = rows.reduce((s, r) => s + r.dep.bookValue, 0);
+
+  const save = async () => {
+    if (!edit) return;
+    if (!edit.name || !String(edit.name).trim()) { alert("أدخل اسم الأصل"); return; }
+    if (!edit.acquire_date) { alert("أدخل تاريخ الاقتناء"); return; }
+    const payload: any = {
+      organization_id: org.id,
+      branch_id: edit.branch_id ?? (fBranch ? Number(fBranch) : null),
+      name: String(edit.name).trim(), category: edit.category || null,
+      acquire_date: edit.acquire_date, cost: num(edit.cost), salvage_value: num(edit.salvage_value),
+      useful_life_years: num(edit.useful_life_years) || 1, account_id: edit.account_id ?? null,
+      notes: edit.notes || null, is_active: edit.is_active !== false,
+    };
+    if (edit.id) payload.id = edit.id;
+    setBusy(true);
+    const r = await DB.upsertAsset(payload);
+    setBusy(false);
+    if (!r.ok) { alert("تعذّر الحفظ: " + (r.error || "")); return; }
+    setEdit(null); await reload();
+  };
+
+  const del = async (a: DB.GLAsset) => {
+    if (!window.confirm(`حذف الأصل «${a.name}»؟`)) return;
+    const r = await DB.deleteAsset(a.id);
+    if (!r.ok) { alert("تعذّر الحذف: " + (r.error || "")); return; }
+    await reload();
+  };
+
+  const exportExcel = () => {
+    const head = ["الأصل", "الفئة", "تاريخ الاقتناء", "التكلفة", "القيمة التخريدية", "العمر(سنوات)", "إهلاك سنوي", "مجمع الإهلاك", "القيمة الدفترية"];
+    const body = rows.map(({ a, dep }) => [a.name, a.category || "", a.acquire_date, fmt(Number(a.cost) || 0), fmt(Number(a.salvage_value) || 0), String(a.useful_life_years), fmt(dep.annual), fmt(dep.accumulated), fmt(dep.bookValue)]);
+    const rowsHtml = body.map((c) => `<tr>${c.map((v, i) => `<td style="border:1px solid #e5e7eb;padding:5px 8px;font-size:11px;text-align:${i <= 1 ? "right" : "center"};">${v}</td>`).join("")}</tr>`).join("");
+    const html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"></head><body dir="rtl"><h3>سجل الأصول الثابتة — ${org.name} — الإهلاك حتى ${asOf}</h3><table style="border-collapse:collapse"><tr>${head.map((h) => `<th style="border:1px solid #d1d5db;padding:6px 8px;background:#14304d;color:#fff;font-size:11px;">${h}</th>`).join("")}</tr>${rowsHtml}</table></body></html>`;
+    const blob = new Blob(["﻿" + html], { type: "application/vnd.ms-excel;charset=utf-8" });
+    const el = document.createElement("a"); el.href = URL.createObjectURL(blob); el.download = `الأصول_الثابتة_${asOf}.xls`; el.click(); URL.revokeObjectURL(el.href);
+  };
+
+  return (
+    <div>
+      <div className={`${CARD} p-3 mb-4`}>
+        <div className="flex flex-wrap items-end gap-3">
+          <div><label className={LABEL}>الإهلاك حتى تاريخ</label><input type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)} className={DATE} /></div>
+          {multiBranch && <div><label className={LABEL}>الفرع</label><select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className={SELECT}><option value="">كل الفروع</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
+          <button onClick={() => setEdit({ acquire_date: today(), cost: 0 as any, salvage_value: 0 as any, useful_life_years: 5 as any, is_active: true })} className={BTN_GHOST_EM}><Plus size={14} /> أصل جديد</button>
+          <button onClick={exportExcel} disabled={!rows.length} className={BTN_GHOST_BL}><Download size={14} /> Excel</button>
+          <span className="text-[11px] text-slate-500 mr-auto">{assets.length} أصل</span>
+        </div>
+      </div>
+
+      <div className={`${CARD} overflow-hidden`}>
+        <SectionHead icon={Building2} title="سجل الأصول الثابتة" extra={
+          <span className="text-[11px] text-slate-500">القيمة الدفترية: <span className="font-mono text-emerald-400 font-bold">{fmt(totBook)}</span></span>
+        } />
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse" style={{ minWidth: 840 }}>
+            <thead><tr>{["الأصل", "الفئة", "تاريخ الاقتناء", "التكلفة", "العمر/سنة", "إهلاك سنوي", "مجمع الإهلاك", "القيمة الدفترية", ...(multiBranch ? ["الفرع"] : []), ""].map((h, i) => <th key={i} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
+            <tbody>
+              {rows.map(({ a, dep }) => (
+                <tr key={a.id} className="hover:bg-white/[0.02]">
+                  <td className="px-2 py-2 text-xs text-right text-slate-200 border-b border-slate-800">{a.name}{!a.is_active && <span className="text-[9px] text-red-400"> (موقوف)</span>}</td>
+                  <td className="px-2 py-2 text-xs text-right text-slate-400 border-b border-slate-800">{a.category || "—"}</td>
+                  <td className="px-2 py-2 text-xs text-center font-mono text-slate-400 [direction:ltr] border-b border-slate-800">{a.acquire_date}</td>
+                  <td className="px-2 py-2 text-xs text-center font-mono text-slate-200 [direction:ltr] border-b border-slate-800">{fmt(Number(a.cost) || 0)}</td>
+                  <td className="px-2 py-2 text-xs text-center font-mono text-slate-400 [direction:ltr] border-b border-slate-800">{a.useful_life_years}</td>
+                  <td className="px-2 py-2 text-xs text-center font-mono text-amber-400 [direction:ltr] border-b border-slate-800">{fmt(dep.annual)}</td>
+                  <td className="px-2 py-2 text-xs text-center font-mono text-amber-300 [direction:ltr] border-b border-slate-800">{fmt(dep.accumulated)}</td>
+                  <td className="px-2 py-2 text-xs text-center font-mono font-bold text-emerald-400 [direction:ltr] border-b border-slate-800">{fmt(dep.bookValue)}</td>
+                  {multiBranch && <td className="px-2 py-2 text-xs text-center text-slate-400 border-b border-slate-800">{a.branch_id != null ? branchName(a.branch_id) : "—"}</td>}
+                  <td className="px-2 py-2 border-b border-slate-800"><div className="flex items-center gap-1 justify-center"><button onClick={() => setEdit({ ...a })} title="تعديل" className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-300 flex items-center justify-center hover:bg-blue-500/20"><Pencil size={13} /></button><button onClick={() => del(a)} title="حذف" className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400 flex items-center justify-center hover:bg-red-500/20"><Trash2 size={13} /></button></div></td>
+                </tr>
+              ))}
+              {rows.length === 0 && <tr><td colSpan={multiBranch ? 10 : 9} className="p-8 text-center text-slate-500 text-sm">{loading ? "جارٍ…" : "لا توجد أصول بعد. اضغط «أصل جديد»."}</td></tr>}
+            </tbody>
+            {rows.length > 0 && (
+              <tfoot><tr className="bg-slate-950 font-bold">
+                <td colSpan={3} className="px-2 py-2.5 text-xs text-right text-slate-200 border-t border-slate-600">الإجمالي</td>
+                <td className="px-2 py-2.5 text-center font-mono text-xs text-slate-100 [direction:ltr] border-t border-slate-600">{fmt(totCost)}</td>
+                <td className="border-t border-slate-600" colSpan={2} />
+                <td className="px-2 py-2.5 text-center font-mono text-xs text-amber-300 [direction:ltr] border-t border-slate-600">{fmt(totAcc)}</td>
+                <td className="px-2 py-2.5 text-center font-mono text-xs text-emerald-400 [direction:ltr] border-t border-slate-600">{fmt(totBook)}</td>
+                <td className="border-t border-slate-600" colSpan={multiBranch ? 2 : 1} />
+              </tr></tfoot>
+            )}
+          </table>
+        </div>
+      </div>
+
+      {edit && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" dir="rtl">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg p-5 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h3 className="text-white font-bold text-base mb-4">{edit.id ? "تعديل أصل" : "أصل جديد"}</h3>
+            <div className="space-y-3">
+              <div><label className={LABEL}>اسم الأصل</label><input value={edit.name || ""} onChange={(e) => setEdit({ ...edit, name: e.target.value })} className={INPUT} /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className={LABEL}>الفئة</label><input value={edit.category || ""} onChange={(e) => setEdit({ ...edit, category: e.target.value })} placeholder="أثاث / أجهزة / سيارات…" className={INPUT} /></div>
+                <div><label className={LABEL}>تاريخ الاقتناء</label><input type="date" value={edit.acquire_date || ""} onChange={(e) => setEdit({ ...edit, acquire_date: e.target.value })} className={DATE} /></div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div><label className={LABEL}>التكلفة</label><input type="number" step="0.01" value={(edit.cost as any) ?? ""} onChange={(e) => setEdit({ ...edit, cost: e.target.value as any })} className={INPUT + " [direction:ltr] text-center"} /></div>
+                <div><label className={LABEL}>القيمة التخريدية</label><input type="number" step="0.01" value={(edit.salvage_value as any) ?? ""} onChange={(e) => setEdit({ ...edit, salvage_value: e.target.value as any })} className={INPUT + " [direction:ltr] text-center"} /></div>
+                <div><label className={LABEL}>العمر (سنوات)</label><input type="number" step="1" value={(edit.useful_life_years as any) ?? ""} onChange={(e) => setEdit({ ...edit, useful_life_years: e.target.value as any })} className={INPUT + " [direction:ltr] text-center"} /></div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className={LABEL}>حساب الأصل (اختياري)</label><select value={edit.account_id ?? ""} onChange={(e) => setEdit({ ...edit, account_id: e.target.value ? Number(e.target.value) : null })} className={SELECT}><option value="">— بدون</option>{postable.map((a: GLAccount) => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}</select></div>
+                {multiBranch && <div><label className={LABEL}>مركز التكلفة (فرع)</label><select value={edit.branch_id ?? ""} onChange={(e) => setEdit({ ...edit, branch_id: e.target.value ? Number(e.target.value) : null })} className={SELECT}><option value="">— بدون</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
+              </div>
+              <div><label className={LABEL}>ملاحظات</label><input value={edit.notes || ""} onChange={(e) => setEdit({ ...edit, notes: e.target.value })} className={INPUT} /></div>
+              {num(edit.cost) > 0 && num(edit.useful_life_years) > 0 && (() => {
+                const d = DB.depreciation({ cost: num(edit.cost), salvage_value: num(edit.salvage_value), useful_life_years: num(edit.useful_life_years), acquire_date: edit.acquire_date || today() }, asOf);
+                return (
+                  <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-400 flex flex-wrap gap-x-4 gap-y-1">
+                    <span>إهلاك سنوي: <span className="font-mono text-amber-400">{fmt(d.annual)}</span></span>
+                    <span>شهري: <span className="font-mono text-amber-400">{fmt(d.monthly)}</span></span>
+                    <span>مجمع حتى {asOf}: <span className="font-mono text-amber-300">{fmt(d.accumulated)}</span></span>
+                    <span>القيمة الدفترية: <span className="font-mono text-emerald-400">{fmt(d.bookValue)}</span></span>
+                  </div>
+                );
+              })()}
+              <label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={edit.is_active !== false} onChange={(e) => setEdit({ ...edit, is_active: e.target.checked })} className="w-4 h-4 accent-blue-500" /> نشط</label>
+            </div>
+            <div className="flex gap-2 justify-end mt-5">
+              <button onClick={() => setEdit(null)} className={BTN_SOFT}><X size={14} /> إلغاء</button>
+              <button onClick={save} disabled={busy} className={BTN_SUCCESS}><Save size={15} /> {busy ? "جارٍ…" : "حفظ"}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

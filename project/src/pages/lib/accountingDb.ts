@@ -392,3 +392,70 @@ export async function fetchLedger(orgId: number, accountId: number, from: string
   rows.sort((a, b) => (a.date || "").localeCompare(b.date || "") || (a.entry_no - b.entry_no));
   return rows;
 }
+
+// ── الأصول الثابتة + الإهلاك (قسط ثابت) ──
+export type GLAsset = {
+  id: number;
+  organization_id: number;
+  branch_id: number | null;
+  name: string;
+  category: string | null;
+  acquire_date: string;             // تاريخ الاقتناء
+  cost: number;                     // التكلفة
+  salvage_value: number;            // القيمة التخريدية
+  useful_life_years: number;        // العمر الإنتاجي بالسنوات
+  account_id: number | null;        // حساب الأصل (اختياري)
+  notes: string | null;
+  is_active: boolean;
+  created_at?: string;
+};
+
+export async function fetchAssets(orgId: number, branchId?: number | null): Promise<GLAsset[]> {
+  let q = supabase.from("gl_assets").select("*").eq("organization_id", orgId).order("acquire_date", { ascending: false });
+  if (branchId != null) q = q.eq("branch_id", branchId);
+  const { data, error } = await q;
+  if (error) { console.error("fetchAssets", error); return []; }
+  return (data as GLAsset[]) || [];
+}
+
+export async function upsertAsset(a: Partial<GLAsset>): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.from("gl_assets").upsert(a as any);
+  if (error) console.error("upsertAsset", error);
+  return { ok: !error, error: error?.message };
+}
+
+export async function deleteAsset(id: number): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.from("gl_assets").delete().eq("id", id);
+  if (error) console.error("deleteAsset", error);
+  return { ok: !error, error: error?.message };
+}
+
+// حساب الإهلاك بالقسط الثابت حتى تاريخ معيّن
+export type Depreciation = {
+  depreciable: number;   // الأساس القابل للإهلاك = التكلفة − التخريدية
+  annual: number;        // إهلاك سنوي
+  monthly: number;       // إهلاك شهري
+  months: number;        // عدد الأشهر المنقضية حتى asOf
+  accumulated: number;   // مجمع الإهلاك
+  bookValue: number;     // القيمة الدفترية = التكلفة − المجمع
+};
+export function depreciation(a: { cost: number; salvage_value: number; useful_life_years: number; acquire_date: string }, asOf: string): Depreciation {
+  const cost = Number(a.cost) || 0;
+  const salvage = Number(a.salvage_value) || 0;
+  const life = Number(a.useful_life_years) || 0;
+  const depreciable = Math.max(0, cost - salvage);
+  const annual = life > 0 ? depreciable / life : 0;
+  const monthly = annual / 12;
+  // عدد الأشهر من تاريخ الاقتناء حتى asOf
+  const [ay, am, ad] = (a.acquire_date || "").split("-").map(Number);
+  const [oy, om, od] = (asOf || "").split("-").map(Number);
+  let months = 0;
+  if (ay && oy) {
+    months = (oy - ay) * 12 + (om - am);
+    if (od < ad) months -= 1;           // لم يكتمل الشهر الجاري
+    months = Math.max(0, months);
+  }
+  const accumulated = Math.min(depreciable, monthly * months);
+  const bookValue = cost - accumulated;
+  return { depreciable, annual, monthly, months, accumulated, bookValue };
+}

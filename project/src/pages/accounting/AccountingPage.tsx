@@ -13,7 +13,7 @@ import * as XLSX from "xlsx";
 import {
   Home, ChevronLeft, Calculator, Network, BookOpen, FileText, Scale,
   Plus, Pencil, Trash2, Download, Upload, Save, X, Check, Search,
-  Building2, FileCheck2, Send, Layers,
+  Building2, FileCheck2, Send, Layers, Paperclip, ExternalLink,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import * as DB from "../lib/accountingDb";
@@ -359,8 +359,16 @@ function JournalTab({ org, postable, accById, branches, branchName }: any) {
   const [eBranch, setEBranch] = useState<string>("");          // مركز التكلفة الافتراضي
   const [lines, setLines] = useState<DraftLine[]>([emptyLine(), emptyLine()]);
 
+  // مرفقات القيد
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);            // ملفات جديدة تُرفع عند الحفظ
+  const [existingAtts, setExistingAtts] = useState<DB.GLAttachment[]>([]); // مرفقات القيد قيد التعديل
+  const [attMap, setAttMap] = useState<Record<number, number>>({});        // عدد مرفقات كل قيد في القائمة
+  const attRef = useRef<HTMLInputElement>(null);
+
   const reload = useCallback(async () => {
-    setEntries(await DB.fetchEntries(org.id, from, to, fBranch ? Number(fBranch) : null));
+    const es = await DB.fetchEntries(org.id, from, to, fBranch ? Number(fBranch) : null);
+    setEntries(es);
+    setAttMap(await DB.countAttachments(es.map((e) => e.id)));
   }, [org.id, from, to, fBranch]);
   useEffect(() => { reload(); }, [reload]);
 
@@ -377,7 +385,7 @@ function JournalTab({ org, postable, accById, branches, branchName }: any) {
   const balanced = Math.abs(sumD - sumC) < 0.005 && sumD > 0;
   const setLine = (i: number, patch: Partial<DraftLine>) => setLines((p) => p.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
 
-  const resetForm = () => { setDate(today()); setEType("general"); setDesc(""); setNotes(""); setEBranch(""); setLines([emptyLine(), emptyLine()]); };
+  const resetForm = () => { setDate(today()); setEType("general"); setDesc(""); setNotes(""); setEBranch(""); setLines([emptyLine(), emptyLine()]); setPendingFiles([]); setExistingAtts([]); };
 
   const openNew = () => { setEditingId(null); setEditingNo(""); resetForm(); setShowForm(true); };
   const closeForm = () => { setShowForm(false); setEditingId(null); setEditingNo(""); resetForm(); };
@@ -395,8 +403,31 @@ function JournalTab({ org, postable, accById, branches, branchName }: any) {
       branch_id: l.branch_id != null ? Number(l.branch_id) : "", note: l.note || "",
     }));
     setLines(ls.length >= 2 ? ls : [...ls, emptyLine(), emptyLine()].slice(0, Math.max(2, ls.length)));
+    setPendingFiles([]);
+    setExistingAtts([]);
+    DB.fetchAttachments(e.id).then(setExistingAtts);
     setShowForm(true);
     try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { /* noop */ }
+  };
+
+  // ── إدارة المرفقات ──
+  const addFiles = (files: FileList | null) => {
+    if (!files || !files.length) return;
+    const arr = Array.from(files);
+    const tooBig = arr.find((f) => f.size > 10 * 1024 * 1024);
+    if (tooBig) { alert("حجم الملف أكبر من 10 ميجابايت: " + tooBig.name); return; }
+    setPendingFiles((p) => [...p, ...arr]);
+  };
+  const openAtt = async (att: DB.GLAttachment) => {
+    const url = await DB.signedUrl(att.file_path);
+    if (url) window.open(url, "_blank"); else alert("تعذّر فتح المرفق");
+  };
+  const delExisting = async (att: DB.GLAttachment) => {
+    if (!window.confirm(`حذف المرفق «${att.file_name}»؟`)) return;
+    const r = await DB.deleteAttachment(att);
+    if (!r.ok) { alert("تعذّر الحذف: " + (r.error || "")); return; }
+    setExistingAtts((p) => p.filter((a) => a.id !== att.id));
+    await reload();
   };
 
   const persist = async (status: "posted" | "draft") => {
@@ -413,8 +444,16 @@ function JournalTab({ org, postable, accById, branches, branchName }: any) {
     }));
     setSaving(true);
     const r = editingId != null ? await DB.updateEntry(editingId, header, glLines) : await DB.createEntry(org.id, header, glLines);
+    if (!r.ok) { setSaving(false); alert("تعذّر حفظ القيد: " + ((r as any).error || "")); return; }
+    // رفع المرفقات الجديدة بعد تأمين معرّف القيد
+    const entryId = editingId != null ? editingId : (r as any).id;
+    if (entryId && pendingFiles.length) {
+      for (const f of pendingFiles) {
+        const up = await DB.uploadAttachment(org.id, entryId, f);
+        if (!up.ok) alert(`تعذّر رفع «${f.name}»: ${up.error || ""}`);
+      }
+    }
     setSaving(false);
-    if (!r.ok) { alert("تعذّر حفظ القيد: " + ((r as any).error || "")); return; }
     closeForm();
     await reload();
   };
@@ -524,6 +563,35 @@ function JournalTab({ org, postable, accById, branches, branchName }: any) {
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="ملاحظات إضافية على القيد…" className={INPUT + " resize-y"} />
           </div>
 
+          {/* المرفقات */}
+          <div className="mt-3">
+            <label className={LABEL}>المرفقات (فواتير/مستندات — PDF أو صورة، حتى 10 ميجابايت)</label>
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" onClick={() => attRef.current?.click()} className={BTN_GHOST_BL}><Paperclip size={14} /> إضافة مرفق</button>
+              <input ref={attRef} type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+              {(existingAtts.length + pendingFiles.length) > 0 && <span className="text-[11px] text-slate-500">{existingAtts.length + pendingFiles.length} مرفق</span>}
+            </div>
+            {(existingAtts.length > 0 || pendingFiles.length > 0) && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {existingAtts.map((a) => (
+                  <div key={a.id} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs">
+                    <FileText size={13} className="text-blue-400 shrink-0" />
+                    <button type="button" onClick={() => openAtt(a)} title="فتح المرفق" className="text-slate-200 hover:text-blue-400 max-w-[170px] truncate inline-flex items-center gap-1">{a.file_name}<ExternalLink size={11} className="opacity-60" /></button>
+                    <button type="button" onClick={() => delExisting(a)} title="حذف المرفق" className="text-red-400 hover:text-red-300 shrink-0"><X size={13} /></button>
+                  </div>
+                ))}
+                {pendingFiles.map((f, i) => (
+                  <div key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs">
+                    <Paperclip size={13} className="text-blue-400 shrink-0" />
+                    <span className="text-blue-200 max-w-[170px] truncate">{f.name}</span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-500/15 text-blue-300 shrink-0">سيُرفع</span>
+                    <button type="button" onClick={() => setPendingFiles((p) => p.filter((_, idx) => idx !== i))} title="إزالة" className="text-red-400 hover:text-red-300 shrink-0"><X size={13} /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* أزرار الحفظ */}
           <div className="flex items-center gap-2 mt-4 flex-wrap">
             <button onClick={() => setLines((p) => [...p, emptyLine()])} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600/10 border border-dashed border-blue-500 text-blue-300 font-bold text-xs hover:bg-blue-600/20"><Plus size={13} /> سطر</button>
@@ -557,6 +625,7 @@ function JournalTab({ org, postable, accById, branches, branchName }: any) {
                     <span className="font-mono text-xs text-slate-400 [direction:ltr]">{e.date}</span>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-700/40 text-slate-300">{DB.ENTRY_TYPE_LABEL[e.entry_type || "general"]}</span>
                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${isDraft ? "bg-amber-500/15 text-amber-400" : "bg-emerald-500/15 text-emerald-400"}`}>{isDraft ? "مسودة" : "مُرحّل"}</span>
+                    {attMap[e.id] ? <button onClick={() => startEdit(e)} title="عرض المرفقات" className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-300 hover:bg-blue-500/20"><Paperclip size={10} /> {attMap[e.id]}</button> : null}
                     <span className="text-sm text-slate-200">{e.description || "—"}</span>
                     {e.branch_id != null && <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-300">{branchName(e.branch_id)}</span>}
                     <span className="mr-auto font-mono text-xs font-bold text-emerald-400 [direction:ltr]">{fmt(d)} ر.س</span>

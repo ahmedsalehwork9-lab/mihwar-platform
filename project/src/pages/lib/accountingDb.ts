@@ -302,7 +302,72 @@ export async function setEntryStatus(id: number, status: string): Promise<{ ok: 
   return { ok: !error, error: error?.message };
 }
 
+// ── مرفقات القيود (Supabase Storage) ──
+export const ATT_BUCKET = "journal-attachments";
+export type GLAttachment = {
+  id: number;
+  entry_id: number;
+  organization_id: number;
+  file_name: string;
+  file_path: string;          // المسار داخل الحاوية
+  mime_type: string | null;
+  size_bytes: number | null;
+  created_at?: string;
+};
+
+const sanitizeName = (s: string) => (s || "file").replace(/[^\w.\-]+/g, "_").slice(-80);
+
+export async function fetchAttachments(entryId: number): Promise<GLAttachment[]> {
+  const { data, error } = await supabase.from("gl_journal_attachments").select("*").eq("entry_id", entryId).order("id");
+  if (error) { console.error("fetchAttachments", error); return []; }
+  return (data as GLAttachment[]) || [];
+}
+
+export async function countAttachments(entryIds: number[]): Promise<Record<number, number>> {
+  const out: Record<number, number> = {};
+  if (!entryIds.length) return out;
+  const { data, error } = await supabase.from("gl_journal_attachments").select("entry_id").in("entry_id", entryIds);
+  if (error) { console.error("countAttachments", error); return out; }
+  (data as any[]).forEach((r) => { out[r.entry_id] = (out[r.entry_id] || 0) + 1; });
+  return out;
+}
+
+export async function uploadAttachment(orgId: number, entryId: number, file: File): Promise<{ ok: boolean; error?: string; row?: GLAttachment }> {
+  const path = `${orgId}/${entryId}/${Date.now()}-${sanitizeName(file.name)}`;
+  const { error: upErr } = await supabase.storage.from(ATT_BUCKET).upload(path, file, { upsert: false, contentType: file.type || undefined });
+  if (upErr) { console.error("uploadAttachment storage", upErr); return { ok: false, error: upErr.message }; }
+  const { data, error } = await supabase.from("gl_journal_attachments").insert({
+    entry_id: entryId, organization_id: orgId, file_name: file.name, file_path: path,
+    mime_type: file.type || null, size_bytes: file.size || null,
+  }).select("*").single();
+  if (error) {
+    console.error("uploadAttachment row", error);
+    await supabase.storage.from(ATT_BUCKET).remove([path]);  // تراجُع عن الرفع لو فشل تسجيل الصف
+    return { ok: false, error: error.message };
+  }
+  return { ok: true, row: data as GLAttachment };
+}
+
+export async function deleteAttachment(att: GLAttachment): Promise<{ ok: boolean; error?: string }> {
+  await supabase.storage.from(ATT_BUCKET).remove([att.file_path]);
+  const { error } = await supabase.from("gl_journal_attachments").delete().eq("id", att.id);
+  if (error) { console.error("deleteAttachment", error); return { ok: false, error: error.message }; }
+  return { ok: true };
+}
+
+export async function signedUrl(path: string, expires = 3600): Promise<string | null> {
+  const { data, error } = await supabase.storage.from(ATT_BUCKET).createSignedUrl(path, expires);
+  if (error) { console.error("signedUrl", error); return null; }
+  return data?.signedUrl || null;
+}
+
 export async function deleteEntry(id: number): Promise<{ ok: boolean; error?: string }> {
+  // نظّف المرفقات (ملفات التخزين + سجلاتها) قبل حذف القيد
+  const atts = await fetchAttachments(id);
+  if (atts.length) {
+    await supabase.storage.from(ATT_BUCKET).remove(atts.map((a) => a.file_path));
+    await supabase.from("gl_journal_attachments").delete().eq("entry_id", id);
+  }
   const { error } = await supabase.from("gl_journal_entries").delete().eq("id", id);
   return { ok: !error, error: error?.message };
 }

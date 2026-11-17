@@ -223,6 +223,7 @@ const OPERATIONS: OpEntry[] = [
 
   { type: 'group', key: 'accounting', icon: <Calculator size={17} />, labelEn: 'Accounting', labelAr: 'الحسابات', homePage: 'accounting', homeSection: 'journal', children: [
     { labelEn: 'Journal',        labelAr: 'القيود اليومية',   section: 'journal' },
+    { labelEn: 'Treasury',       labelAr: 'الخزن والبنوك',    section: 'treasury' },
     { labelEn: 'Chart',          labelAr: 'دليل الحسابات',    section: 'chart' },
     { labelEn: 'Ledger',         labelAr: 'كشف حساب',         section: 'ledger' },
     { labelEn: 'Trial Balance',  labelAr: 'ميزان المراجعة',   section: 'trial' },

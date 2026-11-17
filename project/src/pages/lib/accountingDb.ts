@@ -459,3 +459,76 @@ export function depreciation(a: { cost: number; salvage_value: number; useful_li
   const bookValue = cost - accumulated;
   return { depreciable, annual, monthly, months, accumulated, bookValue };
 }
+
+// ── الخزن والبنوك + سندات القبض/الصرف ──
+export type GLTreasury = {
+  id: number;
+  organization_id: number;
+  branch_id: number | null;
+  name: string;
+  kind: string;                 // 'cash' (خزنة) | 'bank' (بنك)
+  account_id: number | null;    // حساب الخزنة/البنك في دليل الحسابات
+  opening_balance: number;
+  is_active: boolean;
+  created_at?: string;
+};
+
+export async function fetchTreasuries(orgId: number, branchId?: number | null): Promise<GLTreasury[]> {
+  let q = supabase.from("gl_treasuries").select("*").eq("organization_id", orgId).order("id");
+  if (branchId != null) q = q.eq("branch_id", branchId);
+  const { data, error } = await q;
+  if (error) { console.error("fetchTreasuries", error); return []; }
+  return (data as GLTreasury[]) || [];
+}
+
+export async function upsertTreasury(t: Partial<GLTreasury>): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.from("gl_treasuries").upsert(t as any);
+  if (error) console.error("upsertTreasury", error);
+  return { ok: !error, error: error?.message };
+}
+
+export async function deleteTreasury(id: number): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.from("gl_treasuries").delete().eq("id", id);
+  if (error) console.error("deleteTreasury", error);
+  return { ok: !error, error: error?.message };
+}
+
+// صافي حركة حساب (مدين − دائن) من القيود المُرحّلة حتى تاريخ (لحساب رصيد الخزنة)
+export async function fetchAccountNet(orgId: number, accountId: number, branchId?: number | null, asOf?: string): Promise<number> {
+  let q = supabase
+    .from("gl_journal_lines")
+    .select("debit, credit, branch_id, entry:gl_journal_entries!inner(organization_id, date, status)")
+    .eq("account_id", accountId)
+    .eq("entry.organization_id", orgId)
+    .eq("entry.status", "posted");
+  if (asOf) q = q.lte("entry.date", asOf);
+  if (branchId != null) q = q.eq("branch_id", branchId);
+  const { data, error } = await q;
+  if (error) { console.error("fetchAccountNet", error); return 0; }
+  return ((data as any[]) || []).reduce((s, r) => s + (Number(r.debit) || 0) - (Number(r.credit) || 0), 0);
+}
+
+// إنشاء سند قبض/صرف → يولّد قيدًا متوازنًا تلقائيًا
+export async function createVoucher(orgId: number, v: {
+  kind: "receipt" | "payment";
+  date: string;
+  treasury_account_id: number;
+  counter_account_id: number;
+  amount: number;
+  description: string | null;
+  notes: string | null;
+  branch_id: number | null;
+}): Promise<{ ok: boolean; error?: string; id?: number }> {
+  const amt = Number(v.amount) || 0;
+  if (amt <= 0) return { ok: false, error: "المبلغ يجب أن يكون أكبر من صفر" };
+  if (!v.treasury_account_id || !v.counter_account_id) return { ok: false, error: "اختر الخزنة والحساب المقابل" };
+  if (v.treasury_account_id === v.counter_account_id) return { ok: false, error: "الخزنة والحساب المقابل لا يمكن أن يكونا نفس الحساب" };
+  // سند قبض: نقدية مدينة / الحساب المقابل دائن — سند صرف: العكس
+  const lines: GLLine[] = v.kind === "receipt"
+    ? [{ account_id: v.treasury_account_id, debit: amt, credit: 0 }, { account_id: v.counter_account_id, debit: 0, credit: amt }]
+    : [{ account_id: v.counter_account_id, debit: amt, credit: 0 }, { account_id: v.treasury_account_id, debit: 0, credit: amt }];
+  return createEntry(orgId, {
+    date: v.date, description: v.description, branch_id: v.branch_id,
+    entry_type: v.kind, notes: v.notes, status: "posted",
+  }, lines);
+}

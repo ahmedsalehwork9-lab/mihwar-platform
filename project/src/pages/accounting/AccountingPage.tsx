@@ -14,6 +14,7 @@ import {
   Home, ChevronLeft, Calculator, Network, BookOpen, FileText, Scale,
   Plus, Pencil, Trash2, Download, Upload, Save, X, Check, Search,
   Building2, FileCheck2, Send, Layers, Paperclip, ExternalLink,
+  Wallet, Landmark, ArrowDownCircle, ArrowUpCircle,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import * as DB from "../lib/accountingDb";
@@ -39,11 +40,12 @@ const BTN_SUCCESS = "inline-flex items-center justify-center gap-1.5 px-5 py-2.5
 const BTN_GHOST_EM = "inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-xs transition-colors disabled:opacity-50 hover:bg-emerald-500/20";
 const BTN_GHOST_BL = "inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-300 font-bold text-xs transition-colors disabled:opacity-50 hover:bg-blue-500/20";
 
-type Tab = "chart" | "journal" | "ledger" | "trial" | "assets";
+type Tab = "chart" | "journal" | "ledger" | "trial" | "assets" | "treasury";
 const TYPE_OPTS: AccType[] = ["asset", "liability", "equity", "revenue", "expense"];
 const TABS: { k: Tab; label: string; icon: any }[] = [
   { k: "chart", label: "دليل الحسابات", icon: Network },
   { k: "journal", label: "القيود اليومية", icon: BookOpen },
+  { k: "treasury", label: "الخزن والبنوك", icon: Wallet },
   { k: "ledger", label: "كشف حساب", icon: FileText },
   { k: "trial", label: "ميزان المراجعة", icon: Scale },
   { k: "assets", label: "الأصول", icon: Building2 },
@@ -135,6 +137,7 @@ export default function AccountingPage({ section, onSection }: { section?: strin
       {tab === "ledger" && <LedgerTab org={org} postable={postable} branches={branches} branchName={branchName} />}
       {tab === "trial" && <TrialTab org={org} accById={accById} postable={postable} branches={branches} />}
       {tab === "assets" && <AssetsTab org={org} postable={postable} branches={branches} branchName={branchName} />}
+      {tab === "treasury" && <TreasuryTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} />}
     </div>
   );
 }
@@ -946,6 +949,222 @@ function AssetsTab({ org, postable, branches, branchName }: any) {
             <div className="flex gap-2 justify-end mt-5">
               <button onClick={() => setEdit(null)} className={BTN_SOFT}><X size={14} /> إلغاء</button>
               <button onClick={save} disabled={busy} className={BTN_SUCCESS}><Save size={15} /> {busy ? "جارٍ…" : "حفظ"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════ الخزن والبنوك + سندات القبض/الصرف ══════════════
+const PAY_METHODS = ["نقدًا", "تحويل بنكي", "شيك", "بطاقة", "أخرى"];
+
+function TreasuryTab({ org, postable, accById, branches, branchName: _branchName }: any) {
+  const multiBranch = branches && branches.length > 1;
+  const [fBranch, setFBranch] = useState<string>("");
+  const [treasuries, setTreasuries] = useState<DB.GLTreasury[]>([]);
+  const [balances, setBalances] = useState<Record<number, number>>({});
+  const [loadingT, setLoadingT] = useState(false);
+  const [edit, setEdit] = useState<Partial<DB.GLTreasury> | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const [vouchers, setVouchers] = useState<EntryWithLines[]>([]);
+  const [vKind, setVKind] = useState<"receipt" | "payment">("receipt");
+  const [vTreasuryId, setVTreasuryId] = useState<string>("");
+  const [vCounterId, setVCounterId] = useState<string>("");
+  const [vAmount, setVAmount] = useState<string>("");
+  const [vDate, setVDate] = useState<string>(today());
+  const [vParty, setVParty] = useState<string>("");
+  const [vMethod, setVMethod] = useState<string>("نقدًا");
+  const [vDesc, setVDesc] = useState<string>("");
+  const [vBranch, setVBranch] = useState<string>("");
+  const [saving, setSaving] = useState(false);
+
+  const reloadT = useCallback(async () => {
+    setLoadingT(true);
+    const ts = await DB.fetchTreasuries(org.id, fBranch ? Number(fBranch) : null);
+    setTreasuries(ts);
+    const bal: Record<number, number> = {};
+    await Promise.all(ts.map(async (t) => {
+      const net = t.account_id ? await DB.fetchAccountNet(org.id, t.account_id, fBranch ? Number(fBranch) : null) : 0;
+      bal[t.id] = (Number(t.opening_balance) || 0) + net;
+    }));
+    setBalances(bal);
+    setLoadingT(false);
+  }, [org.id, fBranch]);
+
+  const reloadV = useCallback(async () => {
+    const es = await DB.fetchEntries(org.id, monthStart(), today(), fBranch ? Number(fBranch) : null);
+    setVouchers(es.filter((e) => e.entry_type === "receipt" || e.entry_type === "payment"));
+  }, [org.id, fBranch]);
+
+  useEffect(() => { reloadT(); reloadV(); }, [reloadT, reloadV]);
+
+  const saveT = async () => {
+    if (!edit) return;
+    if (!edit.name || !String(edit.name).trim()) { alert("أدخل اسم الخزنة/البنك"); return; }
+    const payload: any = {
+      organization_id: org.id, branch_id: edit.branch_id ?? (fBranch ? Number(fBranch) : null),
+      name: String(edit.name).trim(), kind: edit.kind || "cash", account_id: edit.account_id ?? null,
+      opening_balance: num(edit.opening_balance), is_active: edit.is_active !== false,
+    };
+    if (edit.id) payload.id = edit.id;
+    setBusy(true); const r = await DB.upsertTreasury(payload); setBusy(false);
+    if (!r.ok) { alert("تعذّر الحفظ: " + (r.error || "")); return; }
+    setEdit(null); await reloadT();
+  };
+  const delT = async (t: DB.GLTreasury) => {
+    if (!window.confirm(`حذف «${t.name}»؟ (لن تُحذف القيود المرتبطة)`)) return;
+    const r = await DB.deleteTreasury(t.id);
+    if (!r.ok) { alert("تعذّر الحذف: " + (r.error || "")); return; }
+    await reloadT();
+  };
+
+  const saveVoucher = async () => {
+    const tr = treasuries.find((t) => t.id === Number(vTreasuryId));
+    if (!tr) { alert("اختر الخزنة/البنك"); return; }
+    if (!tr.account_id) { alert("هذه الخزنة غير مرتبطة بحساب في دليل الحسابات. عدّلها وحدّد الحساب أولًا."); return; }
+    if (!vCounterId) { alert("اختر الحساب المقابل"); return; }
+    const amt = num(vAmount);
+    if (amt <= 0) { alert("أدخل مبلغًا صحيحًا"); return; }
+    const party = vParty.trim();
+    const desc = vDesc.trim() || ((vKind === "receipt" ? "سند قبض" : "سند صرف") + (party ? ` — ${party}` : ""));
+    const notes = [vMethod, party ? `الطرف: ${party}` : ""].filter(Boolean).join(" · ") || null;
+    setSaving(true);
+    const r = await DB.createVoucher(org.id, {
+      kind: vKind, date: vDate, treasury_account_id: tr.account_id!, counter_account_id: Number(vCounterId),
+      amount: amt, description: desc, notes, branch_id: (vBranch ? Number(vBranch) : tr.branch_id) ?? null,
+    });
+    setSaving(false);
+    if (!r.ok) { alert("تعذّر حفظ السند: " + (r.error || "")); return; }
+    setVAmount(""); setVParty(""); setVDesc(""); setVCounterId("");
+    await reloadT(); await reloadV();
+    alert("✓ تم حفظ السند وترحيله للدفتر");
+  };
+
+  const delVoucher = async (id: number) => {
+    if (!window.confirm("حذف هذا السند وقيده؟")) return;
+    const r = await DB.deleteEntry(id);
+    if (r.ok) { await reloadT(); await reloadV(); } else alert("تعذّر الحذف: " + (r.error || ""));
+  };
+
+  const treasuryAccIds = new Set(treasuries.map((t) => t.account_id).filter(Boolean) as number[]);
+  const counterOptions = postable.filter((a: GLAccount) => !treasuryAccIds.has(a.id));
+  const voucherAmount = (e: EntryWithLines) => (e.lines || []).reduce((s, l) => s + Number(l.debit || 0), 0);
+
+  return (
+    <div>
+      {/* فلتر + إضافة خزنة */}
+      <div className={`${CARD} p-3 mb-4`}>
+        <div className="flex flex-wrap items-end gap-3">
+          {multiBranch && <div><label className={LABEL}>الفرع</label><select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className={SELECT}><option value="">كل الفروع</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
+          <button onClick={() => setEdit({ kind: "cash", opening_balance: 0 as any, is_active: true })} className={BTN_GHOST_EM}><Plus size={14} /> خزنة / بنك جديد</button>
+          <span className="text-[11px] text-slate-500 mr-auto">{treasuries.length} خزنة/بنك</span>
+        </div>
+      </div>
+
+      {/* بطاقات الخزائن */}
+      {treasuries.length === 0 ? (
+        <div className={`${CARD} p-8 text-center text-slate-500 text-sm mb-4`}>{loadingT ? "جارٍ…" : "لا توجد خزائن/بنوك بعد. أضف واحدة واربطها بحساب من دليل الحسابات (مثل: الصندوق / البنك)."}</div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
+          {treasuries.map((t) => {
+            const acc = t.account_id ? accById.get(t.account_id) : null;
+            const bal = balances[t.id] ?? 0;
+            return (
+              <div key={t.id} className={`${CARD} p-4`}>
+                <div className="flex items-center gap-2.5 mb-3">
+                  <span className={`w-9 h-9 rounded-xl flex items-center justify-center ${t.kind === "bank" ? "bg-blue-500/10 text-blue-400" : "bg-emerald-500/10 text-emerald-400"}`}>{t.kind === "bank" ? <Landmark size={18} /> : <Wallet size={18} />}</span>
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-white truncate">{t.name}{!t.is_active && <span className="text-[9px] text-red-400"> (موقوف)</span>}</div>
+                    <div className="text-[10px] text-slate-500 truncate">{t.kind === "bank" ? "بنك" : "خزنة نقدية"}{acc ? ` · ${acc.code} ${acc.name}` : " · غير مرتبط بحساب"}</div>
+                  </div>
+                  <div className="mr-auto flex items-center gap-1">
+                    <button onClick={() => setEdit({ ...t })} title="تعديل" className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-300 flex items-center justify-center hover:bg-blue-500/20"><Pencil size={13} /></button>
+                    <button onClick={() => delT(t)} title="حذف" className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400 flex items-center justify-center hover:bg-red-500/20"><Trash2 size={13} /></button>
+                  </div>
+                </div>
+                <div className="text-[10px] text-slate-500 font-bold">الرصيد الحالي</div>
+                <div className={`font-mono font-black text-xl [direction:ltr] ${bal >= 0 ? "text-emerald-400" : "text-red-400"}`}>{fmt(bal)} <span className="text-xs text-slate-500">ر.س</span></div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* نموذج سند قبض/صرف */}
+      <div className={`${CARD} p-4 mb-4`}>
+        <div className="flex items-center gap-2.5 mb-4">
+          <span className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400"><FileCheck2 size={16} /></span>
+          <h2 className="text-sm font-bold text-white">سند قبض / صرف</h2>
+        </div>
+
+        <div className="inline-flex gap-1 bg-slate-950 border border-slate-800 rounded-xl p-1 mb-3">
+          <button onClick={() => setVKind("receipt")} className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold transition-colors ${vKind === "receipt" ? "bg-emerald-500 text-emerald-950" : "text-slate-400 hover:text-slate-200"}`}><ArrowDownCircle size={15} /> سند قبض</button>
+          <button onClick={() => setVKind("payment")} className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold transition-colors ${vKind === "payment" ? "bg-red-500 text-[#fff]" : "text-slate-400 hover:text-slate-200"}`}><ArrowUpCircle size={15} /> سند صرف</button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div><label className={LABEL}>الخزنة / البنك</label><select value={vTreasuryId} onChange={(e) => setVTreasuryId(e.target.value)} className={SELECT}><option value="">— اختر</option>{treasuries.filter((t) => t.is_active).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
+          <div><label className={LABEL}>{vKind === "receipt" ? "الحساب المقابل (المصدر)" : "الحساب المقابل (الجهة)"}</label><select value={vCounterId} onChange={(e) => setVCounterId(e.target.value)} className={SELECT}><option value="">— اختر حساب</option>{counterOptions.map((a: GLAccount) => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}</select></div>
+          <div><label className={LABEL}>المبلغ</label><input type="number" step="0.01" value={vAmount} onChange={(e) => setVAmount(e.target.value)} placeholder="0.00" className={INPUT + " [direction:ltr] text-center font-mono"} /></div>
+          <div><label className={LABEL}>التاريخ</label><input type="date" value={vDate} onChange={(e) => setVDate(e.target.value)} className={DATE} /></div>
+          <div><label className={LABEL}>الطرف (من/إلى)</label><input value={vParty} onChange={(e) => setVParty(e.target.value)} placeholder="اسم العميل/المورد…" className={INPUT} /></div>
+          <div><label className={LABEL}>طريقة الدفع</label><select value={vMethod} onChange={(e) => setVMethod(e.target.value)} className={SELECT}>{PAY_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}</select></div>
+          <div className={multiBranch ? "" : "lg:col-span-2"}><label className={LABEL}>البيان (اختياري)</label><input value={vDesc} onChange={(e) => setVDesc(e.target.value)} placeholder="وصف السند" className={INPUT} /></div>
+          {multiBranch && <div><label className={LABEL}>مركز التكلفة (فرع)</label><select value={vBranch} onChange={(e) => setVBranch(e.target.value)} className={SELECT}><option value="">— افتراضي</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
+        </div>
+
+        <div className="flex items-center gap-2 mt-4 flex-wrap">
+          <p className="text-[11px] text-slate-500">{vKind === "receipt" ? "القيد: من ح/ الخزنة إلى ح/ الحساب المقابل" : "القيد: من ح/ الحساب المقابل إلى ح/ الخزنة"}</p>
+          <button onClick={saveVoucher} disabled={saving} className={`mr-auto ${vKind === "receipt" ? BTN_SUCCESS : "inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-[#fff] font-extrabold text-sm transition-colors disabled:opacity-50"}`}><Check size={16} /> {saving ? "جارٍ…" : "حفظ وترحيل السند"}</button>
+        </div>
+      </div>
+
+      {/* أحدث السندات */}
+      <div className={`${CARD} overflow-hidden`}>
+        <SectionHead icon={Wallet} title="أحدث السندات (هذا الشهر)" extra={<span className="text-[11px] text-slate-500">{vouchers.length} سند</span>} />
+        {vouchers.length === 0 ? (
+          <div className="p-8 text-center text-slate-500 text-sm">لا توجد سندات هذا الشهر.</div>
+        ) : (
+          <div className="divide-y divide-slate-800">
+            {vouchers.map((e) => {
+              const isR = e.entry_type === "receipt";
+              const amt = voucherAmount(e);
+              return (
+                <div key={e.id} className="flex items-center gap-2.5 flex-wrap px-4 py-2.5">
+                  <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-bold ${isR ? "bg-emerald-500/15 text-emerald-400" : "bg-red-500/15 text-red-400"}`}>{isR ? <ArrowDownCircle size={11} /> : <ArrowUpCircle size={11} />}{isR ? "قبض" : "صرف"}</span>
+                  <span className="font-mono text-xs text-slate-400 [direction:ltr]">{e.date}</span>
+                  <span className="text-sm text-slate-200">{e.description || "—"}</span>
+                  {e.notes ? <span className="text-[10px] text-slate-500">· {e.notes}</span> : null}
+                  <span className={`mr-auto font-mono text-sm font-bold [direction:ltr] ${isR ? "text-emerald-400" : "text-red-400"}`}>{isR ? "+" : "−"}{fmt(amt)} ر.س</span>
+                  <button onClick={() => delVoucher(e.id)} title="حذف" className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400 flex items-center justify-center hover:bg-red-500/20"><Trash2 size={13} /></button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* نموذج تعديل الخزنة */}
+      {edit && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" dir="rtl">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-5 shadow-2xl">
+            <h3 className="text-white font-bold text-base mb-4">{edit.id ? "تعديل خزنة/بنك" : "خزنة/بنك جديد"}</h3>
+            <div className="space-y-3">
+              <div><label className={LABEL}>الاسم</label><input value={edit.name || ""} onChange={(e) => setEdit({ ...edit, name: e.target.value })} placeholder="الصندوق الرئيسي / بنك الراجحي…" className={INPUT} /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className={LABEL}>النوع</label><select value={edit.kind || "cash"} onChange={(e) => setEdit({ ...edit, kind: e.target.value })} className={SELECT}><option value="cash">خزنة نقدية</option><option value="bank">بنك</option></select></div>
+                <div><label className={LABEL}>رصيد افتتاحي</label><input type="number" step="0.01" value={(edit.opening_balance as any) ?? ""} onChange={(e) => setEdit({ ...edit, opening_balance: e.target.value as any })} className={INPUT + " [direction:ltr] text-center"} /></div>
+              </div>
+              <div><label className={LABEL}>الحساب المرتبط (من دليل الحسابات)</label><select value={edit.account_id ?? ""} onChange={(e) => setEdit({ ...edit, account_id: e.target.value ? Number(e.target.value) : null })} className={SELECT}><option value="">— بدون (لن تُرحّل سندات)</option>{postable.map((a: GLAccount) => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}</select><p className="text-[10px] text-slate-500 mt-1">اربطها عادةً بحساب الصندوق (1101) أو البنك (1102).</p></div>
+              {multiBranch && <div><label className={LABEL}>الفرع</label><select value={edit.branch_id ?? ""} onChange={(e) => setEdit({ ...edit, branch_id: e.target.value ? Number(e.target.value) : null })} className={SELECT}><option value="">— بدون</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
+              <label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={edit.is_active !== false} onChange={(e) => setEdit({ ...edit, is_active: e.target.checked })} className="w-4 h-4 accent-blue-500" /> نشط</label>
+            </div>
+            <div className="flex gap-2 justify-end mt-5">
+              <button onClick={() => setEdit(null)} className={BTN_SOFT}><X size={14} /> إلغاء</button>
+              <button onClick={saveT} disabled={busy} className={BTN_SUCCESS}><Save size={15} /> {busy ? "جارٍ…" : "حفظ"}</button>
             </div>
           </div>
         </div>

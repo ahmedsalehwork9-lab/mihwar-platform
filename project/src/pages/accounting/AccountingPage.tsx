@@ -5,7 +5,8 @@
 // الدفاتر على مستوى المؤسسة (من الفرع النشط)، مع تصفية بالفرع.
 // =============================================================
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import * as XLSX from "xlsx";
 import { useAuth } from "../../context/AuthContext";
 import * as DB from "../lib/accountingDb";
 import type { GLAccount, GLLine, EntryWithLines, LedgerLine, AccType } from "../lib/accountingDb";
@@ -132,6 +133,74 @@ function ChartTab({ org, accounts, reload, busy, setBusy }: { org: { id: number;
     await reload();
   };
 
+  // ── رفع/تنزيل/تصدير شجرة الحسابات من Excel ──
+  const fileRef = useRef<HTMLInputElement>(null);
+  const typeFromLabel = (s: string): AccType | null => {
+    const t = (s || "").trim().toLowerCase();
+    if (/أصول|اصول|asset/.test(t)) return "asset";
+    if (/خصوم|التزام|liab/.test(t)) return "liability";
+    if (/ملكية|حقوق|equity/.test(t)) return "equity";
+    if (/إيراد|ايراد|revenue|income/.test(t)) return "revenue";
+    if (/مصروف|expense/.test(t)) return "expense";
+    return null;
+  };
+  const pick = (r: any, keys: string[]) => { for (const k of keys) if (r[k] !== undefined && r[k] !== "") return r[k]; return ""; };
+  const downloadTemplate = () => {
+    const ws = XLSX.utils.aoa_to_sheet([
+      ["الكود", "اسم الحساب", "النوع", "كود الأب", "تجميعي"],
+      ["1", "الأصول", "أصول", "", "نعم"],
+      ["11", "الأصول المتداولة", "أصول", "1", "نعم"],
+      ["1101", "الصندوق", "أصول", "11", "لا"],
+      ["4101", "المبيعات", "إيرادات", "", "لا"],
+      ["5201", "الرواتب والأجور", "مصروفات", "", "لا"],
+    ]);
+    ws["!cols"] = [{ wch: 10 }, { wch: 28 }, { wch: 14 }, { wch: 10 }, { wch: 8 }];
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "شجرة الحسابات");
+    XLSX.writeFile(wb, "نموذج_شجرة_الحسابات.xlsx");
+  };
+  const importFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      try {
+        const wb = XLSX.read(new Uint8Array(ev.target!.result as ArrayBuffer), { type: "array" });
+        const rows = XLSX.utils.sheet_to_json<any>(wb.Sheets[wb.SheetNames[0]], { defval: "" });
+        const mapped: DB.ImportAccRow[] = [];
+        const errs: string[] = [];
+        rows.forEach((r, i) => {
+          const code = String(pick(r, ["الكود", "الكود المحاسبي", "Code", "code"])).trim();
+          const name = String(pick(r, ["اسم الحساب", "الاسم", "Name", "name"])).trim();
+          if (!code && !name) return;
+          const type = typeFromLabel(String(pick(r, ["النوع", "Type", "type"])));
+          const parent = String(pick(r, ["كود الأب", "الأب", "Parent", "parent"])).trim();
+          const grp = String(pick(r, ["تجميعي", "مجموعة", "Group", "is_group"])).trim().toLowerCase();
+          if (!code) { errs.push(`صف ${i + 2}: كود ناقص`); return; }
+          if (!name) { errs.push(`صف ${i + 2}: اسم ناقص`); return; }
+          if (!type) { errs.push(`صف ${i + 2}: نوع غير معروف`); return; }
+          mapped.push({ code, name, type, parent: parent || null, is_group: /نعم|yes|true|^1$|^y$/.test(grp) });
+        });
+        if (errs.length) { alert("تعذّر الاستيراد:\n" + errs.slice(0, 12).join("\n")); return; }
+        if (!mapped.length) { alert("لم يتم العثور على حسابات صالحة. تأكد من أسماء الأعمدة في النموذج."); return; }
+        setBusy(true);
+        const res = await DB.importChart(org.id, mapped);
+        setBusy(false);
+        if (!res.ok) { alert("تعذّر الحفظ: " + (res.error || "")); return; }
+        await reload();
+        alert(`✓ تم إضافة ${res.added} حساب${res.skipped ? ` · تخطّي ${res.skipped} موجود مسبقًا` : ""}`);
+      } catch { alert("تعذّر قراءة الملف. استخدم نموذج الإكسيل المرفق."); }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+  const exportChart = () => {
+    const byId = new Map(accounts.map((a) => [a.id, a] as const));
+    const aoa: any[][] = [["الكود", "اسم الحساب", "النوع", "كود الأب", "تجميعي"]];
+    [...accounts].sort((a, b) => a.code.localeCompare(b.code)).forEach((a) => {
+      aoa.push([a.code, a.name, DB.TYPE_LABEL[a.type], a.parent_id ? (byId.get(a.parent_id)?.code || "") : "", a.is_group ? "نعم" : "لا"]);
+    });
+    const ws = XLSX.utils.aoa_to_sheet(aoa); ws["!cols"] = [{ wch: 10 }, { wch: 28 }, { wch: 14 }, { wch: 10 }, { wch: 8 }];
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "شجرة الحسابات");
+    XLSX.writeFile(wb, "شجرة_الحسابات.xlsx");
+  };
+
   const renderNode = (a: GLAccount, depth: number): any => {
     const kids = childrenOf.get(a.id) || [];
     return (
@@ -159,6 +228,10 @@ function ChartTab({ org, accounts, reload, busy, setBusy }: { org: { id: number;
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <button onClick={() => setEdit({ type: "asset", is_group: false, is_active: true, parent_id: null })} className="px-4 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-xs">＋ حساب جديد</button>
         {accounts.length === 0 && <button onClick={seed} disabled={busy} className="px-4 py-2.5 rounded-xl bg-blue-600 text-white font-bold text-xs disabled:opacity-50">{busy ? "جارٍ…" : "🌳 تهيئة الشجرة السعودية القياسية"}</button>}
+        <button onClick={downloadTemplate} className="px-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-slate-300 font-bold text-xs">⬇ نموذج Excel</button>
+        <button onClick={() => fileRef.current?.click()} disabled={busy} className="px-3 py-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-300 font-bold text-xs disabled:opacity-50">⬆ رفع شجرة حسابات</button>
+        {accounts.length > 0 && <button onClick={exportChart} className="px-3 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-xs">⬇ تصدير الشجرة</button>}
+        <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) importFile(f); e.target.value = ""; }} />
         <span className="text-[11px] text-slate-500 mr-auto">{accounts.length} حساب</span>
       </div>
 

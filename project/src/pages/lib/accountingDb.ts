@@ -163,6 +163,29 @@ export async function seedStandardChart(orgId: number): Promise<{ ok: boolean; e
   return { ok: true, added: (ins as any[])?.length || toAdd.length };
 }
 
+// استيراد شجرة حسابات من ملف (يضيف الأكواد غير الموجودة ويربط الآباء بالكود)
+export type ImportAccRow = { code: string; name: string; type: AccType; parent?: string | null; is_group?: boolean };
+export async function importChart(orgId: number, rows: ImportAccRow[]): Promise<{ ok: boolean; error?: string; added: number; skipped: number }> {
+  const existing = await fetchAccounts(orgId);
+  const have = new Set(existing.map((a) => a.code));
+  const clean = rows.filter((r) => r.code && String(r.code).trim() && r.name && String(r.name).trim());
+  const toAdd = clean.filter((r) => !have.has(String(r.code).trim()));
+  if (!toAdd.length) return { ok: true, added: 0, skipped: clean.length };
+  const { error: e1 } = await supabase.from("gl_accounts").insert(
+    toAdd.map((r) => ({ organization_id: orgId, code: String(r.code).trim(), name: String(r.name).trim(), type: r.type, is_group: !!r.is_group, parent_id: null }))
+  );
+  if (e1) { console.error("importChart insert", e1); return { ok: false, error: e1.message, added: 0, skipped: 0 }; }
+  const all = await fetchAccounts(orgId);
+  const byCode = new Map(all.map((a) => [a.code, a.id] as const));
+  for (const r of toAdd) {
+    const p = r.parent ? String(r.parent).trim() : "";
+    if (!p) continue;
+    const pid = byCode.get(p); const cid = byCode.get(String(r.code).trim());
+    if (pid && cid) await supabase.from("gl_accounts").update({ parent_id: pid }).eq("id", cid);
+  }
+  return { ok: true, added: toAdd.length, skipped: clean.length - toAdd.length };
+}
+
 // ── القيود اليومية ──
 export async function nextEntryNo(orgId: number, year: number): Promise<number> {
   const { data } = await supabase

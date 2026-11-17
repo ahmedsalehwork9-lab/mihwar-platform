@@ -28,7 +28,9 @@ export type GLEntry = {
   date: string;
   description: string | null;
   branch_id: number | null;
-  status: string;
+  status: string;            // 'posted' | 'draft'
+  entry_type?: string;       // عام/مشتريات/مبيعات/تسوية/سند قبض/سند صرف
+  notes?: string | null;     // ملاحظات عامة
   created_at?: string;
 };
 
@@ -53,6 +55,18 @@ export const TYPE_LABEL: Record<AccType, string> = {
   revenue: "إيرادات",
   expense: "مصروفات",
 };
+
+// أنواع القيود (لتصنيف القيد وتسهيل الفلترة والربط لاحقًا)
+export type EntryType = "general" | "purchases" | "sales" | "settlement" | "receipt" | "payment";
+export const ENTRY_TYPE_LABEL: Record<string, string> = {
+  general: "عام",
+  purchases: "مشتريات",
+  sales: "مبيعات",
+  settlement: "تسوية",
+  receipt: "سند قبض",
+  payment: "سند صرف",
+};
+export const ENTRY_TYPE_OPTS: EntryType[] = ["general", "purchases", "sales", "settlement", "receipt", "payment"];
 
 // ── المؤسسة النشطة من الفرع الحالي ──
 export async function getOrgForBranch(branchId: number | null): Promise<{ id: number; name: string } | null> {
@@ -215,24 +229,77 @@ export async function fetchEntries(orgId: number, from: string, to: string, bran
   return (data as any[]) || [];
 }
 
+// ترويسة القيد (البيانات العامة)
+export type EntryHeader = {
+  date: string;
+  description: string | null;
+  branch_id: number | null;        // مركز التكلفة الافتراضي للقيد
+  entry_type?: string;             // نوع القيد
+  notes?: string | null;           // ملاحظات عامة
+  status?: string;                 // 'posted' (مُرحّل) | 'draft' (مسودة)
+};
+
+function linePayload(entryId: number, header: EntryHeader, lines: GLLine[]) {
+  return lines
+    .filter((l) => l.account_id && (Number(l.debit) || Number(l.credit)))
+    .map((l) => ({
+      entry_id: entryId,
+      account_id: l.account_id,
+      debit: Number(l.debit) || 0,
+      credit: Number(l.credit) || 0,
+      branch_id: l.branch_id ?? header.branch_id,   // مركز تكلفة لكل سطر (fallback لمركز القيد)
+      note: l.note || null,
+    }));
+}
+
 export async function createEntry(
-  orgId: number, date: string, description: string, branchId: number | null, lines: GLLine[]
-): Promise<{ ok: boolean; error?: string }> {
-  const year = Number(date.slice(0, 4));
+  orgId: number, header: EntryHeader, lines: GLLine[]
+): Promise<{ ok: boolean; error?: string; id?: number }> {
+  const year = Number(header.date.slice(0, 4));
   const entry_no = await nextEntryNo(orgId, year);
   const { data: head, error: e1 } = await supabase
     .from("gl_journal_entries")
-    .insert({ organization_id: orgId, entry_no, entry_year: year, date, description: description || null, branch_id: branchId, status: "posted" })
+    .insert({
+      organization_id: orgId, entry_no, entry_year: year, date: header.date,
+      description: header.description || null, branch_id: header.branch_id,
+      entry_type: header.entry_type || "general", notes: header.notes || null,
+      status: header.status || "posted",
+    })
     .select("id")
     .single();
   if (e1 || !head) { console.error("createEntry head", e1); return { ok: false, error: e1?.message }; }
   const eid = (head as any).id;
-  const payload = lines
-    .filter((l) => l.account_id && (Number(l.debit) || Number(l.credit)))
-    .map((l) => ({ entry_id: eid, account_id: l.account_id, debit: Number(l.debit) || 0, credit: Number(l.credit) || 0, branch_id: l.branch_id ?? branchId, note: l.note || null }));
-  const { error: e2 } = await supabase.from("gl_journal_lines").insert(payload);
+  const { error: e2 } = await supabase.from("gl_journal_lines").insert(linePayload(eid, header, lines));
   if (e2) { console.error("createEntry lines", e2); await supabase.from("gl_journal_entries").delete().eq("id", eid); return { ok: false, error: e2.message }; }
+  return { ok: true, id: eid };
+}
+
+// تعديل قيد قائم (يُبقي رقم القيد كما هو، ويستبدل سطوره بالكامل)
+export async function updateEntry(
+  id: number, header: EntryHeader, lines: GLLine[]
+): Promise<{ ok: boolean; error?: string }> {
+  const { error: e0 } = await supabase
+    .from("gl_journal_entries")
+    .update({
+      date: header.date, entry_year: Number(header.date.slice(0, 4)),
+      description: header.description || null, branch_id: header.branch_id,
+      entry_type: header.entry_type || "general", notes: header.notes || null,
+      status: header.status || "posted",
+    })
+    .eq("id", id);
+  if (e0) { console.error("updateEntry head", e0); return { ok: false, error: e0.message }; }
+  const { error: eDel } = await supabase.from("gl_journal_lines").delete().eq("entry_id", id);
+  if (eDel) { console.error("updateEntry delLines", eDel); return { ok: false, error: eDel.message }; }
+  const { error: e2 } = await supabase.from("gl_journal_lines").insert(linePayload(id, header, lines));
+  if (e2) { console.error("updateEntry lines", e2); return { ok: false, error: e2.message }; }
   return { ok: true };
+}
+
+// تغيير حالة القيد (ترحيل مسودة / إعادتها مسودة)
+export async function setEntryStatus(id: number, status: string): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.from("gl_journal_entries").update({ status }).eq("id", id);
+  if (error) console.error("setEntryStatus", error);
+  return { ok: !error, error: error?.message };
 }
 
 export async function deleteEntry(id: number): Promise<{ ok: boolean; error?: string }> {

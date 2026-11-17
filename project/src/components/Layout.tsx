@@ -48,8 +48,14 @@ export type Page =
   | 'inventory'
   | 'orders'
   | 'reports'
+  | 'sales'
+  | 'pos'
   | 'sales-reconciliation'
+  | 'quotation'
   | 'purchases'
+  | 'purchase-orders'
+  | 'purchase-reconciliation'
+  | 'purchase-returns'
   | 'fixed-expenses'
   | 'financial-report'
   | 'reports-center'
@@ -76,8 +82,14 @@ const pageTitles: Record<Page, { en: string; ar: string }> = {
   'inventory':       { en: 'Inventory',        ar: 'المخزون'         },
   'orders':          { en: 'Orders',           ar: 'الطلبات'         },
   'reports':         { en: 'Reports',          ar: 'التقارير'        },
+  'sales':           { en: 'Sales',            ar: 'المبيعات'        },
+  'pos':             { en: 'POS',              ar: 'نقاط البيع'      },
   'sales-reconciliation': { en: 'Sales Reconciliation', ar: 'تسوية المبيعات' },
+  'quotation':       { en: 'Quotation',        ar: 'عرض سعر'         },
   purchases: { en: 'Purchases', ar: 'المشتريات' },
+  'purchase-orders': { en: 'Purchase Orders',  ar: 'أوامر الشراء'    },
+  'purchase-reconciliation': { en: 'Purchase Reconciliation', ar: 'تسوية المشتريات' },
+  'purchase-returns':{ en: 'Purchase Returns',  ar: 'مرتجعات المشتريات' },
   'fixed-expenses': { en: 'Fixed Expenses', ar: 'المصروفات الثابتة' },
   'financial-report': { en: 'Financial Report', ar: 'التقرير المالي' },
   'reports-center':  { en: 'Reports Center',   ar: 'مركز التقارير'   },
@@ -116,14 +128,6 @@ type LayoutProps = {
   setAccSection?: (s: string) => void;
   children: React.ReactNode;
 };
-
-// الأقسام الفرعية لوحدة الحسابات (تظهر في الشريط تحت «الحسابات»)
-const ACC_SUBS: { k: string; en: string; ar: string }[] = [
-  { k: 'journal', en: 'Journal',       ar: 'القيود اليومية' },
-  { k: 'chart',   en: 'Chart',         ar: 'دليل الحسابات' },
-  { k: 'ledger',  en: 'Ledger',        ar: 'كشف حساب' },
-  { k: 'trial',   en: 'Trial Balance', ar: 'ميزان المراجعة' },
-];
 
 type NavItem = {
   id: Page;
@@ -182,6 +186,56 @@ const navSections: NavSection[] = [
     ],
   },
 ];
+
+// ══════════════════════════════════════════════════════════════════════
+// OPERATIONS NAV (مجموعات قابلة للتوسّع لغير الأدمن)
+// ══════════════════════════════════════════════════════════════════════
+type OpChild = { labelEn: string; labelAr: string; page?: Page; section?: string; placeholder?: boolean };
+type OpEntry =
+  | { type: 'item'; id: Page; icon: React.ReactNode; labelEn: string; labelAr: string }
+  | { type: 'group'; key: string; icon: React.ReactNode; labelEn: string; labelAr: string; homePage?: Page; homeSection?: string; children: OpChild[] };
+
+const OPERATIONS: OpEntry[] = [
+  { type: 'item', id: 'dashboard', icon: <LayoutDashboard size={17} />, labelEn: 'Dashboard', labelAr: 'الرئيسية' },
+  { type: 'item', id: 'search',    icon: <Search size={17} />,          labelEn: 'Store',     labelAr: 'المتجر' },
+  { type: 'item', id: 'inventory', icon: <Package size={17} />,         labelEn: 'Inventory', labelAr: 'المخزون' },
+  { type: 'item', id: 'orders',    icon: <ShoppingCart size={17} />,    labelEn: 'Orders',    labelAr: 'الطلبات' },
+
+  { type: 'group', key: 'sales', icon: <TrendingUp size={17} />, labelEn: 'Sales', labelAr: 'المبيعات', homePage: 'sales-reconciliation', children: [
+    { labelEn: 'Sales',                labelAr: 'المبيعات',       page: 'sales',                placeholder: true },
+    { labelEn: 'POS',                  labelAr: 'نقاط البيع',     page: 'pos',                  placeholder: true },
+    { labelEn: 'Sales Reconciliation', labelAr: 'تسوية المبيعات', page: 'sales-reconciliation' },
+    { labelEn: 'Quotation',            labelAr: 'عرض سعر',        page: 'quotation',            placeholder: true },
+  ] },
+
+  { type: 'group', key: 'purchases', icon: <ShoppingBag size={17} />, labelEn: 'Purchases', labelAr: 'المشتريات', homePage: 'purchases', children: [
+    { labelEn: 'Purchases',               labelAr: 'المشتريات',       page: 'purchases' },
+    { labelEn: 'Purchase Orders',         labelAr: 'أوامر الشراء',    page: 'purchase-orders',         placeholder: true },
+    { labelEn: 'Purchase Reconciliation', labelAr: 'تسوية المشتريات', page: 'purchase-reconciliation', placeholder: true },
+    { labelEn: 'Purchase Returns',        labelAr: 'مرتجعات',         page: 'purchase-returns',        placeholder: true },
+  ] },
+
+  { type: 'group', key: 'reports', icon: <FileBarChart size={17} />, labelEn: 'Reports', labelAr: 'التقارير', homePage: 'reports', children: [
+    { labelEn: 'Reports',          labelAr: 'التقارير',       page: 'reports' },
+    { labelEn: 'Financial Report', labelAr: 'التقرير المالي', page: 'financial-report' },
+    { labelEn: 'Reports Center',   labelAr: 'مركز التقارير',  page: 'reports-center' },
+  ] },
+
+  { type: 'item', id: 'fixed-expenses', icon: <Landmark size={17} />, labelEn: 'Fixed Expenses', labelAr: 'المصروفات الثابتة' },
+
+  { type: 'group', key: 'accounting', icon: <Calculator size={17} />, labelEn: 'Accounting', labelAr: 'الحسابات', homePage: 'accounting', homeSection: 'journal', children: [
+    { labelEn: 'Journal',       labelAr: 'القيود اليومية', section: 'journal' },
+    { labelEn: 'Chart',         labelAr: 'دليل الحسابات',  section: 'chart' },
+    { labelEn: 'Ledger',        labelAr: 'كشف حساب',       section: 'ledger' },
+    { labelEn: 'Trial Balance', labelAr: 'ميزان المراجعة', section: 'trial' },
+  ] },
+
+  { type: 'item', id: 'alerts',        icon: <Bell size={17} />,   labelEn: 'Alerts',        labelAr: 'التنبيهات' },
+  { type: 'item', id: 'shop-settings', icon: <QrCode size={17} />, labelEn: 'Shop Settings', labelAr: 'إعدادات الفرع' },
+];
+
+// صفحات «قريبًا» — مسموح بها للجميع دون صلاحية خاصة (حتى لا يعيد التوجيه طردها)
+const PLACEHOLDER_PAGES: Page[] = ['sales', 'pos', 'quotation', 'purchase-orders', 'purchase-reconciliation', 'purchase-returns'];
 
 // ══════════════════════════════════════════════════════════════════════
 // BOTTOM NAV
@@ -273,7 +327,7 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
   }, [ownedShopId]);
 
   useEffect(() => {
-    if (!isAdmin && permissions && !permissions.includes(page)) {
+    if (!isAdmin && permissions && !permissions.includes(page) && !PLACEHOLDER_PAGES.includes(page)) {
       if (permissions[0]) setPage(permissions[0] as Page);
     }
   }, [permissions, isAdmin, page]);
@@ -310,44 +364,16 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
 
         {/* Nav */}
         <nav className="flex-1 min-h-0 px-2 py-3 overflow-y-auto space-y-0.5">
-          {visibleSections.map((section, idx) => {
-            const visibleItems = isAdmin
-              ? section.items.filter((item) => item.adminOnly)
-              : section.items.filter((item) => !item.adminOnly && (!permissions || permissions.includes(item.id)));
-            if (visibleItems.length === 0) return null;
-            return (
-              <div key={section.titleEn}>
-                {idx > 0 && <SidebarDivider />}
-                <SectionLabel label={t(section.titleEn, section.titleAr)} />
-                <div className="space-y-0.5 px-1">
-                  {visibleItems.map((item) => (
-                    item.id === 'accounting' ? (
-                      <div key={item.id} className="space-y-0.5">
-                        <NavButton
-                          item={item}
-                          isActive={page === item.id}
-                          label={t(item.label, item.labelAr)}
-                          onClick={() => { setPage('accounting'); setSidebarOpen(false); }}
-                        />
-                        {page === 'accounting' && (
-                          <div className="mr-4 pr-2 border-r-2 border-slate-700/50 space-y-0.5">
-                            {ACC_SUBS.map((s) => {
-                              const active = (accSection || 'journal') === s.k;
-                              return (
-                                <button
-                                  key={s.k}
-                                  onClick={() => { setAccSection?.(s.k); setPage('accounting'); setSidebarOpen(false); }}
-                                  className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${active ? 'bg-blue-500/15 text-blue-300' : 'text-slate-500 hover:text-slate-200 hover:bg-slate-800/50'}`}
-                                >
-                                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${active ? 'bg-blue-400' : 'bg-slate-600'}`} />
-                                  <span className="flex-1 text-right">{t(s.en, s.ar)}</span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    ) : (
+          {isAdmin ? (
+            visibleSections.map((section, idx) => {
+              const visibleItems = section.items.filter((item) => item.adminOnly);
+              if (visibleItems.length === 0) return null;
+              return (
+                <div key={section.titleEn}>
+                  {idx > 0 && <SidebarDivider />}
+                  <SectionLabel label={t(section.titleEn, section.titleAr)} />
+                  <div className="space-y-0.5 px-1">
+                    {visibleItems.map((item) => (
                       <NavButton
                         key={item.id}
                         item={item}
@@ -355,12 +381,79 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
                         label={t(item.label, item.labelAr)}
                         onClick={() => { setPage(item.id); setSidebarOpen(false); }}
                       />
-                    )
-                  ))}
+                    ))}
+                  </div>
                 </div>
+              );
+            })
+          ) : (
+            <div>
+              <SectionLabel label={t('Operations', 'العمليات')} />
+              <div className="space-y-0.5 px-1">
+                {OPERATIONS.map((entry) => {
+                  // عنصر مفرد
+                  if (entry.type === 'item') {
+                    if (permissions && !permissions.includes(entry.id)) return null;
+                    return (
+                      <NavButton
+                        key={entry.id}
+                        item={{ id: entry.id, icon: entry.icon, label: entry.labelEn, labelAr: entry.labelAr, adminOnly: false }}
+                        isActive={page === entry.id}
+                        label={t(entry.labelEn, entry.labelAr)}
+                        onClick={() => { setPage(entry.id); setSidebarOpen(false); }}
+                      />
+                    );
+                  }
+                  // مجموعة قابلة للتوسّع
+                  const isAcc = !!entry.homeSection;
+                  const groupVisible = isAcc
+                    ? (!permissions || permissions.includes('accounting'))
+                    : entry.children.some((c) => c.page && !c.placeholder && (!permissions || permissions.includes(c.page)));
+                  if (!groupVisible) return null;
+
+                  const childActive = (c: OpChild) =>
+                    c.section ? (page === 'accounting' && (accSection || 'journal') === c.section) : (page === c.page);
+                  const groupActive = entry.children.some(childActive);
+                  const childVisible = (c: OpChild) =>
+                    c.section ? true : (c.placeholder ? true : (!permissions || permissions.includes(c.page!)));
+                  const onParent = () => {
+                    if (entry.homeSection) { setAccSection?.(entry.homeSection); setPage('accounting'); }
+                    else if (entry.homePage) { setPage(entry.homePage); }
+                    setSidebarOpen(false);
+                  };
+
+                  return (
+                    <div key={entry.key} className="space-y-0.5">
+                      <NavButton
+                        item={{ id: (entry.homePage || 'accounting') as Page, icon: entry.icon, label: entry.labelEn, labelAr: entry.labelAr, adminOnly: false }}
+                        isActive={groupActive}
+                        label={t(entry.labelEn, entry.labelAr)}
+                        onClick={onParent}
+                      />
+                      {groupActive && (
+                        <div className="mr-4 pr-2 border-r-2 border-slate-700/50 space-y-0.5">
+                          {entry.children.filter(childVisible).map((c, i) => {
+                            const active = childActive(c);
+                            return (
+                              <button
+                                key={i}
+                                onClick={() => { if (c.section) { setAccSection?.(c.section); setPage('accounting'); } else { setPage(c.page!); } setSidebarOpen(false); }}
+                                className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${active ? 'bg-blue-500/15 text-blue-300' : 'text-slate-500 hover:text-slate-200 hover:bg-slate-800/50'}`}
+                              >
+                                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${active ? 'bg-blue-400' : 'bg-slate-600'}`} />
+                                <span className="flex-1 text-right">{t(c.labelEn, c.labelAr)}</span>
+                                {c.placeholder && <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-slate-700/50 text-slate-400 flex-shrink-0">قريبًا</span>}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
+            </div>
+          )}
         </nav>
 
         {/* Footer */}

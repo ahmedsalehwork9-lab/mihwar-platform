@@ -62,6 +62,19 @@ function AccessDenied() {
   );
 }
 
+// صفحة «قيد التطوير» للبنود الجديدة قبل بنائها
+function ComingSoon({ title }: { title: string }) {
+  return (
+    <div className="p-4 lg:p-6 min-h-screen" dir="rtl">
+      <div className="max-w-lg mx-auto mt-10 bg-slate-900 border border-slate-800 rounded-2xl p-10 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-blue-500/10 text-blue-400 flex items-center justify-center mx-auto mb-4 text-3xl">🚧</div>
+        <h2 className="text-white font-black text-xl mb-2">{title}</h2>
+        <p className="text-slate-500 text-sm">هذه الصفحة قيد التطوير — قريبًا بإذن الله.</p>
+      </div>
+    </div>
+  );
+}
+
 // ── App content ─────────────────────────────────────────────────────────────
 function AppContent() {
   const { session, loading, isAdmin } = useAuth();
@@ -118,6 +131,14 @@ function AppContent() {
           {page === 'financial-report' && <FinancialReportPage />}
           {page === 'reports-center' && <ReportsHubPage setPage={setPage} />}
           {page === 'accounting' && <AccountingPage section={accSection} onSection={setAccSection} />}
+
+          {/* صفحات قيد التطوير (مجموعات المبيعات/المشتريات) */}
+          {page === 'sales' && <ComingSoon title="المبيعات" />}
+          {page === 'pos' && <ComingSoon title="نقاط البيع" />}
+          {page === 'quotation' && <ComingSoon title="عرض سعر" />}
+          {page === 'purchase-orders' && <ComingSoon title="أوامر الشراء" />}
+          {page === 'purchase-reconciliation' && <ComingSoon title="تسوية المشتريات" />}
+          {page === 'purchase-returns' && <ComingSoon title="مرتجعات المشتريات" />}
 
           {/* ADMIN */}
           {page === 'admin' &&

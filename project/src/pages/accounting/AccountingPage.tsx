@@ -185,6 +185,66 @@ function AccountPicker({ value, onChange, options, placeholder = "— اختر �
   );
 }
 
+// حساب الذمة الفعلي لطرف: حسابه الخاص، وإلا حساب مركزه (الأب)
+function resolvePartyAccount(p: DB.GLParty, all: DB.GLParty[]): number | null {
+  if (p.account_id) return p.account_id;
+  if (p.parent_id) { const parent = all.find((x) => x.id === p.parent_id); return parent?.account_id ?? null; }
+  return null;
+}
+
+// منتقي طرف (عميل/مورد) قابل للبحث — يُستخدم في القيود والسندات
+function PartyPicker({ parties, onPick, value, placeholder = "— اختر طرف", size = "md", compact = false }: {
+  parties: DB.GLParty[]; onPick: (p: DB.GLParty) => void; value?: number | ""; placeholder?: string; size?: "sm" | "md"; compact?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
+  const actives = useMemo(() => parties.filter((p) => p.is_active !== false), [parties]);
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return actives;
+    return actives.filter((p) => (p.name + " " + (p.phone || "")).toLowerCase().includes(s));
+  }, [q, actives]);
+  const selected = value ? parties.find((p) => p.id === value) : null;
+  const openIt = () => { const r = btnRef.current?.getBoundingClientRect(); if (r) setRect({ top: r.bottom + 4, left: r.left, width: r.width }); setQ(""); setOpen(true); };
+  const pick = (p: DB.GLParty) => { onPick(p); setOpen(false); };
+  const nameOf = (id: number | null) => (id == null ? "" : parties.find((x) => x.id === id)?.name || "");
+  return (
+    <>
+      {compact ? (
+        <button ref={btnRef} type="button" onClick={openIt} title="اختيار عميل/مورد" className="w-8 h-8 shrink-0 rounded-lg bg-blue-500/10 text-blue-300 flex items-center justify-center hover:bg-blue-500/20"><Users size={14} /></button>
+      ) : (
+        <button ref={btnRef} type="button" onClick={openIt} className={(size === "sm" ? "w-full bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs" : "w-full bg-slate-950 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm") + " outline-none focus:border-blue-500 text-right flex items-center gap-1"}>
+          <span className={`flex-1 truncate ${selected ? "" : "text-slate-500"}`}>{selected ? selected.name : placeholder}</span>
+          <ChevronLeft size={12} className="text-slate-500 -rotate-90 shrink-0" />
+        </button>
+      )}
+      {open && rect && (
+        <div className="fixed inset-0 z-[95]" onClick={() => setOpen(false)}>
+          <div className="absolute bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden" style={{ top: rect.top, left: compact ? Math.max(8, rect.left - 220) : rect.left, width: compact ? 260 : Math.max(rect.width, 240), maxWidth: "90vw" }} onClick={(e) => e.stopPropagation()} dir="rtl">
+            <div className="flex items-center gap-2 px-2.5 py-2 border-b border-slate-800">
+              <Search size={13} className="text-slate-500 shrink-0" />
+              <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (filtered[0]) pick(filtered[0]); } else if (e.key === "Escape") setOpen(false); }} placeholder="ابحث باسم العميل/المورد…" className="flex-1 bg-transparent text-white text-xs outline-none placeholder:text-slate-600" />
+            </div>
+            <div className="max-h-60 overflow-y-auto py-1">
+              {filtered.length === 0 ? <div className="px-3 py-3 text-center text-slate-500 text-xs">لا نتائج — أضِف الطرف من «العملاء والموردين»</div> : (
+                filtered.map((p) => (
+                  <button key={p.id} type="button" onClick={() => pick(p)} className={`w-full flex items-center gap-2 px-3 py-1.5 text-right text-xs hover:bg-slate-800/60 ${p.id === value ? "bg-blue-500/10" : ""}`}>
+                    <span className="flex-1 text-slate-200 truncate">{p.name}</span>
+                    <span className="text-[9px] text-slate-500">{p.type === "customer" ? "عميل" : "مورد"}</span>
+                    {p.parent_id != null && <span className="text-[9px] text-blue-300/70 truncate">تحت {nameOf(p.parent_id)}</span>}
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function AccountingPage({ section, onSection }: { section?: string; onSection?: (s: string) => void } = {}) {
   const { ownedShopId, branches } = (useAuth() as any) ?? {};
   const [org, setOrg] = useState<{ id: number; name: string } | null>(null);
@@ -217,6 +277,10 @@ export default function AccountingPage({ section, onSection }: { section?: strin
     supabase.from("shops").select("shop_name, logo_url, tax_number, commercial_registration, phone, address").eq("id", ownedShopId).single()
       .then(({ data }) => setShopInfo(data || null));
   }, [ownedShopId]);
+
+  // قائمة الأطراف (عملاء/موردين) — لاختيارها داخل القيود والسندات
+  const [parties, setParties] = useState<DB.GLParty[]>([]);
+  useEffect(() => { if (org) DB.fetchParties(org.id).then(setParties); }, [org]);
 
   const postable = useMemo(() => accounts.filter((a) => !a.is_group).sort((a, b) => a.code.localeCompare(b.code)), [accounts]);
   const accById = useMemo(() => new Map(accounts.map((a) => [a.id, a] as const)), [accounts]);
@@ -265,11 +329,11 @@ export default function AccountingPage({ section, onSection }: { section?: strin
       </div>
 
       {tab === "chart" && <ChartTab org={org} accounts={accounts} reload={reloadAccounts} busy={busy} setBusy={setBusy} />}
-      {tab === "journal" && <JournalTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} />}
+      {tab === "journal" && <JournalTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} parties={parties} />}
       {tab === "ledger" && <LedgerTab org={org} postable={postable} accounts={accounts} accById={accById} branches={branches} branchName={branchName} shop={shopInfo} />}
       {tab === "trial" && <TrialTab org={org} accById={accById} postable={postable} branches={branches} />}
       {tab === "assets" && <AssetsTab org={org} postable={postable} branches={branches} branchName={branchName} />}
-      {tab === "treasury" && <TreasuryTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} />}
+      {tab === "treasury" && <TreasuryTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} parties={parties} />}
       {tab === "parties" && <PartiesTab org={org} postable={postable} accounts={accounts} accById={accById} branches={branches} shop={shopInfo} />}
     </div>
   );
@@ -486,7 +550,7 @@ function ChartTab({ org, accounts, reload, busy, setBusy }: { org: { id: number;
 type DraftLine = { account_id: number | ""; debit: string; credit: string; branch_id: number | ""; note: string };
 const emptyLine = (): DraftLine => ({ account_id: "", debit: "", credit: "", branch_id: "", note: "" });
 
-function JournalTab({ org, postable, accById, branches, branchName }: any) {
+function JournalTab({ org, postable, accById, branches, branchName, parties }: any) {
   const multiBranch = branches && branches.length > 1;
 
   // فلاتر العرض
@@ -693,7 +757,10 @@ function JournalTab({ org, postable, accById, branches, branchName }: any) {
                     <td className="px-2 py-1.5"><input type="number" step="0.01" value={l.debit} onChange={(e) => setLine(i, { debit: e.target.value, credit: e.target.value ? "" : l.credit })} placeholder="0" className="w-28 bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr] outline-none focus:border-emerald-500" /></td>
                     <td className="px-2 py-1.5"><input type="number" step="0.01" value={l.credit} onChange={(e) => setLine(i, { credit: e.target.value, debit: e.target.value ? "" : l.debit })} placeholder="0" className="w-28 bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr] outline-none focus:border-amber-500" /></td>
                     {multiBranch && <td className="px-2 py-1.5"><select value={l.branch_id} onChange={(e) => setLine(i, { branch_id: e.target.value ? Number(e.target.value) : "" })} className="w-full min-w-[120px] bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs outline-none focus:border-blue-500"><option value="">افتراضي</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></td>}
-                    <td className="px-2 py-1.5"><input value={l.note} onChange={(e) => setLine(i, { note: e.target.value })} placeholder="—" className="w-full min-w-[110px] bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs outline-none focus:border-blue-500" /></td>
+                    <td className="px-2 py-1.5"><div className="flex items-center gap-1">
+                      <PartyPicker parties={parties} compact onPick={(p) => { const acc = resolvePartyAccount(p, parties); if (!acc) { alert("هذا الطرف غير مرتبط بحساب ذمة (ولا مركزه). حدّد حساب الذمة في «العملاء والموردين» أولًا."); return; } setLine(i, { account_id: acc, note: p.name }); }} />
+                      <input value={l.note} onChange={(e) => setLine(i, { note: e.target.value })} placeholder="— أو اختر طرف" className="w-full min-w-[110px] bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs outline-none focus:border-blue-500" />
+                    </div></td>
                     <td className="px-2 py-1.5 text-center"><button onClick={() => setLines((p) => (p.length > 2 ? p.filter((_, idx) => idx !== i) : p))} title="حذف السطر" className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400 flex items-center justify-center mx-auto hover:bg-red-500/20"><X size={13} /></button></td>
                   </tr>
                 ))}
@@ -1138,7 +1205,7 @@ function AssetsTab({ org, postable, branches, branchName }: any) {
 // ══════════════ الخزن والبنوك + سندات القبض/الصرف ══════════════
 const PAY_METHODS = ["نقدًا", "تحويل بنكي", "شيك", "بطاقة", "أخرى"];
 
-function TreasuryTab({ org, postable, accById, branches, branchName: _branchName }: any) {
+function TreasuryTab({ org, postable, accById, branches, branchName: _branchName, parties }: any) {
   const multiBranch = branches && branches.length > 1;
   const [fBranch, setFBranch] = useState<string>("");
   const [treasuries, setTreasuries] = useState<DB.GLTreasury[]>([]);
@@ -1154,6 +1221,7 @@ function TreasuryTab({ org, postable, accById, branches, branchName: _branchName
   const [vAmount, setVAmount] = useState<string>("");
   const [vDate, setVDate] = useState<string>(today());
   const [vParty, setVParty] = useState<string>("");
+  const [vPartyId, setVPartyId] = useState<number | "">("");
   const [vMethod, setVMethod] = useState<string>("نقدًا");
   const [vDesc, setVDesc] = useState<string>("");
   const [vBranch, setVBranch] = useState<string>("");
@@ -1242,7 +1310,7 @@ function TreasuryTab({ org, postable, accById, branches, branchName: _branchName
       }
     }
     setSaving(false);
-    setVAmount(""); setVParty(""); setVDesc(""); setVCounterId(""); setPendingFiles([]);
+    setVAmount(""); setVParty(""); setVDesc(""); setVCounterId(""); setVPartyId(""); setPendingFiles([]);
     await reloadT(); await reloadV();
     alert("✓ تم حفظ السند وترحيله للدفتر");
   };
@@ -1311,7 +1379,8 @@ function TreasuryTab({ org, postable, accById, branches, branchName: _branchName
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
           <div><label className={LABEL}>الخزنة / البنك</label><select value={vTreasuryId} onChange={(e) => setVTreasuryId(e.target.value)} className={SELECT}><option value="">— اختر</option>{treasuries.filter((t) => t.is_active).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
-          <div><label className={LABEL}>{vKind === "receipt" ? "الحساب المقابل (المصدر)" : "الحساب المقابل (الجهة)"}</label><AccountPicker value={vCounterId ? Number(vCounterId) : ""} onChange={(v) => setVCounterId(v === "" ? "" : String(v))} options={counterOptions} size="md" /></div>
+          <div><label className={LABEL}>العميل/المورد (اختياري — يحدّد الحساب تلقائيًا)</label><PartyPicker parties={parties} value={vPartyId} placeholder="— بدون" size="md" onPick={(p) => { const acc = resolvePartyAccount(p, parties); if (!acc) { alert("هذا الطرف غير مرتبط بحساب ذمة (ولا مركزه)."); return; } setVPartyId(p.id); setVCounterId(String(acc)); setVParty(p.name); }} /></div>
+          <div><label className={LABEL}>{vKind === "receipt" ? "الحساب المقابل (المصدر)" : "الحساب المقابل (الجهة)"}</label><AccountPicker value={vCounterId ? Number(vCounterId) : ""} onChange={(v) => { setVCounterId(v === "" ? "" : String(v)); setVPartyId(""); }} options={counterOptions} size="md" /></div>
           <div><label className={LABEL}>المبلغ</label><input type="number" step="0.01" value={vAmount} onChange={(e) => setVAmount(e.target.value)} placeholder="0.00" className={INPUT + " [direction:ltr] text-center font-mono"} /></div>
           <div><label className={LABEL}>التاريخ</label><input type="date" value={vDate} onChange={(e) => setVDate(e.target.value)} className={DATE} /></div>
           <div><label className={LABEL}>الطرف (من/إلى)</label><input value={vParty} onChange={(e) => setVParty(e.target.value)} placeholder="اسم العميل/المورد…" className={INPUT} /></div>

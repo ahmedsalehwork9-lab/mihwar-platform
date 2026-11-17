@@ -198,18 +198,31 @@ function PartyPicker({ parties, onPick, value, placeholder = "— اختر طر�
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
+  const [drill, setDrill] = useState<DB.GLParty | null>(null);   // المركز المفتوح لعرض فروعه
   const btnRef = useRef<HTMLButtonElement>(null);
   const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
   const actives = useMemo(() => parties.filter((p) => p.is_active !== false), [parties]);
-  const filtered = useMemo(() => {
+  const childrenOf = useMemo(() => {
+    const m = new Map<number, DB.GLParty[]>();
+    actives.forEach((p) => { if (p.parent_id != null) { if (!m.has(p.parent_id)) m.set(p.parent_id, []); m.get(p.parent_id)!.push(p); } });
+    return m;
+  }, [actives]);
+  const topLevel = useMemo(() => actives.filter((p) => p.parent_id == null), [actives]);
+  const searching = q.trim().length > 0;
+  const searchResults = useMemo(() => {
     const s = q.trim().toLowerCase();
-    if (!s) return actives;
     return actives.filter((p) => (p.name + " " + (p.phone || "")).toLowerCase().includes(s));
   }, [q, actives]);
   const selected = value ? parties.find((p) => p.id === value) : null;
-  const openIt = () => { const r = btnRef.current?.getBoundingClientRect(); if (r) setRect({ top: r.bottom + 4, left: r.left, width: r.width }); setQ(""); setOpen(true); };
+  const openIt = () => { const r = btnRef.current?.getBoundingClientRect(); if (r) setRect({ top: r.bottom + 4, left: r.left, width: r.width }); setQ(""); setDrill(null); setOpen(true); };
   const pick = (p: DB.GLParty) => { onPick(p); setOpen(false); };
   const nameOf = (id: number | null) => (id == null ? "" : parties.find((x) => x.id === id)?.name || "");
+  const leaf = (p: DB.GLParty, hint: string) => (
+    <button key={p.id} type="button" onClick={() => pick(p)} className={`w-full flex items-center gap-2 px-3 py-1.5 text-right text-xs hover:bg-slate-800/60 ${p.id === value ? "bg-blue-500/10" : ""}`}>
+      <span className="flex-1 text-slate-200 truncate">{p.name}</span>
+      <span className="text-[9px] text-slate-500">{hint}</span>
+    </button>
+  );
   return (
     <>
       {compact ? (
@@ -222,22 +235,47 @@ function PartyPicker({ parties, onPick, value, placeholder = "— اختر طر�
       )}
       {open && rect && (
         <div className="fixed inset-0 z-[95]" onClick={() => setOpen(false)}>
-          <div className="absolute bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden" style={{ top: rect.top, left: compact ? Math.max(8, rect.left - 220) : rect.left, width: compact ? 260 : Math.max(rect.width, 240), maxWidth: "90vw" }} onClick={(e) => e.stopPropagation()} dir="rtl">
+          <div className="absolute bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden" style={{ top: rect.top, left: compact ? Math.max(8, rect.left - 220) : rect.left, width: compact ? 270 : Math.max(rect.width, 250), maxWidth: "90vw" }} onClick={(e) => e.stopPropagation()} dir="rtl">
             <div className="flex items-center gap-2 px-2.5 py-2 border-b border-slate-800">
               <Search size={13} className="text-slate-500 shrink-0" />
-              <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (filtered[0]) pick(filtered[0]); } else if (e.key === "Escape") setOpen(false); }} placeholder="ابحث باسم العميل/المورد…" className="flex-1 bg-transparent text-white text-xs outline-none placeholder:text-slate-600" />
+              <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (searchResults[0]) pick(searchResults[0]); } else if (e.key === "Escape") setOpen(false); }} placeholder="ابحث باسم العميل/المورد…" className="flex-1 bg-transparent text-white text-xs outline-none placeholder:text-slate-600" />
             </div>
             <div className="max-h-60 overflow-y-auto py-1">
-              {filtered.length === 0 ? <div className="px-3 py-3 text-center text-slate-500 text-xs">لا نتائج — أضِف الطرف من «العملاء والموردين»</div> : (
-                filtered.map((p) => (
-                  <button key={p.id} type="button" onClick={() => pick(p)} className={`w-full flex items-center gap-2 px-3 py-1.5 text-right text-xs hover:bg-slate-800/60 ${p.id === value ? "bg-blue-500/10" : ""}`}>
-                    <span className="flex-1 text-slate-200 truncate">{p.name}</span>
-                    <span className="text-[9px] text-slate-500">{p.type === "customer" ? "عميل" : "مورد"}</span>
-                    {p.parent_id != null && <span className="text-[9px] text-blue-300/70 truncate">تحت {nameOf(p.parent_id)}</span>}
-                  </button>
-                ))
+              {searching ? (
+                searchResults.length === 0
+                  ? <div className="px-3 py-3 text-center text-slate-500 text-xs">لا نتائج — أضِف الطرف من «العملاء والموردين»</div>
+                  : searchResults.map((p) => (
+                      <button key={p.id} type="button" onClick={() => pick(p)} className={`w-full flex items-center gap-2 px-3 py-1.5 text-right text-xs hover:bg-slate-800/60 ${p.id === value ? "bg-blue-500/10" : ""}`}>
+                        <span className="flex-1 text-slate-200 truncate">{p.name}</span>
+                        <span className="text-[9px] text-slate-500">{p.type === "customer" ? "عميل" : "مورد"}</span>
+                        {p.parent_id != null && <span className="text-[9px] text-blue-300/70 truncate">تحت {nameOf(p.parent_id)}</span>}
+                      </button>
+                    ))
+              ) : drill ? (
+                <>
+                  <button type="button" onClick={() => setDrill(null)} className="w-full flex items-center gap-1 px-3 py-1.5 text-right text-[11px] text-blue-300 hover:bg-slate-800/60 border-b border-slate-800"><ChevronLeft size={12} /> رجوع للكل</button>
+                  <div className="px-3 py-1 text-[9px] text-slate-500">فروع {drill.name}</div>
+                  {drill.account_id ? leaf(drill, "المركز نفسه") : null}
+                  {(childrenOf.get(drill.id) || []).map((c) => leaf(c, "فرعي"))}
+                  {(childrenOf.get(drill.id) || []).length === 0 && !drill.account_id && <div className="px-3 py-3 text-center text-slate-500 text-xs">لا فروع</div>}
+                </>
+              ) : (
+                topLevel.length === 0
+                  ? <div className="px-3 py-3 text-center text-slate-500 text-xs">لا عملاء/موردين — أضِفهم من «العملاء والموردين»</div>
+                  : topLevel.map((p) => {
+                      const kids = childrenOf.get(p.id) || [];
+                      return kids.length > 0 ? (
+                        <button key={p.id} type="button" onClick={() => setDrill(p)} className="w-full flex items-center gap-2 px-3 py-1.5 text-right text-xs hover:bg-slate-800/60">
+                          <Users size={12} className="text-blue-400/70 shrink-0" />
+                          <span className="flex-1 text-slate-200 truncate font-medium">{p.name}</span>
+                          <span className="text-[9px] text-slate-500">{kids.length} فرعي</span>
+                          <ChevronLeft size={12} className="text-slate-500 shrink-0" />
+                        </button>
+                      ) : leaf(p, p.type === "customer" ? "عميل" : "مورد");
+                    })
               )}
             </div>
+            {!searching && !drill && <div className="px-3 py-1.5 text-[9px] text-slate-500 border-t border-slate-800">اختر المركز لعرض فروعه · أو ابحث بالاسم مباشرة</div>}
           </div>
         </div>
       )}

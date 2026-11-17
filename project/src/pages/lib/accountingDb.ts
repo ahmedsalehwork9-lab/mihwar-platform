@@ -42,6 +42,7 @@ export type GLLine = {
   credit: number;
   branch_id?: number | null;
   note?: string | null;
+  party_id?: number | null;   // وسم الطرف (عميل/مورد فرعي) لتفصيل كشفه
 };
 
 // طبيعة الحساب (مدين/دائن) حسب النوع
@@ -253,6 +254,7 @@ function linePayload(entryId: number, header: EntryHeader, lines: GLLine[]) {
       credit: Number(l.credit) || 0,
       branch_id: l.branch_id ?? header.branch_id,   // مركز تكلفة لكل سطر (fallback لمركز القيد)
       note: l.note || null,
+      party_id: l.party_id ?? null,
     }));
 }
 
@@ -377,24 +379,26 @@ export async function deleteEntry(id: number): Promise<{ ok: boolean; error?: st
 }
 
 // حركة حساب (لكشف الحساب) ضمن فترة — ترجع السطور مع تاريخ ووصف القيد
-export type LedgerLine = { date: string; entry_no: number; description: string | null; branch_id: number | null; account_id: number; debit: number; credit: number; note: string | null };
+export type LedgerLine = { date: string; entry_no: number; description: string | null; branch_id: number | null; account_id: number; party_id: number | null; debit: number; credit: number; note: string | null };
 
 // كشف حركة عدة حسابات معًا (يُستخدم لتجميع حركة حساب أب وكل فروعه)
-export async function fetchLedgerMulti(orgId: number, accountIds: number[], from: string, to: string, branchId?: number | null): Promise<LedgerLine[]> {
+// partyId اختياري: لتفصيل كشف عميل/مورد فرعي على حساب المركز حسب وسم الطرف
+export async function fetchLedgerMulti(orgId: number, accountIds: number[], from: string, to: string, branchId?: number | null, partyId?: number | null): Promise<LedgerLine[]> {
   if (!accountIds.length) return [];
   let q = supabase
     .from("gl_journal_lines")
-    .select("account_id, debit, credit, branch_id, note, entry:gl_journal_entries!inner(date, entry_no, description, organization_id)")
+    .select("account_id, party_id, debit, credit, branch_id, note, entry:gl_journal_entries!inner(date, entry_no, description, organization_id)")
     .in("account_id", accountIds)
     .gte("entry.date", from)
     .lte("entry.date", to)
     .eq("entry.organization_id", orgId);
   if (branchId != null) q = q.eq("branch_id", branchId);
+  if (partyId != null) q = q.eq("party_id", partyId);
   const { data, error } = await q;
   if (error) { console.error("fetchLedgerMulti", error); return []; }
   const rows = ((data as any[]) || []).map((r) => ({
     date: r.entry?.date, entry_no: r.entry?.entry_no, description: r.entry?.description,
-    branch_id: r.branch_id, account_id: r.account_id, debit: Number(r.debit) || 0, credit: Number(r.credit) || 0, note: r.note,
+    branch_id: r.branch_id, account_id: r.account_id, party_id: r.party_id ?? null, debit: Number(r.debit) || 0, credit: Number(r.credit) || 0, note: r.note,
   }));
   rows.sort((a, b) => (a.date || "").localeCompare(b.date || "") || (a.entry_no - b.entry_no));
   return rows;
@@ -547,15 +551,17 @@ export async function createVoucher(orgId: number, v: {
   description: string | null;
   notes: string | null;
   branch_id: number | null;
+  party_id?: number | null;   // وسم الطرف على سطر الحساب المقابل
 }): Promise<{ ok: boolean; error?: string; id?: number }> {
   const amt = Number(v.amount) || 0;
   if (amt <= 0) return { ok: false, error: "المبلغ يجب أن يكون أكبر من صفر" };
   if (!v.treasury_account_id || !v.counter_account_id) return { ok: false, error: "اختر الخزنة والحساب المقابل" };
   if (v.treasury_account_id === v.counter_account_id) return { ok: false, error: "الخزنة والحساب المقابل لا يمكن أن يكونا نفس الحساب" };
-  // سند قبض: نقدية مدينة / الحساب المقابل دائن — سند صرف: العكس
+  const pid = v.party_id ?? null;
+  // سند قبض: نقدية مدينة / الحساب المقابل دائن — سند صرف: العكس (الطرف يوسم على سطر الحساب المقابل)
   const lines: GLLine[] = v.kind === "receipt"
-    ? [{ account_id: v.treasury_account_id, debit: amt, credit: 0 }, { account_id: v.counter_account_id, debit: 0, credit: amt }]
-    : [{ account_id: v.counter_account_id, debit: amt, credit: 0 }, { account_id: v.treasury_account_id, debit: 0, credit: amt }];
+    ? [{ account_id: v.treasury_account_id, debit: amt, credit: 0 }, { account_id: v.counter_account_id, debit: 0, credit: amt, party_id: pid }]
+    : [{ account_id: v.counter_account_id, debit: amt, credit: 0, party_id: pid }, { account_id: v.treasury_account_id, debit: 0, credit: amt }];
   return createEntry(orgId, {
     date: v.date, description: v.description, branch_id: v.branch_id,
     entry_type: v.kind, notes: v.notes, status: "posted",

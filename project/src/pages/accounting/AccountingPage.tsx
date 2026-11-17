@@ -585,8 +585,8 @@ function ChartTab({ org, accounts, reload, busy, setBusy }: { org: { id: number;
 }
 
 // ══════════════ القيود اليومية ══════════════
-type DraftLine = { account_id: number | ""; debit: string; credit: string; branch_id: number | ""; note: string };
-const emptyLine = (): DraftLine => ({ account_id: "", debit: "", credit: "", branch_id: "", note: "" });
+type DraftLine = { account_id: number | ""; debit: string; credit: string; branch_id: number | ""; note: string; party_id: number | null };
+const emptyLine = (): DraftLine => ({ account_id: "", debit: "", credit: "", branch_id: "", note: "", party_id: null });
 
 function JournalTab({ org, postable, accById, branches, branchName, parties }: any) {
   const multiBranch = branches && branches.length > 1;
@@ -655,7 +655,7 @@ function JournalTab({ org, postable, accById, branches, branchName, parties }: a
     setEBranch(e.branch_id != null ? String(e.branch_id) : "");
     const ls: DraftLine[] = (e.lines || []).map((l) => ({
       account_id: l.account_id, debit: l.debit ? String(l.debit) : "", credit: l.credit ? String(l.credit) : "",
-      branch_id: l.branch_id != null ? Number(l.branch_id) : "", note: l.note || "",
+      branch_id: l.branch_id != null ? Number(l.branch_id) : "", note: l.note || "", party_id: (l as any).party_id ?? null,
     }));
     setLines(ls.length >= 2 ? ls : [...ls, emptyLine(), emptyLine()].slice(0, Math.max(2, ls.length)));
     setPendingFiles([]);
@@ -695,7 +695,7 @@ function JournalTab({ org, postable, accById, branches, branchName, parties }: a
     };
     const glLines: GLLine[] = valid.map((l) => ({
       account_id: Number(l.account_id), debit: num(l.debit), credit: num(l.credit),
-      branch_id: l.branch_id === "" ? null : Number(l.branch_id), note: l.note || null,
+      branch_id: l.branch_id === "" ? null : Number(l.branch_id), note: l.note || null, party_id: l.party_id ?? null,
     }));
     setSaving(true);
     const r = editingId != null ? await DB.updateEntry(editingId, header, glLines) : await DB.createEntry(org.id, header, glLines);
@@ -796,7 +796,7 @@ function JournalTab({ org, postable, accById, branches, branchName, parties }: a
                     <td className="px-2 py-1.5"><input type="number" step="0.01" value={l.credit} onChange={(e) => setLine(i, { credit: e.target.value, debit: e.target.value ? "" : l.debit })} placeholder="0" className="w-28 bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr] outline-none focus:border-amber-500" /></td>
                     {multiBranch && <td className="px-2 py-1.5"><select value={l.branch_id} onChange={(e) => setLine(i, { branch_id: e.target.value ? Number(e.target.value) : "" })} className="w-full min-w-[120px] bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs outline-none focus:border-blue-500"><option value="">افتراضي</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></td>}
                     <td className="px-2 py-1.5"><div className="flex items-center gap-1">
-                      <PartyPicker parties={parties} compact onPick={(p) => { const acc = resolvePartyAccount(p, parties); if (!acc) { alert("هذا الطرف غير مرتبط بحساب ذمة (ولا مركزه). حدّد حساب الذمة في «العملاء والموردين» أولًا."); return; } setLine(i, { account_id: acc, note: p.name }); }} />
+                      <PartyPicker parties={parties} compact onPick={(p) => { const acc = resolvePartyAccount(p, parties); if (!acc) { alert("هذا الطرف غير مرتبط بحساب ذمة (ولا مركزه). حدّد حساب الذمة في «العملاء والموردين» أولًا."); return; } setLine(i, { account_id: acc, note: p.name, party_id: p.id }); }} />
                       <input value={l.note} onChange={(e) => setLine(i, { note: e.target.value })} placeholder="— أو اختر طرف" className="w-full min-w-[110px] bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs outline-none focus:border-blue-500" />
                     </div></td>
                     <td className="px-2 py-1.5 text-center"><button onClick={() => setLines((p) => (p.length > 2 ? p.filter((_, idx) => idx !== i) : p))} title="حذف السطر" className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400 flex items-center justify-center mx-auto hover:bg-red-500/20"><X size={13} /></button></td>
@@ -1338,6 +1338,7 @@ function TreasuryTab({ org, postable, accById, branches, branchName: _branchName
     const r = await DB.createVoucher(org.id, {
       kind: vKind, date: vDate, treasury_account_id: tr.account_id!, counter_account_id: Number(vCounterId),
       amount: amt, description: desc, notes, branch_id: (vBranch ? Number(vBranch) : tr.branch_id) ?? null,
+      party_id: vPartyId === "" ? null : Number(vPartyId),
     });
     if (!r.ok) { setSaving(false); alert("تعذّر حفظ السند: " + (r.error || "")); return; }
     // رفع الإيصالات المرفقة على قيد السند
@@ -1531,9 +1532,12 @@ function PartiesTab({ org, postable, accounts, accById, branches, shop }: any) {
     const byAcc = new Map<number, LedgerLine[]>();
     lines.forEach((l) => { if (!byAcc.has(l.account_id)) byAcc.set(l.account_id, []); byAcc.get(l.account_id)!.push(l); });
     const ag: Record<number, DB.Aging> = {}; const bal: Record<number, number> = {};
+    const accOf = (p: DB.GLParty) => p.account_id ?? (p.parent_id ? ps.find((x) => x.id === p.parent_id)?.account_id ?? null : null);
     ps.forEach((p) => {
-      if (!p.account_id) return;
-      const ls = byAcc.get(p.account_id) || [];
+      const accId = accOf(p);
+      if (!accId) return;
+      let ls = byAcc.get(accId) || [];
+      if (!p.account_id) ls = ls.filter((l) => l.party_id === p.id);   // طرف فرعي: حركته من حساب المركز مفلترة بوسمه
       ag[p.id] = DB.partyAging(ls, p.type, p.credit_days, asOf);
       const cd = p.type === "customer";
       bal[p.id] = ls.reduce((s, l) => s + (cd ? (l.debit - l.credit) : (l.credit - l.debit)), 0);
@@ -1566,9 +1570,12 @@ function PartiesTab({ org, postable, accounts, accById, branches, shop }: any) {
     await reload();
   };
   const openStmt = async (p: DB.GLParty) => {
-    if (!p.account_id) { alert("هذا الطرف غير مرتبط بحساب ذمة (طرف فرعي). كشف الحساب على المركز."); return; }
+    // طرف صاحب حساب → كشف حساب المركز كامل. طرف فرعي → حساب المركز مفلتر بوسمه فقط.
+    const accId = p.account_id ?? (p.parent_id ? parties.find((x) => x.id === p.parent_id)?.account_id ?? null : null);
+    if (!accId) { alert("هذا الطرف غير مرتبط بحساب ذمة، ولا مركزه. اربطه بحساب أو اجعل له أباً صاحب حساب."); return; }
     setStmt(p); setStmtLines([]); setStmtLoading(true);
-    const ls = await DB.fetchLedgerMulti(org.id, [p.account_id], "2000-01-01", asOf, fBranch ? Number(fBranch) : null);
+    const partyFilter = p.account_id ? null : p.id;
+    const ls = await DB.fetchLedgerMulti(org.id, [accId], "2000-01-01", asOf, fBranch ? Number(fBranch) : null, partyFilter);
     setStmtLines(ls); setStmtLoading(false);
   };
 

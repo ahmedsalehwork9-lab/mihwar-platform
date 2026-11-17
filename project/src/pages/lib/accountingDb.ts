@@ -561,3 +561,92 @@ export async function createVoucher(orgId: number, v: {
     entry_type: v.kind, notes: v.notes, status: "posted",
   }, lines);
 }
+
+// ── العملاء والموردين (الذمم) + أعمار الدين ──
+export type PartyType = "customer" | "supplier";
+export type GLParty = {
+  id: number;
+  organization_id: number;
+  branch_id: number | null;
+  type: string;                 // customer | supplier
+  name: string;
+  account_id: number | null;    // حساب الذمة
+  credit_days: number;          // مدة السداد (أيام)
+  phone: string | null;
+  parent_id: number | null;     // طرف أب (مركز) للعملاء الفرعيين
+  is_active: boolean;
+  notes: string | null;
+  created_at?: string;
+};
+
+export async function fetchParties(orgId: number, type?: string, branchId?: number | null): Promise<GLParty[]> {
+  let q = supabase.from("gl_parties").select("*").eq("organization_id", orgId).order("name");
+  if (type) q = q.eq("type", type);
+  if (branchId != null) q = q.eq("branch_id", branchId);
+  const { data, error } = await q;
+  if (error) { console.error("fetchParties", error); return []; }
+  return (data as GLParty[]) || [];
+}
+
+export async function upsertParty(p: Partial<GLParty>): Promise<{ ok: boolean; error?: string }> {
+  const anyP = p as any;
+  const { error } = anyP.id
+    ? await supabase.from("gl_parties").update((({ id, ...rest }) => rest)(anyP)).eq("id", anyP.id)
+    : await supabase.from("gl_parties").insert(anyP);
+  if (error) console.error("upsertParty", error);
+  return { ok: !error, error: error?.message };
+}
+
+export async function deleteParty(id: number): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.from("gl_parties").delete().eq("id", id);
+  if (error) console.error("deleteParty", error);
+  return { ok: !error, error: error?.message };
+}
+
+// مساعدات تواريخ لأعمار الدين
+function addDaysISO(d: string, days: number): string {
+  const [y, m, dd] = (d || "").split("-").map(Number);
+  const t = new Date(y, (m || 1) - 1, (dd || 1) + (days || 0));
+  const z = (n: number) => String(n).padStart(2, "0");
+  return `${t.getFullYear()}-${z(t.getMonth() + 1)}-${z(t.getDate())}`;
+}
+function daysDiff(a: string, b: string): number {   // b - a بالأيام
+  const da = new Date((a || "") + "T00:00:00").getTime();
+  const db = new Date((b || "") + "T00:00:00").getTime();
+  return Math.round((db - da) / 86400000);
+}
+
+export type Aging = { current: number; d30: number; d60: number; d90: number; d90p: number; total: number };
+
+// أعمار الدين بطريقة FIFO: تُطبَّق المدفوعات على أقدم المديونيات، ثم تُبوَّب المتبقّية حسب تاريخ الاستحقاق
+export function partyAging(
+  lines: { date: string; debit: number; credit: number }[],
+  type: string, creditDays: number, asOf: string
+): Aging {
+  const chargeIsDebit = type === "customer";   // العميل: مدين = مديونية · المورد: دائن = مديونية
+  const sorted = [...lines].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+  const open: { due: string; amt: number }[] = [];
+  for (const l of sorted) {
+    const charge = chargeIsDebit ? (Number(l.debit) || 0) : (Number(l.credit) || 0);
+    const pay = chargeIsDebit ? (Number(l.credit) || 0) : (Number(l.debit) || 0);
+    if (charge > 0) open.push({ due: addDaysISO(l.date, creditDays || 0), amt: charge });
+    if (pay > 0) {
+      let p = pay;
+      while (p > 1e-9 && open.length) {
+        if (open[0].amt <= p + 1e-9) { p -= open[0].amt; open.shift(); }
+        else { open[0].amt -= p; p = 0; }
+      }
+    }
+  }
+  const b: Aging = { current: 0, d30: 0, d60: 0, d90: 0, d90p: 0, total: 0 };
+  for (const o of open) {
+    const age = daysDiff(o.due, asOf);
+    if (age <= 0) b.current += o.amt;
+    else if (age <= 30) b.d30 += o.amt;
+    else if (age <= 60) b.d60 += o.amt;
+    else if (age <= 90) b.d90 += o.amt;
+    else b.d90p += o.amt;
+    b.total += o.amt;
+  }
+  return b;
+}

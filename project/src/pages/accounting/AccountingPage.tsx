@@ -14,7 +14,7 @@ import {
   Home, ChevronLeft, Calculator, Network, BookOpen, FileText, Scale,
   Plus, Pencil, Trash2, Download, Upload, Save, X, Check, Search,
   Building2, FileCheck2, Send, Layers, Paperclip, ExternalLink,
-  Wallet, Landmark, ArrowDownCircle, ArrowUpCircle,
+  Wallet, Landmark, ArrowDownCircle, ArrowUpCircle, Users, Phone,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import * as DB from "../lib/accountingDb";
@@ -40,12 +40,13 @@ const BTN_SUCCESS = "inline-flex items-center justify-center gap-1.5 px-5 py-2.5
 const BTN_GHOST_EM = "inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-xs transition-colors disabled:opacity-50 hover:bg-emerald-500/20";
 const BTN_GHOST_BL = "inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-300 font-bold text-xs transition-colors disabled:opacity-50 hover:bg-blue-500/20";
 
-type Tab = "chart" | "journal" | "ledger" | "trial" | "assets" | "treasury";
+type Tab = "chart" | "journal" | "ledger" | "trial" | "assets" | "treasury" | "parties";
 const TYPE_OPTS: AccType[] = ["asset", "liability", "equity", "revenue", "expense"];
 const TABS: { k: Tab; label: string; icon: any }[] = [
   { k: "chart", label: "دليل الحسابات", icon: Network },
   { k: "journal", label: "القيود اليومية", icon: BookOpen },
   { k: "treasury", label: "الخزن والبنوك", icon: Wallet },
+  { k: "parties", label: "العملاء والموردين", icon: Users },
   { k: "ledger", label: "كشف حساب", icon: FileText },
   { k: "trial", label: "ميزان المراجعة", icon: Scale },
   { k: "assets", label: "الأصول", icon: Building2 },
@@ -192,6 +193,7 @@ export default function AccountingPage({ section, onSection }: { section?: strin
       {tab === "trial" && <TrialTab org={org} accById={accById} postable={postable} branches={branches} />}
       {tab === "assets" && <AssetsTab org={org} postable={postable} branches={branches} branchName={branchName} />}
       {tab === "treasury" && <TreasuryTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} />}
+      {tab === "parties" && <PartiesTab org={org} postable={postable} accounts={accounts} accById={accById} branches={branches} />}
     </div>
   );
 }
@@ -1302,6 +1304,210 @@ function TreasuryTab({ org, postable, accById, branches, branchName: _branchName
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ══════════════ العملاء والموردين (الذمم + أعمار الدين) ══════════════
+function PartiesTab({ org, postable, accounts, accById, branches }: any) {
+  const multiBranch = branches && branches.length > 1;
+  const [ptype, setPtype] = useState<"customer" | "supplier">("customer");
+  const [asOf, setAsOf] = useState(today());
+  const [fBranch, setFBranch] = useState<string>("");
+  const [parties, setParties] = useState<DB.GLParty[]>([]);
+  const [aging, setAging] = useState<Record<number, DB.Aging>>({});
+  const [balance, setBalance] = useState<Record<number, number>>({});
+  const [loading, setLoading] = useState(false);
+  const [edit, setEdit] = useState<Partial<DB.GLParty> | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [stmt, setStmt] = useState<DB.GLParty | null>(null);
+  const [stmtLines, setStmtLines] = useState<LedgerLine[]>([]);
+  const [stmtLoading, setStmtLoading] = useState(false);
+
+  const reload = useCallback(async () => {
+    setLoading(true);
+    const ps = await DB.fetchParties(org.id, ptype, fBranch ? Number(fBranch) : null);
+    setParties(ps);
+    const accIds = ps.map((p) => p.account_id).filter(Boolean) as number[];
+    const lines = accIds.length ? await DB.fetchLedgerMulti(org.id, accIds, "2000-01-01", asOf, fBranch ? Number(fBranch) : null) : [];
+    const byAcc = new Map<number, LedgerLine[]>();
+    lines.forEach((l) => { if (!byAcc.has(l.account_id)) byAcc.set(l.account_id, []); byAcc.get(l.account_id)!.push(l); });
+    const ag: Record<number, DB.Aging> = {}; const bal: Record<number, number> = {};
+    ps.forEach((p) => {
+      if (!p.account_id) return;
+      const ls = byAcc.get(p.account_id) || [];
+      ag[p.id] = DB.partyAging(ls, p.type, p.credit_days, asOf);
+      const cd = p.type === "customer";
+      bal[p.id] = ls.reduce((s, l) => s + (cd ? (l.debit - l.credit) : (l.credit - l.debit)), 0);
+    });
+    setAging(ag); setBalance(bal); setLoading(false);
+  }, [org.id, ptype, asOf, fBranch]);
+  useEffect(() => { reload(); }, [reload]);
+
+  const holders = parties.filter((p) => p.account_id);
+  const partyName = (id: number | null) => (id == null ? "" : parties.find((p) => p.id === id)?.name || "");
+
+  const saveP = async () => {
+    if (!edit) return;
+    if (!edit.name || !String(edit.name).trim()) { alert("أدخل اسم الطرف"); return; }
+    const payload: any = {
+      organization_id: org.id, branch_id: edit.branch_id ?? (fBranch ? Number(fBranch) : null),
+      type: edit.type || ptype, name: String(edit.name).trim(), account_id: edit.account_id ?? null,
+      credit_days: Number(edit.credit_days) || 0, phone: edit.phone || null,
+      parent_id: edit.parent_id ?? null, notes: edit.notes || null, is_active: edit.is_active !== false,
+    };
+    if (edit.id) payload.id = edit.id;
+    setBusy(true); const r = await DB.upsertParty(payload); setBusy(false);
+    if (!r.ok) { alert("تعذّر الحفظ: " + (r.error || "")); return; }
+    setEdit(null); await reload();
+  };
+  const delP = async (p: DB.GLParty) => {
+    if (!window.confirm(`حذف «${p.name}»؟`)) return;
+    const r = await DB.deleteParty(p.id);
+    if (!r.ok) { alert("تعذّر الحذف: " + (r.error || "")); return; }
+    await reload();
+  };
+  const openStmt = async (p: DB.GLParty) => {
+    if (!p.account_id) { alert("هذا الطرف غير مرتبط بحساب ذمة (طرف فرعي). كشف الحساب على المركز."); return; }
+    setStmt(p); setStmtLines([]); setStmtLoading(true);
+    const ls = await DB.fetchLedgerMulti(org.id, [p.account_id], "2000-01-01", asOf, fBranch ? Number(fBranch) : null);
+    setStmtLines(ls); setStmtLoading(false);
+  };
+
+  const tot = { bal: 0, current: 0, d30: 0, d60: 0, d90: 0, d90p: 0 };
+  parties.forEach((p) => { if (p.account_id) { tot.bal += balance[p.id] || 0; const a = aging[p.id]; if (a) { tot.current += a.current; tot.d30 += a.d30; tot.d60 += a.d60; tot.d90 += a.d90; tot.d90p += a.d90p; } } });
+  const L = ptype === "customer" ? "عميل" : "مورد";
+
+  return (
+    <div>
+      <div className={`${CARD} p-3 mb-4`}>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="inline-flex gap-1 bg-slate-950 border border-slate-800 rounded-xl p-1">
+            <button onClick={() => setPtype("customer")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${ptype === "customer" ? "bg-blue-600 text-[#fff]" : "text-slate-400 hover:text-slate-200"}`}>العملاء</button>
+            <button onClick={() => setPtype("supplier")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${ptype === "supplier" ? "bg-blue-600 text-[#fff]" : "text-slate-400 hover:text-slate-200"}`}>الموردين</button>
+          </div>
+          <div><label className={LABEL}>أعمار الدين حتى</label><input type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)} className={DATE} /></div>
+          {multiBranch && <div><label className={LABEL}>الفرع</label><select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className={SELECT}><option value="">كل الفروع</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
+          <button onClick={() => setEdit({ type: ptype, credit_days: 0 as any, is_active: true })} className={BTN_GHOST_EM}><Plus size={14} /> {L} جديد</button>
+          <span className="text-[11px] text-slate-500 mr-auto">{parties.length} {ptype === "customer" ? "عميل" : "مورد"}</span>
+        </div>
+      </div>
+
+      <div className={`${CARD} overflow-hidden`}>
+        <SectionHead icon={Users} title={`${ptype === "customer" ? "العملاء" : "الموردين"} — أعمار الدين`} extra={<span className="text-[11px] text-slate-500">الإجمالي: <span className="font-mono text-emerald-400 font-bold">{fmt(tot.bal)}</span></span>} />
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse" style={{ minWidth: 880 }}>
+            <thead><tr>{["الطرف", "هاتف", "مدة السداد", "الرصيد", "جاري", "1-30", "31-60", "61-90", "+90", ""].map((h, i) => <th key={i} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
+            <tbody>
+              {parties.map((p) => {
+                const a = aging[p.id]; const bal = balance[p.id] || 0; const isSub = p.parent_id != null;
+                return (
+                  <tr key={p.id} className="hover:bg-white/[0.02]">
+                    <td className="px-2 py-2 text-xs text-right border-b border-slate-800">
+                      <button onClick={() => openStmt(p)} className="text-slate-100 hover:text-blue-400 font-medium">{p.name}</button>
+                      {!p.is_active && <span className="text-[9px] text-red-400"> (موقوف)</span>}
+                      {isSub && <span className="text-[9px] text-blue-300/70"> · فرعي تحت {partyName(p.parent_id)}</span>}
+                      {p.account_id ? <span className="text-[9px] text-slate-600 font-mono [direction:ltr]"> · {accById.get(p.account_id)?.code}</span> : <span className="text-[9px] text-amber-400"> · بدون حساب</span>}
+                    </td>
+                    <td className="px-2 py-2 text-xs text-center text-slate-400 [direction:ltr] border-b border-slate-800">{p.phone || "—"}</td>
+                    <td className="px-2 py-2 text-xs text-center text-slate-400 border-b border-slate-800">{p.credit_days || 0} يوم</td>
+                    <td className={`px-2 py-2 text-xs text-center font-mono font-bold [direction:ltr] border-b border-slate-800 ${bal >= 0 ? "text-emerald-400" : "text-red-400"}`}>{p.account_id ? fmt(bal) : "—"}</td>
+                    <td className="px-2 py-2 text-xs text-center font-mono text-slate-300 [direction:ltr] border-b border-slate-800">{a && a.current ? fmt(a.current) : ""}</td>
+                    <td className="px-2 py-2 text-xs text-center font-mono text-slate-300 [direction:ltr] border-b border-slate-800">{a && a.d30 ? fmt(a.d30) : ""}</td>
+                    <td className="px-2 py-2 text-xs text-center font-mono text-amber-300 [direction:ltr] border-b border-slate-800">{a && a.d60 ? fmt(a.d60) : ""}</td>
+                    <td className="px-2 py-2 text-xs text-center font-mono text-amber-400 [direction:ltr] border-b border-slate-800">{a && a.d90 ? fmt(a.d90) : ""}</td>
+                    <td className="px-2 py-2 text-xs text-center font-mono text-red-400 [direction:ltr] border-b border-slate-800">{a && a.d90p ? fmt(a.d90p) : ""}</td>
+                    <td className="px-2 py-2 border-b border-slate-800"><div className="flex items-center gap-1 justify-center">
+                      <button onClick={() => openStmt(p)} title="كشف حساب" className="w-7 h-7 rounded-lg bg-slate-800 text-slate-300 flex items-center justify-center hover:text-white"><FileText size={13} /></button>
+                      <button onClick={() => setEdit({ ...p })} title="تعديل" className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-300 flex items-center justify-center hover:bg-blue-500/20"><Pencil size={13} /></button>
+                      <button onClick={() => delP(p)} title="حذف" className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400 flex items-center justify-center hover:bg-red-500/20"><Trash2 size={13} /></button>
+                    </div></td>
+                  </tr>
+                );
+              })}
+              {parties.length === 0 && <tr><td colSpan={10} className="p-8 text-center text-slate-500 text-sm">{loading ? "جارٍ…" : `لا يوجد ${ptype === "customer" ? "عملاء" : "موردين"} بعد. اضغط «${L} جديد».`}</td></tr>}
+            </tbody>
+            {parties.length > 0 && (
+              <tfoot><tr className="bg-slate-950 font-bold">
+                <td colSpan={3} className="px-2 py-2.5 text-xs text-right text-slate-200 border-t border-slate-600">الإجمالي</td>
+                <td className="px-2 py-2.5 text-center font-mono text-xs text-emerald-400 [direction:ltr] border-t border-slate-600">{fmt(tot.bal)}</td>
+                <td className="px-2 py-2.5 text-center font-mono text-xs text-slate-300 [direction:ltr] border-t border-slate-600">{fmt(tot.current)}</td>
+                <td className="px-2 py-2.5 text-center font-mono text-xs text-slate-300 [direction:ltr] border-t border-slate-600">{fmt(tot.d30)}</td>
+                <td className="px-2 py-2.5 text-center font-mono text-xs text-amber-300 [direction:ltr] border-t border-slate-600">{fmt(tot.d60)}</td>
+                <td className="px-2 py-2.5 text-center font-mono text-xs text-amber-400 [direction:ltr] border-t border-slate-600">{fmt(tot.d90)}</td>
+                <td className="px-2 py-2.5 text-center font-mono text-xs text-red-400 [direction:ltr] border-t border-slate-600">{fmt(tot.d90p)}</td>
+                <td className="border-t border-slate-600" />
+              </tr></tfoot>
+            )}
+          </table>
+        </div>
+      </div>
+
+      {edit && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" dir="rtl">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg p-5 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h3 className="text-white font-bold text-base mb-4">{edit.id ? `تعديل ${L}` : `${L} جديد`}</h3>
+            <div className="space-y-3">
+              <div><label className={LABEL}>الاسم</label><input value={edit.name || ""} onChange={(e) => setEdit({ ...edit, name: e.target.value })} className={INPUT} /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className={LABEL}>النوع</label><select value={edit.type || ptype} onChange={(e) => setEdit({ ...edit, type: e.target.value })} className={SELECT}><option value="customer">عميل</option><option value="supplier">مورد</option></select></div>
+                <div><label className={LABEL}>الهاتف</label><input value={edit.phone || ""} onChange={(e) => setEdit({ ...edit, phone: e.target.value })} className={INPUT + " [direction:ltr] text-right"} /></div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className={LABEL}>حساب الذمة</label><AccountPicker value={edit.account_id ?? ""} onChange={(v) => setEdit({ ...edit, account_id: v === "" ? null : v })} options={postable} placeholder="— بدون (طرف فرعي)" size="md" /></div>
+                <div><label className={LABEL}>مدة السداد (أيام)</label><input type="number" step="1" value={(edit.credit_days as any) ?? ""} onChange={(e) => setEdit({ ...edit, credit_days: e.target.value as any })} className={INPUT + " [direction:ltr] text-center"} /></div>
+              </div>
+              <div><label className={LABEL}>طرف أب / مركز (اختياري — للعميل الفرعي)</label><select value={edit.parent_id ?? ""} onChange={(e) => setEdit({ ...edit, parent_id: e.target.value ? Number(e.target.value) : null })} className={SELECT}><option value="">— بدون</option>{holders.filter((h) => h.id !== edit.id && h.type === (edit.type || ptype)).map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}</select><p className="text-[10px] text-slate-500 mt-1">اختر المركز للعميل الفرعي الذي تصدر الفاتورة باسمه لكن الحساب على المركز (اترك حساب الذمة فارغًا له).</p></div>
+              <div><label className={LABEL}>ملاحظات</label><input value={edit.notes || ""} onChange={(e) => setEdit({ ...edit, notes: e.target.value })} className={INPUT} /></div>
+              <label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={edit.is_active !== false} onChange={(e) => setEdit({ ...edit, is_active: e.target.checked })} className="w-4 h-4 accent-blue-500" /> نشط</label>
+            </div>
+            <div className="flex gap-2 justify-end mt-5">
+              <button onClick={() => setEdit(null)} className={BTN_SOFT}><X size={14} /> إلغاء</button>
+              <button onClick={saveP} disabled={busy} className={BTN_SUCCESS}><Save size={15} /> {busy ? "جارٍ…" : "حفظ"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {stmt && (() => {
+        const cd = stmt.type === "customer";
+        let run = 0;
+        const ag = DB.partyAging(stmtLines, stmt.type, stmt.credit_days, asOf);
+        return (
+          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" dir="rtl" onClick={() => setStmt(null)}>
+            <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl shadow-2xl max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center gap-2.5 px-4 py-3 border-b border-slate-800">
+                <Users size={17} className="text-blue-400" />
+                <div><div className="text-sm font-bold text-white">كشف حساب — {stmt.name}</div><div className="text-[10px] text-slate-500">{stmt.phone ? <span className="[direction:ltr]">{stmt.phone}</span> : ""}{stmt.account_id ? ` · ${accById.get(stmt.account_id)?.code} ${accById.get(stmt.account_id)?.name}` : ""}</div></div>
+                <button onClick={() => setStmt(null)} className="mr-auto w-8 h-8 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center"><X size={15} /></button>
+              </div>
+              <div className="px-4 py-3 border-b border-slate-800 grid grid-cols-3 sm:grid-cols-6 gap-2 text-center">
+                {[["الرصيد", ag.total], ["جاري", ag.current], ["1-30", ag.d30], ["31-60", ag.d60], ["61-90", ag.d90], ["+90", ag.d90p]].map(([lbl, v], i) => (
+                  <div key={i} className="bg-slate-950 border border-slate-800 rounded-lg py-2"><div className="text-[9px] text-slate-500 font-bold">{lbl}</div><div className={`font-mono text-xs font-bold [direction:ltr] ${i === 0 ? "text-emerald-400" : i >= 4 ? "text-red-400" : "text-slate-200"}`}>{fmt(Number(v))}</div></div>
+                ))}
+              </div>
+              <div className="overflow-y-auto">
+                <table className="w-full border-collapse" style={{ minWidth: 560 }}>
+                  <thead><tr>{["التاريخ", "القيد", "البيان", "مدين", "دائن", "الرصيد"].map((h) => <th key={h} className="text-[10px] px-2 py-2 bg-slate-950 text-slate-500 whitespace-nowrap border-b border-slate-700 sticky top-0">{h}</th>)}</tr></thead>
+                  <tbody>
+                    {stmtLines.map((r, i) => { run += cd ? (r.debit - r.credit) : (r.credit - r.debit); return (
+                      <tr key={i} className="hover:bg-white/[0.02]">
+                        <td className="px-2 py-1.5 text-xs text-center font-mono text-slate-400 [direction:ltr] border-b border-slate-800">{r.date}</td>
+                        <td className="px-2 py-1.5 text-xs text-center font-mono text-blue-300 [direction:ltr] border-b border-slate-800">{String(r.entry_no).padStart(4, "0")}</td>
+                        <td className="px-2 py-1.5 text-xs text-right text-slate-300 border-b border-slate-800">{r.description || "—"}{r.note ? <span className="text-slate-500"> · {r.note}</span> : null}</td>
+                        <td className="px-2 py-1.5 text-xs text-center font-mono text-emerald-400 [direction:ltr] border-b border-slate-800">{r.debit ? fmt(r.debit) : ""}</td>
+                        <td className="px-2 py-1.5 text-xs text-center font-mono text-amber-400 [direction:ltr] border-b border-slate-800">{r.credit ? fmt(r.credit) : ""}</td>
+                        <td className="px-2 py-1.5 text-xs text-center font-mono font-bold text-white [direction:ltr] border-b border-slate-800">{fmt(run)}</td>
+                      </tr>
+                    ); })}
+                    {stmtLines.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-slate-500 text-sm">{stmtLoading ? "جارٍ…" : "لا توجد حركة على هذا الطرف."}</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

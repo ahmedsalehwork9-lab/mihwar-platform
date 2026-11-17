@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import {
   Truck,
   LayoutDashboard,
@@ -303,6 +303,70 @@ const NavButton = ({
 );
 
 // ══════════════════════════════════════════════════════════════════════
+// COMMAND PALETTE (بحث عام Ctrl+K)
+// ══════════════════════════════════════════════════════════════════════
+type Cmd = { id: string; labelAr: string; labelEn: string; group: string; run: () => void };
+
+function CommandPalette({ commands, onClose, lang }: { commands: Cmd[]; onClose: () => void; lang: 'ar' | 'en' }) {
+  const [q, setQ] = useState('');
+  const [idx, setIdx] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const activeRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return commands;
+    return commands.filter((c) => (c.labelAr + ' ' + c.labelEn + ' ' + c.group).toLowerCase().includes(s));
+  }, [q, commands]);
+
+  useEffect(() => { setIdx(0); }, [q]);
+  useEffect(() => { activeRef.current?.scrollIntoView({ block: 'nearest' }); }, [idx]);
+
+  const run = (c?: Cmd) => { if (c) { c.run(); onClose(); } };
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setIdx((i) => Math.min(i + 1, filtered.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setIdx((i) => Math.max(i - 1, 0)); }
+    else if (e.key === 'Enter') { e.preventDefault(); run(filtered[idx]); }
+    else if (e.key === 'Escape') { e.preventDefault(); onClose(); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-start justify-center pt-[12vh] px-4" dir="rtl" onClick={onClose}>
+      <div className="w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-800">
+          <Search size={16} className="text-slate-500 flex-shrink-0" />
+          <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={onKey} placeholder="ابحث عن صفحة أو قسم…" className="flex-1 bg-transparent text-white text-sm outline-none placeholder:text-slate-600" />
+          <kbd className="text-[10px] text-slate-500 border border-slate-700 rounded px-1.5 py-0.5 flex-shrink-0">Esc</kbd>
+        </div>
+        <div className="max-h-[52vh] overflow-y-auto py-1">
+          {filtered.length === 0 ? (
+            <div className="px-4 py-6 text-center text-slate-500 text-sm">لا توجد نتائج</div>
+          ) : (
+            filtered.map((c, i) => (
+              <button
+                key={c.id}
+                ref={i === idx ? activeRef : null}
+                onMouseEnter={() => setIdx(i)}
+                onClick={() => run(c)}
+                className={`w-full flex items-center gap-2 px-4 py-2.5 text-right transition-colors ${i === idx ? 'bg-blue-600 text-[#fff]' : 'text-slate-300 hover:bg-slate-800/60'}`}
+              >
+                <span className="flex-1 text-sm font-medium">{lang === 'ar' ? c.labelAr : c.labelEn}</span>
+                <span className={`text-[10px] ${i === idx ? 'text-blue-100' : 'text-slate-500'}`}>{c.group}</span>
+              </button>
+            ))
+          )}
+        </div>
+        <div className="px-4 py-2 border-t border-slate-800 flex items-center gap-3 text-[10px] text-slate-500">
+          <span>↑↓ للتنقّل</span><span>↵ للفتح</span><span>Ctrl/⌘ + K</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════
 // MAIN LAYOUT
 // ══════════════════════════════════════════════════════════════════════
 
@@ -311,7 +375,49 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
   const { lang, setLang, t, isRTL }       = useLang();
   const [sidebarOpen, setSidebarOpen]     = useState(false);
   const [showMore,    setShowMore]         = useState(false);
+  const [cmdOpen,     setCmdOpen]          = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+
+  // فتح/إغلاق البحث العام بـ Ctrl/⌘ + K
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); setCmdOpen((v) => !v); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // قائمة وجهات البحث العام (صفحات + أقسام الحسابات) حسب الصلاحيات
+  const commands: Cmd[] = useMemo(() => {
+    const out: Cmd[] = [];
+    const canP = (id: Page) => isAdmin || !permissions || permissions.includes(id);
+    if (isAdmin) {
+      navSections.filter((s) => s.adminOnly).forEach((s) => s.items.filter((i) => i.adminOnly).forEach((i) => {
+        out.push({ id: i.id, labelAr: i.labelAr, labelEn: i.label, group: 'الإدارة', run: () => { setPage(i.id); setSidebarOpen(false); } });
+      }));
+    } else {
+      OPERATIONS.forEach((entry) => {
+        if (entry.type === 'item') {
+          if (!canP(entry.id)) return;
+          out.push({ id: entry.id, labelAr: entry.labelAr, labelEn: entry.labelEn, group: 'العمليات', run: () => { setPage(entry.id); setSidebarOpen(false); } });
+        } else {
+          const accOk = !permissions || permissions.includes('accounting');
+          entry.children.forEach((c) => {
+            if (c.section) {
+              if (!accOk) return;
+              out.push({ id: `${entry.key}:${c.section}`, labelAr: c.labelAr, labelEn: c.labelEn, group: entry.labelAr, run: () => { setAccSection?.(c.section!); setPage('accounting'); setSidebarOpen(false); } });
+            } else {
+              const ok = c.placeholder || !permissions || permissions.includes(c.page!);
+              if (!ok) return;
+              out.push({ id: c.page!, labelAr: c.labelAr, labelEn: c.labelEn, group: entry.labelAr, run: () => { setPage(c.page!); setSidebarOpen(false); } });
+            }
+          });
+        }
+      });
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, permissions]);
 
   useEffect(() => {
     if (!ownedShopId) return;
@@ -674,6 +780,9 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
   return (
     <div className="flex h-screen bg-slate-950 overflow-hidden">
 
+      {/* البحث العام Ctrl+K */}
+      {cmdOpen && <CommandPalette commands={commands} onClose={() => setCmdOpen(false)} lang={lang} />}
+
       {/* Sidebar overlay */}
       {sidebarOpen && (
         <div
@@ -712,6 +821,16 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
           </h1>
 
           <div className="flex items-center gap-3">
+            {/* بحث عام (Ctrl/⌘ + K) */}
+            <button
+              onClick={() => setCmdOpen(true)}
+              title="بحث سريع (Ctrl/⌘ + K)"
+              className="flex items-center gap-2 bg-slate-800 border border-slate-700 hover:border-slate-600 px-3 py-1.5 rounded-xl text-xs text-slate-400 hover:text-slate-200 transition-colors"
+            >
+              <Search size={15} />
+              <span className="hidden sm:inline">بحث</span>
+              <kbd className="hidden md:inline text-[10px] text-slate-500 border border-slate-700 rounded px-1 py-0.5">Ctrl K</kbd>
+            </button>
             {/* Notification Bell */}
             <BranchSwitcher />
             <NotificationBell />

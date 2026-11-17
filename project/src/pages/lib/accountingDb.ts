@@ -86,7 +86,11 @@ export async function fetchAccounts(orgId: number): Promise<GLAccount[]> {
 }
 
 export async function upsertAccount(acc: Partial<GLAccount>): Promise<{ ok: boolean; error?: string }> {
-  const { error } = await supabase.from("gl_accounts").upsert(acc as any);
+  // عمود id معرّف GENERATED ALWAYS، فالتعديل يستخدم update بدل upsert (الذي يحاول إدراج id)
+  const anyAcc = acc as any;
+  const { error } = anyAcc.id
+    ? await supabase.from("gl_accounts").update((({ id, ...rest }) => rest)(anyAcc)).eq("id", anyAcc.id)
+    : await supabase.from("gl_accounts").insert(anyAcc);
   if (error) console.error("upsertAccount", error);
   return { ok: !error, error: error?.message };
 }
@@ -419,7 +423,10 @@ export async function fetchAssets(orgId: number, branchId?: number | null): Prom
 }
 
 export async function upsertAsset(a: Partial<GLAsset>): Promise<{ ok: boolean; error?: string }> {
-  const { error } = await supabase.from("gl_assets").upsert(a as any);
+  const anyA = a as any;
+  const { error } = anyA.id
+    ? await supabase.from("gl_assets").update((({ id, ...rest }) => rest)(anyA)).eq("id", anyA.id)
+    : await supabase.from("gl_assets").insert(anyA);
   if (error) console.error("upsertAsset", error);
   return { ok: !error, error: error?.message };
 }
@@ -482,7 +489,10 @@ export async function fetchTreasuries(orgId: number, branchId?: number | null): 
 }
 
 export async function upsertTreasury(t: Partial<GLTreasury>): Promise<{ ok: boolean; error?: string }> {
-  const { error } = await supabase.from("gl_treasuries").upsert(t as any);
+  const anyT = t as any;
+  const { error } = anyT.id
+    ? await supabase.from("gl_treasuries").update((({ id, ...rest }) => rest)(anyT)).eq("id", anyT.id)
+    : await supabase.from("gl_treasuries").insert(anyT);
   if (error) console.error("upsertTreasury", error);
   return { ok: !error, error: error?.message };
 }

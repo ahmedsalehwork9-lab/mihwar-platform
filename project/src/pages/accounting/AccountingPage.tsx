@@ -48,7 +48,7 @@ const TABS: { k: Tab; label: string; icon: any }[] = [
   { k: "chart", label: "دليل الحسابات", icon: Network },
   { k: "opening", label: "الأرصدة الافتتاحية", icon: Landmark },
   { k: "journal", label: "القيود اليومية", icon: BookOpen },
-  { k: "sales", label: "فواتير المبيعات", icon: ShoppingCart },
+  { k: "sales", label: "المبيعات", icon: ShoppingCart },
   { k: "treasury", label: "الخزن والبنوك", icon: Wallet },
   { k: "parties", label: "العملاء والموردين", icon: Users },
   { k: "ledger", label: "كشف حساب", icon: FileText },
@@ -347,7 +347,7 @@ export default function AccountingPage({ section, onSection }: { section?: strin
       <nav className="flex items-center gap-1.5 text-[11px] text-slate-500 mb-3 flex-wrap">
         <span className="inline-flex items-center gap-1"><Home size={12} /> الرئيسية</span>
         <ChevronLeft size={12} className="opacity-60" />
-        <span className="text-slate-400 font-bold">الحسابات</span>
+        <span className="text-slate-400 font-bold">{tab === "sales" ? "المبيعات" : "الحسابات"}</span>
         <ChevronLeft size={12} className="opacity-60" />
         <span className="text-blue-400 font-bold">{activeTab.label}</span>
       </nav>
@@ -358,7 +358,7 @@ export default function AccountingPage({ section, onSection }: { section?: strin
           <span className="w-11 h-11 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-400"><ActiveIcon size={22} /></span>
           <div>
             <h1 className="text-2xl font-black text-white leading-tight">{activeTab.label}</h1>
-            <p className="text-slate-500 text-xs mt-0.5">الحسابات — دفتر موحّد على مستوى المؤسسة</p>
+            <p className="text-slate-500 text-xs mt-0.5">{tab === "sales" ? "إدارة المبيعات والفواتير — مرحّلة للدفتر تلقائيًا" : "الحسابات — دفتر موحّد على مستوى المؤسسة"}</p>
           </div>
         </div>
         <div className="inline-flex items-center gap-2.5 bg-slate-900 border border-slate-800 rounded-xl px-4 py-2">

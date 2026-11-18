@@ -202,7 +202,7 @@ const OPERATIONS: OpEntry[] = [
   { type: 'item', id: 'orders',    icon: <ShoppingCart size={17} />,    labelEn: 'Orders',    labelAr: 'الطلبات' },
 
   { type: 'group', key: 'sales', icon: <TrendingUp size={17} />, labelEn: 'Sales', labelAr: 'المبيعات', homePage: 'sales-reconciliation', children: [
-    { labelEn: 'Sales',                labelAr: 'المبيعات',       page: 'sales',                placeholder: true },
+    { labelEn: 'Sales',                labelAr: 'المبيعات',       section: 'sales' },
     { labelEn: 'POS',                  labelAr: 'نقاط البيع',     page: 'pos',                  placeholder: true },
     { labelEn: 'Sales Reconciliation', labelAr: 'تسوية المبيعات', page: 'sales-reconciliation' },
     { labelEn: 'Quotation',            labelAr: 'عرض سعر',        page: 'quotation',            placeholder: true },
@@ -223,7 +223,6 @@ const OPERATIONS: OpEntry[] = [
 
   { type: 'group', key: 'accounting', icon: <Calculator size={17} />, labelEn: 'Accounting', labelAr: 'الحسابات', homePage: 'accounting', homeSection: 'journal', children: [
     { labelEn: 'Journal',        labelAr: 'القيود اليومية',   section: 'journal' },
-    { labelEn: 'Sales Invoices', labelAr: 'فواتير المبيعات',   section: 'sales' },
     { labelEn: 'Treasury',       labelAr: 'الخزن والبنوك',    section: 'treasury' },
     { labelEn: 'Parties',        labelAr: 'العملاء والموردين', section: 'parties' },
     { labelEn: 'Chart',          labelAr: 'دليل الحسابات',    section: 'chart' },

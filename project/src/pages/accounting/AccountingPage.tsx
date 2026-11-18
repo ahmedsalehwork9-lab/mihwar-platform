@@ -15,7 +15,7 @@ import {
   Plus, Pencil, Trash2, Download, Upload, Save, X, Check, Search,
   Building2, FileCheck2, Send, Layers, Paperclip, ExternalLink,
   Wallet, Landmark, ArrowDownCircle, ArrowUpCircle, Users, Phone, Printer,
-  TrendingDown, BarChart3, ShoppingCart,
+  TrendingDown, TrendingUp, BarChart3, ShoppingCart,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../lib/supabase";
@@ -1393,6 +1393,40 @@ function StatementsTab({ org, accounts, branches, shop }: any) {
   );
 }
 
+// رسوم SVG خفيفة بلا مكتبات
+const CHART_PALETTE = ["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4", "#ec4899"];
+function DonutChart({ data, size = 150 }: { data: { label: string; value: number; color: string }[]; size?: number }) {
+  const total = data.reduce((s, d) => s + d.value, 0) || 1;
+  const r = size / 2 - 14; const c = 2 * Math.PI * r; let offset = 0;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: "rotate(-90deg)" }}>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#94a3b8" strokeOpacity={0.22} strokeWidth={14} />
+      {data.map((d, i) => {
+        const len = (d.value / total) * c;
+        const el = <circle key={i} cx={size / 2} cy={size / 2} r={r} fill="none" stroke={d.color} strokeWidth={14} strokeDasharray={`${len} ${c - len}`} strokeDashoffset={-offset} />;
+        offset += len; return el;
+      })}
+    </svg>
+  );
+}
+function LineChart({ data, height = 190 }: { data: { label: string; value: number }[]; height?: number }) {
+  const w = 620, pad = 26;
+  const max = Math.max(1, ...data.map((d) => d.value));
+  const n = data.length;
+  const X = (i: number) => (n <= 1 ? w / 2 : pad + (i * (w - 2 * pad)) / (n - 1));
+  const Y = (v: number) => height - pad - (v / max) * (height - 2 * pad);
+  const pts = data.map((d, i) => `${X(i)},${Y(d.value)}`).join(" ");
+  const area = n ? `${X(0)},${height - pad} ${pts} ${X(n - 1)},${height - pad}` : "";
+  return (
+    <svg viewBox={`0 0 ${w} ${height}`} className="w-full" style={{ height }} preserveAspectRatio="none">
+      <defs><linearGradient id="salesGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3b82f6" stopOpacity="0.28" /><stop offset="100%" stopColor="#3b82f6" stopOpacity="0" /></linearGradient></defs>
+      {n > 0 && <polygon points={area} fill="url(#salesGrad)" />}
+      {n > 1 && <polyline points={pts} fill="none" stroke="#3b82f6" strokeWidth={2.5} strokeLinejoin="round" />}
+      {data.map((d, i) => <circle key={i} cx={X(i)} cy={Y(d.value)} r={3} fill="#3b82f6" />)}
+    </svg>
+  );
+}
+
 // ══════════════ فواتير المبيعات (نقدي/آجل/جزئي + ضريبة) ══════════════
 function SalesTab({ org, postable, accById, branches, branchName, parties, shop }: any) {
   const multiBranch = branches && branches.length > 1;
@@ -1506,6 +1540,19 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, shop 
   const tTotal = invoices.reduce((s, i) => s + (Number(i.total) || 0), 0);
   const tPaid = invoices.reduce((s, i) => s + (Number(i.paid_amount) || 0), 0);
   const tDue = tTotal - tPaid;
+  const tTax = invoices.reduce((s, i) => s + (Number(i.tax_amount) || 0), 0);
+
+  // تجميعات اللوحة
+  const byBranchData = useMemo(() => {
+    const m = new Map<string, number>();
+    invoices.forEach((inv) => { const key = inv.branch_id != null ? branchName(inv.branch_id) : "المؤسسة"; m.set(key, (m.get(key) || 0) + (Number(inv.total) || 0)); });
+    return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([label, value], i) => ({ label, value, color: CHART_PALETTE[i % CHART_PALETTE.length] }));
+  }, [invoices]); // eslint-disable-line
+  const byDayData = useMemo(() => {
+    const m = new Map<string, number>();
+    invoices.forEach((inv) => m.set(inv.date, (m.get(inv.date) || 0) + (Number(inv.total) || 0)));
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([label, value]) => ({ label, value }));
+  }, [invoices]);
 
   return (
     <div>
@@ -1518,6 +1565,55 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, shop 
           <span className="text-[11px] text-slate-500 mr-auto">{invoices.length} فاتورة · متبقٍّ على العملاء: <span className="font-mono text-amber-300 font-bold">{fmt(tDue)}</span></span>
         </div>
       </div>
+
+      {/* لوحة المبيعات */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        {[
+          { label: "إجمالي المبيعات", value: fmt(tTotal), icon: TrendingUp, tone: "emerald" },
+          { label: "عدد الفواتير", value: String(invoices.length), icon: ShoppingCart, tone: "blue" },
+          { label: "المحصّل نقدًا", value: fmt(tPaid), icon: Wallet, tone: "violet" },
+          { label: "المتبقّي على العملاء", value: fmt(tDue), icon: ArrowDownCircle, tone: "amber" },
+        ].map((k, i) => {
+          const KIcon = k.icon;
+          const tones: any = { emerald: "text-emerald-400 bg-emerald-500/10", blue: "text-blue-400 bg-blue-500/10", violet: "text-violet-400 bg-violet-500/10", amber: "text-amber-400 bg-amber-500/10" };
+          return (
+            <div key={i} className={`${CARD} p-4 flex items-center justify-between`}>
+              <div>
+                <div className="text-[11px] text-slate-500 mb-1">{k.label}</div>
+                <div className="text-xl font-black text-slate-100 font-mono [direction:ltr]">{k.value}</div>
+              </div>
+              <span className={`w-11 h-11 rounded-2xl flex items-center justify-center ${tones[k.tone]}`}><KIcon size={20} /></span>
+            </div>
+          );
+        })}
+      </div>
+
+      {invoices.length > 0 && (
+        <div className={`grid gap-3 mb-4 ${byBranchData.length > 1 ? "lg:grid-cols-3" : "grid-cols-1"}`}>
+          {byBranchData.length > 1 && (
+            <div className={`${CARD} p-4`}>
+              <div className="text-sm font-bold text-slate-200 mb-3">المبيعات حسب الفرع</div>
+              <div className="flex items-center gap-4">
+                <DonutChart data={byBranchData} />
+                <div className="flex-1 space-y-1.5">
+                  {byBranchData.map((d) => (
+                    <div key={d.label} className="flex items-center gap-2 text-xs">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: d.color }} />
+                      <span className="text-slate-300 flex-1 truncate">{d.label}</span>
+                      <span className="font-mono text-slate-200 [direction:ltr]">{fmt(d.value)}</span>
+                      <span className="text-slate-500 text-[10px]">{Math.round((d.value / (tTotal || 1)) * 100)}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+          <div className={`${CARD} p-4 ${byBranchData.length > 1 ? "lg:col-span-2" : ""}`}>
+            <div className="text-sm font-bold text-slate-200 mb-3">تطور المبيعات</div>
+            <LineChart data={byDayData} />
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div className={`${CARD} p-4 mb-4`}>

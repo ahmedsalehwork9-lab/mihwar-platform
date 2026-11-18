@@ -15,7 +15,7 @@ import {
   Plus, Pencil, Trash2, Download, Upload, Save, X, Check, Search,
   Building2, FileCheck2, Send, Layers, Paperclip, ExternalLink,
   Wallet, Landmark, ArrowDownCircle, ArrowUpCircle, Users, Phone, Printer,
-  TrendingDown, BarChart3,
+  TrendingDown, BarChart3, ShoppingCart,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../lib/supabase";
@@ -42,12 +42,13 @@ const BTN_SUCCESS = "inline-flex items-center justify-center gap-1.5 px-5 py-2.5
 const BTN_GHOST_EM = "inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-xs transition-colors disabled:opacity-50 hover:bg-emerald-500/20";
 const BTN_GHOST_BL = "inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-300 font-bold text-xs transition-colors disabled:opacity-50 hover:bg-blue-500/20";
 
-type Tab = "chart" | "opening" | "journal" | "ledger" | "trial" | "statements" | "assets" | "treasury" | "parties";
+type Tab = "chart" | "opening" | "journal" | "sales" | "ledger" | "trial" | "statements" | "assets" | "treasury" | "parties";
 const TYPE_OPTS: AccType[] = ["asset", "liability", "equity", "revenue", "expense"];
 const TABS: { k: Tab; label: string; icon: any }[] = [
   { k: "chart", label: "دليل الحسابات", icon: Network },
   { k: "opening", label: "الأرصدة الافتتاحية", icon: Landmark },
   { k: "journal", label: "القيود اليومية", icon: BookOpen },
+  { k: "sales", label: "فواتير المبيعات", icon: ShoppingCart },
   { k: "treasury", label: "الخزن والبنوك", icon: Wallet },
   { k: "parties", label: "العملاء والموردين", icon: Users },
   { k: "ledger", label: "كشف حساب", icon: FileText },
@@ -372,6 +373,7 @@ export default function AccountingPage({ section, onSection }: { section?: strin
       {tab === "chart" && <ChartTab org={org} accounts={accounts} reload={reloadAccounts} busy={busy} setBusy={setBusy} />}
       {tab === "opening" && <OpeningTab org={org} accounts={accounts} postable={postable} branches={branches} />}
       {tab === "journal" && <JournalTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} parties={parties} />}
+      {tab === "sales" && <SalesTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} parties={parties} shop={shopInfo} />}
       {tab === "ledger" && <LedgerTab org={org} postable={postable} accounts={accounts} accById={accById} branches={branches} branchName={branchName} shop={shopInfo} />}
       {tab === "trial" && <TrialTab org={org} accById={accById} postable={postable} branches={branches} />}
       {tab === "statements" && <StatementsTab org={org} accounts={accounts} branches={branches} shop={shopInfo} />}
@@ -1387,6 +1389,236 @@ function StatementsTab({ org, accounts, branches, shop }: any) {
           {!balance.balanced && <div className="px-4 py-2 text-[11px] text-amber-400 bg-amber-500/5">⚠ الميزانية غير متوازنة بفارق {fmt(balance.totA - balance.right)} — راجع القيود غير المتوازنة أو حسابات بلا تصنيف صحيح.</div>}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+// ══════════════ فواتير المبيعات (نقدي/آجل/جزئي + ضريبة) ══════════════
+function SalesTab({ org, postable, accById, branches, branchName, parties, shop }: any) {
+  const multiBranch = branches && branches.length > 1;
+  const [from, setFrom] = useState(monthStart());
+  const [to, setTo] = useState(today());
+  const [fBranch, setFBranch] = useState<string>("");
+  const [invoices, setInvoices] = useState<DB.GLSalesInvoice[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const [showForm, setShowForm] = useState(false);
+  const [date, setDate] = useState(today());
+  const [branch, setBranch] = useState<string>("");
+  const [partyId, setPartyId] = useState<number | "">("");
+  const [custAcc, setCustAcc] = useState<number | null>(null);
+  const [custName, setCustName] = useState("");
+  const [payType, setPayType] = useState<DB.SalesPayType>("cash");
+  const [treasuryAcc, setTreasuryAcc] = useState<number | "">("");
+  const [paidAmount, setPaidAmount] = useState("");
+  const [taxRate, setTaxRate] = useState("15");
+  const [taxInclusive, setTaxInclusive] = useState(false);
+  const [revAcc, setRevAcc] = useState<number | "">("");
+  const [taxAcc, setTaxAcc] = useState<number | "">("");
+  const [items, setItems] = useState<{ description: string; qty: string; unit_price: string }[]>([{ description: "", qty: "1", unit_price: "" }]);
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const reload = useCallback(async () => {
+    setLoading(true);
+    setInvoices(await DB.fetchSalesInvoices(org.id, from, to, fBranch ? Number(fBranch) : null));
+    setLoading(false);
+  }, [org.id, from, to, fBranch]);
+  useEffect(() => { reload(); }, [reload]);
+
+  useEffect(() => {
+    if (revAcc === "") { const r = postable.find((a: GLAccount) => a.type === "revenue"); if (r) setRevAcc(r.id); }
+    if (taxAcc === "") { const t = postable.find((a: GLAccount) => a.type === "liability" && /ضريبة|vat|tax/i.test(a.name)); if (t) setTaxAcc(t.id); }
+  }, [postable]); // eslint-disable-line
+
+  const totals = useMemo(() => DB.invoiceTotals(items.map((it) => ({ qty: Number(it.qty) || 0, unit_price: Number(it.unit_price) || 0 })), Number(taxRate) || 0, taxInclusive), [items, taxRate, taxInclusive]);
+  const paid = payType === "cash" ? totals.total : payType === "credit" ? 0 : Math.min(Math.max(Number(paidAmount) || 0, 0), totals.total);
+  const due = Math.round((totals.total - paid) * 100) / 100;
+
+  const setItem = (i: number, patch: any) => setItems((p) => p.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
+  const addItem = () => setItems((p) => [...p, { description: "", qty: "1", unit_price: "" }]);
+  const delItem = (i: number) => setItems((p) => (p.length > 1 ? p.filter((_, idx) => idx !== i) : p));
+  const resetForm = () => { setDate(today()); setPartyId(""); setCustAcc(null); setCustName(""); setPayType("cash"); setTreasuryAcc(""); setPaidAmount(""); setTaxRate("15"); setTaxInclusive(false); setItems([{ description: "", qty: "1", unit_price: "" }]); setNotes(""); setBranch(""); };
+
+  const save = async () => {
+    const its = items.map((it) => ({ description: it.description.trim(), qty: Number(it.qty) || 0, unit_price: Number(it.unit_price) || 0, line_total: Math.round((Number(it.qty) || 0) * (Number(it.unit_price) || 0) * 100) / 100 })).filter((it) => it.line_total > 0);
+    if (!its.length) { alert("أضف صنفًا واحدًا على الأقل بقيمة."); return; }
+    if ((payType === "credit" || payType === "partial") && !custAcc) { alert("اختر العميل (حساب ذمة) للبيع الآجل/الجزئي."); return; }
+    if ((payType === "cash" || payType === "partial") && treasuryAcc === "") { alert("اختر خزنة/بنك التحصيل."); return; }
+    if (revAcc === "") { alert("اختر حساب إيراد المبيعات."); return; }
+    setSaving(true);
+    const res = await DB.createSalesInvoice(org.id, {
+      branch_id: branch ? Number(branch) : (fBranch ? Number(fBranch) : null), date,
+      party_id: partyId === "" ? null : Number(partyId), customer_name: custName.trim() || null,
+      payment_type: payType, treasury_account_id: treasuryAcc === "" ? null : Number(treasuryAcc),
+      customer_account_id: custAcc, revenue_account_id: Number(revAcc), tax_account_id: taxAcc === "" ? null : Number(taxAcc),
+      tax_rate: Number(taxRate) || 0, tax_inclusive: taxInclusive, items: its, paid_amount: paid, notes: notes.trim() || null,
+    });
+    setSaving(false);
+    if (!res.ok) { alert("تعذّر الحفظ: " + (res.error || "")); return; }
+    alert(`تم إنشاء فاتورة رقم ${res.invoiceNo} وترحيلها للدفتر.`);
+    resetForm(); setShowForm(false); await reload();
+  };
+
+  const del = async (inv: DB.GLSalesInvoice) => {
+    if (!window.confirm(`حذف الفاتورة رقم ${inv.invoice_no}؟ سيُحذف قيدها المحاسبي أيضًا.`)) return;
+    const r = await DB.deleteSalesInvoice(inv);
+    if (!r.ok) { alert("تعذّر الحذف: " + (r.error || "")); return; }
+    await reload();
+  };
+
+  const partyName = (id: number | null) => (id == null ? "" : parties.find((p: DB.GLParty) => p.id === id)?.name || "");
+  const invCustomer = (inv: DB.GLSalesInvoice) => inv.customer_name || partyName(inv.party_id) || "عميل نقدي";
+
+  const printInv = (inv: DB.GLSalesInvoice) => {
+    const orgName = shop?.shop_name || org.name;
+    const rows = (inv.items || []).map((it, i) => `<tr><td style="border:1px solid #e5e7eb;padding:5px 8px;text-align:center">${i + 1}</td><td style="border:1px solid #e5e7eb;padding:5px 8px;text-align:right">${it.description || "—"}</td><td style="border:1px solid #e5e7eb;padding:5px 8px;text-align:center;direction:ltr">${it.qty}</td><td style="border:1px solid #e5e7eb;padding:5px 8px;text-align:center;direction:ltr">${fmt(it.unit_price)}</td><td style="border:1px solid #e5e7eb;padding:5px 8px;text-align:left;direction:ltr">${fmt(it.line_total)}</td></tr>`).join("");
+    const logo = shop?.logo_url ? `<img src="${shop.logo_url}" style="height:54px;object-fit:contain"/>` : "";
+    const vat = shop?.tax_number ? `<div>الرقم الضريبي: ${shop.tax_number}</div>` : "";
+    const trow = (label: string, val: string, bold = false) => `<tr><td style="padding:3px 8px;text-align:right;${bold ? "font-weight:800" : ""}">${label}</td><td style="padding:3px 8px;text-align:left;direction:ltr;${bold ? "font-weight:800" : ""}">${val}</td></tr>`;
+    const html = `<html dir="rtl"><head><meta charset="UTF-8"><title>فاتورة ${inv.invoice_no}</title></head><body style="font-family:'Segoe UI',Tahoma,sans-serif;padding:24px;color:#0f172a">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #14304d;padding-bottom:10px;margin-bottom:12px">
+        <div><div style="font-size:19px;font-weight:800">${orgName}</div>${vat}</div>${logo}
+      </div>
+      <h2 style="font-size:16px;margin:0 0 4px">فاتورة ضريبية — مبيعات</h2>
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:10px">
+        <div>رقم الفاتورة: <b>${inv.invoice_no}</b> · التاريخ: ${inv.date}</div>
+        <div>العميل: <b>${invCustomer(inv)}</b> · ${DB.PAYTYPE_LABEL[inv.payment_type]}</div>
+      </div>
+      <table style="border-collapse:collapse;width:100%;font-size:12px;margin-bottom:10px">
+        <tr>${["#", "الصنف", "الكمية", "السعر", "الإجمالي"].map((h) => `<th style="border:1px solid #d1d5db;padding:6px 8px;background:#14304d;color:#fff">${h}</th>`).join("")}</tr>${rows}
+      </table>
+      <table style="margin-right:auto;font-size:12px;min-width:240px">
+        ${trow("الإجمالي قبل الضريبة", fmt(inv.subtotal))}
+        ${trow(`الضريبة (${inv.tax_rate}%)`, fmt(inv.tax_amount))}
+        ${trow("الإجمالي", fmt(inv.total), true)}
+        ${trow("المدفوع", fmt(inv.paid_amount))}
+        ${trow("المتبقي", fmt(inv.total - inv.paid_amount), true)}
+      </table>
+      <div style="margin-top:22px;font-size:11px;color:#64748b;display:flex;justify-content:space-between">
+        <span>إعداد: المحاسب أحمد صالح / Prepared by: Accountant Ahmed Saleh</span><span>واتساب: +966 55 930 1659</span>
+      </div>
+    </body></html>`;
+    const w = window.open("", "_blank"); if (!w) { alert("فعّل النوافذ المنبثقة للطباعة."); return; }
+    w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 300);
+  };
+
+  const tTotal = invoices.reduce((s, i) => s + (Number(i.total) || 0), 0);
+  const tPaid = invoices.reduce((s, i) => s + (Number(i.paid_amount) || 0), 0);
+  const tDue = tTotal - tPaid;
+
+  return (
+    <div>
+      <div className={`${CARD} p-3 mb-4`}>
+        <div className="flex flex-wrap items-end gap-3">
+          <div><label className={LABEL}>من</label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={DATE} /></div>
+          <div><label className={LABEL}>إلى</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={DATE} /></div>
+          {multiBranch && <div><label className={LABEL}>الفرع</label><select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className={SELECT}><option value="">كل الفروع</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
+          <button onClick={() => { resetForm(); setShowForm((v) => !v); }} className={BTN_GHOST_EM}><Plus size={14} /> {showForm ? "إخفاء النموذج" : "فاتورة جديدة"}</button>
+          <span className="text-[11px] text-slate-500 mr-auto">{invoices.length} فاتورة · متبقٍّ على العملاء: <span className="font-mono text-amber-300 font-bold">{fmt(tDue)}</span></span>
+        </div>
+      </div>
+
+      {showForm && (
+        <div className={`${CARD} p-4 mb-4`}>
+          <h3 className="text-white font-bold text-sm mb-3 flex items-center gap-2"><ShoppingCart size={16} className="text-blue-400" /> فاتورة مبيعات جديدة</h3>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+            <div><label className={LABEL}>التاريخ</label><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={DATE} /></div>
+            <div><label className={LABEL}>العميل</label><PartyPicker parties={parties} value={partyId} placeholder="— عميل نقدي/عابر" size="md" onPick={(p) => { const acc = resolvePartyAccount(p, parties); setPartyId(p.id); setCustAcc(acc); setCustName(p.name); }} /></div>
+            <div><label className={LABEL}>اسم العميل (نقدي بلا حساب)</label><input value={custName} onChange={(e) => { setCustName(e.target.value); setPartyId(""); setCustAcc(null); }} placeholder="عميل نقدي" className={INPUT} /></div>
+            {multiBranch && <div><label className={LABEL}>الفرع</label><select value={branch} onChange={(e) => setBranch(e.target.value)} className={SELECT}><option value="">افتراضي</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
+          </div>
+
+          {/* الأصناف */}
+          <div className="bg-slate-950 border border-slate-800 rounded-xl overflow-hidden mb-3">
+            <div className="grid grid-cols-[1fr_80px_110px_110px_36px] gap-2 px-3 py-2 text-[10px] text-slate-500 border-b border-slate-800">
+              <span>الصنف / الوصف</span><span className="text-center">الكمية</span><span className="text-center">السعر</span><span className="text-center">الإجمالي</span><span />
+            </div>
+            {items.map((it, i) => (
+              <div key={i} className="grid grid-cols-[1fr_80px_110px_110px_36px] gap-2 px-3 py-1.5 items-center border-b border-slate-800/50">
+                <input value={it.description} onChange={(e) => setItem(i, { description: e.target.value })} placeholder="وصف الصنف" className="bg-slate-900 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs outline-none focus:border-blue-500" />
+                <input type="number" step="0.01" value={it.qty} onChange={(e) => setItem(i, { qty: e.target.value })} className="bg-slate-900 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs text-center [direction:ltr] outline-none focus:border-blue-500" />
+                <input type="number" step="0.01" value={it.unit_price} onChange={(e) => setItem(i, { unit_price: e.target.value })} placeholder="0.00" className="bg-slate-900 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs text-center [direction:ltr] outline-none focus:border-blue-500" />
+                <span className="text-xs font-mono text-slate-300 text-center [direction:ltr]">{fmt((Number(it.qty) || 0) * (Number(it.unit_price) || 0))}</span>
+                <button onClick={() => delItem(i)} className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400 flex items-center justify-center hover:bg-red-500/20"><X size={13} /></button>
+              </div>
+            ))}
+            <button onClick={addItem} className="w-full py-2 text-xs text-blue-300 hover:bg-slate-800/40 flex items-center justify-center gap-1"><Plus size={13} /> سطر</button>
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+            <div><label className={LABEL}>نوع الدفع</label>
+              <div className="inline-flex gap-1 bg-slate-950 border border-slate-800 rounded-xl p-1 w-full">
+                {(["cash", "credit", "partial"] as DB.SalesPayType[]).map((pt) => (
+                  <button key={pt} onClick={() => setPayType(pt)} className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-bold transition-colors ${payType === pt ? "bg-blue-600 text-[#fff]" : "text-slate-400 hover:text-slate-200"}`}>{DB.PAYTYPE_LABEL[pt]}</button>
+                ))}
+              </div>
+            </div>
+            {payType !== "credit" && <div><label className={LABEL}>خزنة/بنك التحصيل</label><AccountPicker value={treasuryAcc} onChange={(v) => setTreasuryAcc(v === "" ? "" : v)} options={postable} placeholder="— اختر الخزنة" size="md" /></div>}
+            {payType === "partial" && <div><label className={LABEL}>المدفوع الآن</label><input type="number" step="0.01" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value)} placeholder="0.00" className={INPUT + " [direction:ltr] text-center"} /></div>}
+            <div><label className={LABEL}>الضريبة %</label>
+              <div className="flex gap-2">
+                <input type="number" step="0.5" value={taxRate} onChange={(e) => setTaxRate(e.target.value)} className={INPUT + " [direction:ltr] text-center w-20"} />
+                <label className="flex items-center gap-1 text-[11px] text-slate-300 whitespace-nowrap"><input type="checkbox" checked={taxInclusive} onChange={(e) => setTaxInclusive(e.target.checked)} className="w-3.5 h-3.5 accent-blue-500" /> شامل الضريبة</label>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+            <div><label className={LABEL}>حساب إيراد المبيعات</label><AccountPicker value={revAcc} onChange={(v) => setRevAcc(v === "" ? "" : v)} options={postable} placeholder="— اختر الإيراد" size="md" /></div>
+            <div><label className={LABEL}>حساب الضريبة المستحقة</label><AccountPicker value={taxAcc} onChange={(v) => setTaxAcc(v === "" ? "" : v)} options={postable} placeholder="— اختر الضريبة" size="md" /></div>
+            <div className="lg:col-span-2"><label className={LABEL}>ملاحظات</label><input value={notes} onChange={(e) => setNotes(e.target.value)} className={INPUT} /></div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3">
+            <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-400">
+              <span>قبل الضريبة: <span className="font-mono text-slate-200">{fmt(totals.subtotal)}</span></span>
+              <span>الضريبة: <span className="font-mono text-amber-300">{fmt(totals.tax)}</span></span>
+              <span>الإجمالي: <span className="font-mono text-emerald-300 font-bold">{fmt(totals.total)}</span></span>
+              <span>مدفوع: <span className="font-mono text-slate-200">{fmt(paid)}</span></span>
+              <span>متبقٍّ: <span className="font-mono text-red-300 font-bold">{fmt(due)}</span></span>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => { resetForm(); setShowForm(false); }} className={BTN_SOFT}><X size={14} /> إلغاء</button>
+              <button onClick={save} disabled={saving} className={BTN_SUCCESS}><Save size={15} /> {saving ? "جارٍ…" : "حفظ وترحيل"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className={`${CARD} overflow-hidden`}>
+        <SectionHead icon={ShoppingCart} title="فواتير المبيعات" extra={<span className="text-[11px] text-slate-500">الإجمالي: <span className="font-mono text-emerald-400 font-bold">{fmt(tTotal)}</span></span>} />
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse" style={{ minWidth: 820 }}>
+            <thead><tr>{["رقم", "التاريخ", "العميل", "النوع", "الإجمالي", "مدفوع", "متبقٍّ", ...(multiBranch ? ["الفرع"] : []), ""].map((h, i) => <th key={i} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
+            <tbody>
+              {invoices.map((inv) => { const d = (Number(inv.total) || 0) - (Number(inv.paid_amount) || 0); return (
+                <tr key={inv.id} className="hover:bg-white/[0.02]">
+                  <td className="px-2 py-2 text-xs text-center font-mono text-slate-300 [direction:ltr] border-b border-slate-800">{inv.invoice_no}</td>
+                  <td className="px-2 py-2 text-xs text-center font-mono text-slate-400 [direction:ltr] border-b border-slate-800">{inv.date}</td>
+                  <td className="px-2 py-2 text-xs text-right text-slate-200 border-b border-slate-800">{invCustomer(inv)}</td>
+                  <td className="px-2 py-2 text-xs text-center border-b border-slate-800"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${inv.payment_type === "cash" ? "bg-emerald-500/15 text-emerald-300" : inv.payment_type === "credit" ? "bg-amber-500/15 text-amber-300" : "bg-blue-500/15 text-blue-300"}`}>{DB.PAYTYPE_LABEL[inv.payment_type]}</span></td>
+                  <td className="px-2 py-2 text-xs text-center font-mono text-slate-100 [direction:ltr] border-b border-slate-800">{fmt(inv.total)}</td>
+                  <td className="px-2 py-2 text-xs text-center font-mono text-emerald-400 [direction:ltr] border-b border-slate-800">{fmt(inv.paid_amount)}</td>
+                  <td className={`px-2 py-2 text-xs text-center font-mono [direction:ltr] border-b border-slate-800 ${d > 0.009 ? "text-red-300 font-bold" : "text-slate-600"}`}>{fmt(d)}</td>
+                  {multiBranch && <td className="px-2 py-2 text-xs text-center text-slate-400 border-b border-slate-800">{inv.branch_id != null ? branchName(inv.branch_id) : "—"}</td>}
+                  <td className="px-2 py-2 border-b border-slate-800"><div className="flex items-center gap-1 justify-center"><button onClick={() => printInv(inv)} title="طباعة" className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-300 flex items-center justify-center hover:bg-blue-500/20"><Printer size={13} /></button><button onClick={() => del(inv)} title="حذف" className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400 flex items-center justify-center hover:bg-red-500/20"><Trash2 size={13} /></button></div></td>
+                </tr>
+              ); })}
+              {invoices.length === 0 && <tr><td colSpan={multiBranch ? 9 : 8} className="p-8 text-center text-slate-500 text-sm">{loading ? "جارٍ…" : "لا فواتير في الفترة. اضغط «فاتورة جديدة»."}</td></tr>}
+            </tbody>
+            {invoices.length > 0 && (
+              <tfoot><tr className="bg-slate-950 font-bold">
+                <td colSpan={4} className="px-2 py-2.5 text-xs text-right text-slate-200 border-t border-slate-600">الإجمالي</td>
+                <td className="px-2 py-2.5 text-center font-mono text-xs text-slate-100 [direction:ltr] border-t border-slate-600">{fmt(tTotal)}</td>
+                <td className="px-2 py-2.5 text-center font-mono text-xs text-emerald-400 [direction:ltr] border-t border-slate-600">{fmt(tPaid)}</td>
+                <td className="px-2 py-2.5 text-center font-mono text-xs text-red-300 [direction:ltr] border-t border-slate-600">{fmt(tDue)}</td>
+                <td className="border-t border-slate-600" colSpan={multiBranch ? 2 : 1} />
+              </tr></tfoot>
+            )}
+          </table>
+        </div>
+      </div>
     </div>
   );
 }

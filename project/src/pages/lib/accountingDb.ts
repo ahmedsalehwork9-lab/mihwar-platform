@@ -748,3 +748,117 @@ export function partyAging(
   }
   return b;
 }
+
+// ══════════════ فواتير المبيعات (نقدي/آجل/جزئي + ضريبة) ══════════════
+export type SalesItem = { description: string; qty: number; unit_price: number; line_total: number };
+export type SalesPayType = "cash" | "credit" | "partial";
+export const PAYTYPE_LABEL: Record<SalesPayType, string> = { cash: "نقدي", credit: "آجل", partial: "جزئي" };
+
+export type GLSalesInvoice = {
+  id: number;
+  organization_id: number;
+  branch_id: number | null;
+  invoice_no: number;
+  invoice_year: number;
+  date: string;
+  party_id: number | null;
+  customer_name: string | null;
+  payment_type: SalesPayType;
+  treasury_account_id: number | null;
+  paid_amount: number;
+  subtotal: number;
+  tax_rate: number;
+  tax_amount: number;
+  tax_inclusive: boolean;
+  total: number;
+  items: SalesItem[];
+  notes: string | null;
+  entry_id: number | null;
+  status: string;
+  created_at?: string;
+};
+
+// حساب إجماليات الفاتورة من الأسطر والضريبة
+export function invoiceTotals(items: { qty: number; unit_price: number }[], taxRate: number, taxInclusive: boolean) {
+  const gross = Math.round(items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.unit_price) || 0), 0) * 100) / 100;
+  const r = (Number(taxRate) || 0) / 100;
+  let subtotal: number, tax: number, total: number;
+  if (taxInclusive) { total = gross; subtotal = Math.round((gross / (1 + r)) * 100) / 100; tax = Math.round((total - subtotal) * 100) / 100; }
+  else { subtotal = gross; tax = Math.round(gross * r * 100) / 100; total = Math.round((subtotal + tax) * 100) / 100; }
+  return { gross, subtotal, tax, total };
+}
+
+export async function nextInvoiceNo(orgId: number, year: number): Promise<number> {
+  const { data } = await supabase
+    .from("gl_sales_invoices").select("invoice_no")
+    .eq("organization_id", orgId).eq("invoice_year", year)
+    .order("invoice_no", { ascending: false }).limit(1);
+  return (((data as any[])?.[0]?.invoice_no as number) || 0) + 1;
+}
+
+export async function fetchSalesInvoices(orgId: number, from: string, to: string, branchId?: number | null): Promise<GLSalesInvoice[]> {
+  let q = supabase.from("gl_sales_invoices").select("*")
+    .eq("organization_id", orgId).gte("date", from).lte("date", to)
+    .order("date", { ascending: false }).order("invoice_no", { ascending: false });
+  if (branchId != null) q = q.eq("branch_id", branchId);
+  const { data, error } = await q;
+  if (error) { console.error("fetchSalesInvoices", error); return []; }
+  return (data as GLSalesInvoice[]) || [];
+}
+
+export async function createSalesInvoice(orgId: number, inv: {
+  branch_id: number | null; date: string;
+  party_id: number | null; customer_name: string | null;
+  payment_type: SalesPayType;
+  treasury_account_id: number | null; customer_account_id: number | null;
+  revenue_account_id: number; tax_account_id: number | null;
+  tax_rate: number; tax_inclusive: boolean;
+  items: SalesItem[]; paid_amount: number; notes: string | null;
+}): Promise<{ ok: boolean; error?: string; id?: number; entryId?: number; invoiceNo?: number }> {
+  const t = invoiceTotals(inv.items, inv.tax_rate, inv.tax_inclusive);
+  if (t.total <= 0) return { ok: false, error: "إجمالي الفاتورة صفر — أضف أصنافًا بقيمة." };
+  const paid = inv.payment_type === "cash" ? t.total : inv.payment_type === "credit" ? 0 : Math.min(Math.max(Number(inv.paid_amount) || 0, 0), t.total);
+  const due = Math.round((t.total - paid) * 100) / 100;
+
+  if (paid > 0 && !inv.treasury_account_id) return { ok: false, error: "اختر خزنة/بنك التحصيل للجزء النقدي." };
+  if (due > 0 && !inv.customer_account_id) return { ok: false, error: "اختر العميل (حساب ذمة) للجزء الآجل." };
+  if (t.tax > 0 && !inv.tax_account_id) return { ok: false, error: "اختر حساب «الضريبة المستحقة»." };
+
+  // قيد الفاتورة: مدين (خزنة + عميل) = دائن (إيراد + ضريبة)
+  const lines: GLLine[] = [];
+  if (paid > 0) lines.push({ account_id: inv.treasury_account_id as number, debit: paid, credit: 0, branch_id: inv.branch_id });
+  if (due > 0) lines.push({ account_id: inv.customer_account_id as number, debit: due, credit: 0, branch_id: inv.branch_id, party_id: inv.party_id ?? null });
+  lines.push({ account_id: inv.revenue_account_id, debit: 0, credit: t.subtotal, branch_id: inv.branch_id });
+  if (t.tax > 0) lines.push({ account_id: inv.tax_account_id as number, debit: 0, credit: t.tax, branch_id: inv.branch_id });
+
+  const cust = inv.customer_name || "عميل نقدي";
+  const res = await createEntry(orgId, {
+    date: inv.date, description: `فاتورة مبيعات — ${cust}`,
+    branch_id: inv.branch_id, entry_type: "sales", notes: inv.notes || null, status: "posted",
+  }, lines);
+  if (!res.ok) return { ok: false, error: res.error };
+
+  const year = Number(inv.date.slice(0, 4));
+  const invoice_no = await nextInvoiceNo(orgId, year);
+  const { data, error } = await supabase.from("gl_sales_invoices").insert({
+    organization_id: orgId, branch_id: inv.branch_id, invoice_no, invoice_year: year, date: inv.date,
+    party_id: inv.party_id ?? null, customer_name: inv.customer_name || null,
+    payment_type: inv.payment_type, treasury_account_id: inv.treasury_account_id ?? null,
+    paid_amount: paid, subtotal: t.subtotal, tax_rate: inv.tax_rate, tax_amount: t.tax,
+    tax_inclusive: inv.tax_inclusive, total: t.total, items: inv.items, notes: inv.notes || null,
+    entry_id: res.id, status: "posted",
+  }).select("id").single();
+  if (error) { // تراجع عن القيد إن فشل حفظ الفاتورة
+    if (res.id) await deleteEntry(res.id);
+    console.error("createSalesInvoice", error);
+    return { ok: false, error: error.message };
+  }
+  return { ok: true, id: (data as any).id, entryId: res.id, invoiceNo: invoice_no };
+}
+
+export async function deleteSalesInvoice(inv: GLSalesInvoice): Promise<{ ok: boolean; error?: string }> {
+  if (inv.entry_id) await deleteEntry(inv.entry_id);
+  const { error } = await supabase.from("gl_sales_invoices").delete().eq("id", inv.id);
+  if (error) console.error("deleteSalesInvoice", error);
+  return { ok: !error, error: error?.message };
+}

@@ -226,6 +226,7 @@ const OPERATIONS: OpEntry[] = [
     { labelEn: 'Treasury',       labelAr: 'الخزن والبنوك',    section: 'treasury' },
     { labelEn: 'Parties',        labelAr: 'العملاء والموردين', section: 'parties' },
     { labelEn: 'Chart',          labelAr: 'دليل الحسابات',    section: 'chart' },
+    { labelEn: 'Opening Balances', labelAr: 'الأرصدة الافتتاحية', section: 'opening' },
     { labelEn: 'Ledger',         labelAr: 'كشف حساب',         section: 'ledger' },
     { labelEn: 'Trial Balance',  labelAr: 'ميزان المراجعة',   section: 'trial' },
     { labelEn: 'Statements',     labelAr: 'القوائم المالية',   section: 'statements' },

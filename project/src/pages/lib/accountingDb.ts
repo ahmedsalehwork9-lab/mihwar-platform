@@ -58,7 +58,7 @@ export const TYPE_LABEL: Record<AccType, string> = {
 };
 
 // أنواع القيود (لتصنيف القيد وتسهيل الفلترة والربط لاحقًا)
-export type EntryType = "general" | "purchases" | "sales" | "settlement" | "receipt" | "payment" | "depreciation";
+export type EntryType = "general" | "purchases" | "sales" | "settlement" | "receipt" | "payment" | "depreciation" | "opening";
 export const ENTRY_TYPE_LABEL: Record<string, string> = {
   general: "عام",
   purchases: "مشتريات",
@@ -67,8 +67,9 @@ export const ENTRY_TYPE_LABEL: Record<string, string> = {
   receipt: "سند قبض",
   payment: "سند صرف",
   depreciation: "قيد إهلاك",
+  opening: "رصيد افتتاحي",
 };
-export const ENTRY_TYPE_OPTS: EntryType[] = ["general", "purchases", "sales", "settlement", "receipt", "payment", "depreciation"];
+export const ENTRY_TYPE_OPTS: EntryType[] = ["general", "purchases", "sales", "settlement", "receipt", "payment", "depreciation", "opening"];
 
 // ── المؤسسة النشطة من الفرع الحالي ──
 export async function getOrgForBranch(branchId: number | null): Promise<{ id: number; name: string } | null> {
@@ -527,6 +528,58 @@ export async function postDepreciation(
     await supabase.from("gl_assets").update({ depr_posted: newPosted }).eq("id", it.assetId);
   }
   return { ok: true, id: res.id, total };
+}
+
+// ── الأرصدة الافتتاحية (قيد افتتاحي واحد من نوع opening) ──
+export async function fetchOpeningEntries(orgId: number): Promise<EntryWithLines[]> {
+  const { data, error } = await supabase
+    .from("gl_journal_entries")
+    .select("*, lines:gl_journal_lines(*)")
+    .eq("organization_id", orgId)
+    .eq("entry_type", "opening")
+    .order("date", { ascending: true });
+  if (error) { console.error("fetchOpeningEntries", error); return []; }
+  return (data as any[]) || [];
+}
+
+// يحذف القيد الافتتاحي القديم (إن وُجد) ثم ينشئ قيدًا جديدًا متوازنًا؛
+// natureById تحدّد طبيعة كل حساب، والفرق يُقفَل في balancingAccountId.
+export async function saveOpeningBalances(
+  orgId: number,
+  params: { date: string; branch_id: number | null; balancingAccountId: number; natureById: Map<number, "debit" | "credit">; balances: { accountId: number; amount: number }[] }
+): Promise<{ ok: boolean; error?: string; id?: number; plug?: number }> {
+  // احذف أي قيد افتتاحي سابق (قابل لإعادة الإدخال دون ازدواج)
+  const existing = await fetchOpeningEntries(orgId);
+  for (const e of existing) await deleteEntry(e.id);
+
+  // اجمع لكل حساب صافيه (مدين موجب)
+  const net = new Map<number, number>();
+  const add = (id: number, signed: number) => net.set(id, Math.round(((net.get(id) || 0) + signed) * 100) / 100);
+  for (const b of params.balances) {
+    const amt = Math.round((Number(b.amount) || 0) * 100) / 100;
+    if (!amt) continue;
+    add(b.accountId, params.natureById.get(b.accountId) === "debit" ? amt : -amt);
+  }
+  let D = 0, C = 0;
+  net.forEach((v) => { if (v > 0) D += v; else C += -v; });
+  const plug = Math.round((D - C) * 100) / 100;
+  // plug>0 (مدين أكبر) ⇒ دائن على حساب الموازنة؛ plug<0 ⇒ مدين. كلاهما = add(-plug)
+  if (Math.abs(plug) > 0.009) add(params.balancingAccountId, -plug);
+
+  const lines: GLLine[] = [];
+  net.forEach((v, id) => {
+    if (Math.abs(v) < 0.009) return;
+    if (v > 0) lines.push({ account_id: id, debit: v, credit: 0 });
+    else lines.push({ account_id: id, debit: 0, credit: -v });
+  });
+  if (!lines.length) return { ok: false, error: "لا توجد أرصدة لإدخالها" };
+
+  const res = await createEntry(orgId, {
+    date: params.date, description: "الأرصدة الافتتاحية",
+    branch_id: params.branch_id, entry_type: "opening", notes: null, status: "posted",
+  }, lines);
+  if (!res.ok) return { ok: false, error: res.error };
+  return { ok: true, id: res.id, plug };
 }
 
 // ── الخزن والبنوك + سندات القبض/الصرف ──

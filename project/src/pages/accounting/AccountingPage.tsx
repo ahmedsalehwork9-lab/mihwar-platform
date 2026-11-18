@@ -42,10 +42,11 @@ const BTN_SUCCESS = "inline-flex items-center justify-center gap-1.5 px-5 py-2.5
 const BTN_GHOST_EM = "inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-xs transition-colors disabled:opacity-50 hover:bg-emerald-500/20";
 const BTN_GHOST_BL = "inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-300 font-bold text-xs transition-colors disabled:opacity-50 hover:bg-blue-500/20";
 
-type Tab = "chart" | "journal" | "ledger" | "trial" | "statements" | "assets" | "treasury" | "parties";
+type Tab = "chart" | "opening" | "journal" | "ledger" | "trial" | "statements" | "assets" | "treasury" | "parties";
 const TYPE_OPTS: AccType[] = ["asset", "liability", "equity", "revenue", "expense"];
 const TABS: { k: Tab; label: string; icon: any }[] = [
   { k: "chart", label: "دليل الحسابات", icon: Network },
+  { k: "opening", label: "الأرصدة الافتتاحية", icon: Landmark },
   { k: "journal", label: "القيود اليومية", icon: BookOpen },
   { k: "treasury", label: "الخزن والبنوك", icon: Wallet },
   { k: "parties", label: "العملاء والموردين", icon: Users },
@@ -369,6 +370,7 @@ export default function AccountingPage({ section, onSection }: { section?: strin
       </div>
 
       {tab === "chart" && <ChartTab org={org} accounts={accounts} reload={reloadAccounts} busy={busy} setBusy={setBusy} />}
+      {tab === "opening" && <OpeningTab org={org} accounts={accounts} postable={postable} branches={branches} />}
       {tab === "journal" && <JournalTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} parties={parties} />}
       {tab === "ledger" && <LedgerTab org={org} postable={postable} accounts={accounts} accById={accById} branches={branches} branchName={branchName} shop={shopInfo} />}
       {tab === "trial" && <TrialTab org={org} accById={accById} postable={postable} branches={branches} />}
@@ -1087,6 +1089,109 @@ function TrialTab({ org, accById, branches }: any) {
           </table>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ══════════════ الأرصدة الافتتاحية ══════════════
+function OpeningTab({ org, accounts, postable, branches }: any) {
+  const multiBranch = branches && branches.length > 1;
+  const [date, setDate] = useState(`${new Date().getFullYear() - 1}-12-31`);
+  const [fBranch, setFBranch] = useState<string>("");
+  const [balances, setBalances] = useState<Record<number, string>>({});
+  const [balAcc, setBalAcc] = useState<number | "">("");
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [existing, setExisting] = useState(false);
+
+  const natureById = useMemo(() => new Map(accounts.map((a: GLAccount) => [a.id, DB.natureOf(a.type)] as const)), [accounts]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const entries = await DB.fetchOpeningEntries(org.id);
+    const b: Record<number, string> = {}; let d = "";
+    entries.forEach((e: EntryWithLines) => {
+      if (!d) d = e.date;
+      (e.lines || []).forEach((l) => {
+        const amt = (Number(l.debit) || 0) > 0 ? Number(l.debit) : Number(l.credit) || 0;
+        if (amt) b[l.account_id] = String(amt);
+      });
+    });
+    setBalances(b); setExisting(entries.length > 0);
+    if (d) setDate(d);
+    setLoading(false);
+  }, [org.id]);
+  useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (balAcc === "") { const eq = accounts.find((a: GLAccount) => a.type === "equity" && !a.is_group); if (eq) setBalAcc(eq.id); }
+  }, [accounts]); // eslint-disable-line
+
+  const totals = useMemo(() => {
+    let D = 0, C = 0;
+    postable.forEach((a: GLAccount) => {
+      const amt = Number(balances[a.id]) || 0; if (!amt) return;
+      if (DB.natureOf(a.type) === "debit") D += amt; else C += amt;
+    });
+    D = Math.round(D * 100) / 100; C = Math.round(C * 100) / 100;
+    return { D, C, diff: Math.round((D - C) * 100) / 100 };
+  }, [balances, postable]);
+
+  const save = async () => {
+    if (totals.D === 0 && totals.C === 0) { alert("أدخل رصيدًا افتتاحيًا واحدًا على الأقل."); return; }
+    if (Math.abs(totals.diff) > 0.009 && balAcc === "") { alert(`هناك فرق ${fmt(totals.diff)}. اختر «حساب الموازنة» ليُقفَل فيه الفرق، أو عدّل الأرصدة لتتوازن.`); return; }
+    if (existing && !window.confirm("يوجد قيد افتتاحي سابق — سيُستبدل بالكامل بهذه الأرصدة. متابعة؟")) return;
+    setSaving(true);
+    const arr = postable.filter((a: GLAccount) => Number(balances[a.id])).map((a: GLAccount) => ({ accountId: a.id, amount: Number(balances[a.id]) }));
+    const res = await DB.saveOpeningBalances(org.id, { date, branch_id: fBranch ? Number(fBranch) : null, balancingAccountId: balAcc === "" ? 0 : Number(balAcc), natureById, balances: arr });
+    setSaving(false);
+    if (!res.ok) { alert("تعذّر الحفظ: " + (res.error || "")); return; }
+    alert("تم حفظ الأرصدة الافتتاحية" + (res.plug && Math.abs(res.plug) > 0.009 ? ` — أُقفل فرق ${fmt(res.plug)} في حساب الموازنة` : "") + ".");
+    await load();
+  };
+
+  const bySide = (t: AccType) => DB.natureOf(t) === "debit" ? "مدين" : "دائن";
+  const balanced = Math.abs(totals.diff) < 0.009;
+
+  return (
+    <div>
+      <div className={`${CARD} p-3 mb-4`}>
+        <div className="flex flex-wrap items-end gap-3">
+          <div><label className={LABEL}>تاريخ القيد الافتتاحي</label><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={DATE} /></div>
+          {multiBranch && <div><label className={LABEL}>الفرع</label><select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className={SELECT}><option value="">المؤسسة (بدون فرع)</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
+          <div className="min-w-[200px]"><label className={LABEL}>حساب الموازنة (للفرق)</label><AccountPicker value={balAcc} onChange={(v) => setBalAcc(v === "" ? "" : v)} options={postable} placeholder="— رأس المال عادةً" size="md" /></div>
+          <button onClick={save} disabled={saving || loading} className={BTN_SUCCESS}><Save size={15} /> {saving ? "جارٍ…" : "حفظ الأرصدة"}</button>
+          <div className="mr-auto text-left">
+            <div className="text-[10px] text-slate-500">مدين {fmt(totals.D)} · دائن {fmt(totals.C)}</div>
+            <div className={`text-xs font-bold ${balanced ? "text-emerald-400" : "text-amber-400"}`}>{balanced ? "✓ متوازن" : `فرق سيُقفَل في الموازنة: ${fmt(totals.diff)}`}</div>
+          </div>
+        </div>
+        {existing && <p className="text-[11px] text-blue-300/80 mt-2">يوجد قيد افتتاحي محفوظ — القيم معبّأة أدناه. التعديل والحفظ يستبدلانه بالكامل (لا ازدواج).</p>}
+      </div>
+
+      {TYPE_OPTS.map((t) => {
+        const list = postable.filter((a: GLAccount) => a.type === t);
+        if (!list.length) return null;
+        return (
+          <div key={t} className={`${CARD} overflow-hidden mb-4`}>
+            <div className="px-4 py-2.5 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+              <span className="text-sm font-bold text-slate-200">{DB.TYPE_LABEL[t]}</span>
+              <span className="text-[10px] text-slate-500">الرصيد الطبيعي: {bySide(t)}</span>
+            </div>
+            <div className="divide-y divide-slate-800/60">
+              {list.map((a: GLAccount) => (
+                <div key={a.id} className="flex items-center gap-3 px-4 py-2">
+                  <span className="text-[10px] font-mono text-slate-500 [direction:ltr] w-20 shrink-0">{a.code}</span>
+                  <span className="flex-1 text-xs text-slate-300 truncate">{a.name}</span>
+                  <input type="number" step="0.01" inputMode="decimal" value={balances[a.id] ?? ""} onChange={(e) => setBalances((p) => ({ ...p, [a.id]: e.target.value }))} placeholder="0.00"
+                    className="w-36 bg-slate-950 border border-slate-700 rounded-lg text-white px-3 py-1.5 text-xs text-center [direction:ltr] outline-none focus:border-blue-500" />
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+      {postable.length === 0 && <div className={`${CARD} p-8 text-center text-slate-500 text-sm`}>لا توجد حسابات. أنشئ دليل الحسابات أولًا من «دليل الحسابات».</div>}
     </div>
   );
 }

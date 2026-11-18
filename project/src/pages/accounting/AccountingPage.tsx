@@ -1438,12 +1438,13 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, shop 
 
   const [showForm, setShowForm] = useState(false);
   const [date, setDate] = useState(today());
-  const [branch, setBranch] = useState<string>("");
+  const [branch, setBranch] = useState<string>(branches?.length === 1 ? String(branches[0].id) : "");
   const [partyId, setPartyId] = useState<number | "">("");
   const [custAcc, setCustAcc] = useState<number | null>(null);
   const [custName, setCustName] = useState("");
   const [payType, setPayType] = useState<DB.SalesPayType>("cash");
   const [treasuryAcc, setTreasuryAcc] = useState<number | "">("");
+  const [treasuryRows, setTreasuryRows] = useState<DB.GLTreasury[]>([]);
   const [paidAmount, setPaidAmount] = useState("");
   const [taxRate, setTaxRate] = useState("15");
   const [taxInclusive, setTaxInclusive] = useState(false);
@@ -1459,30 +1460,36 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, shop 
     setLoading(false);
   }, [org.id, from, to, fBranch]);
   useEffect(() => { reload(); }, [reload]);
+  useEffect(() => { DB.fetchTreasuries(org.id).then(setTreasuryRows); }, [org.id]);
+  const targetBranchId = branch ? Number(branch) : (fBranch ? Number(fBranch) : (branches?.length === 1 ? Number(branches[0].id) : null));
+  const treasuryAccounts = postable.filter((a: GLAccount) => treasuryRows.some((t) => t.is_active && t.account_id === a.id && (t.branch_id == null || targetBranchId == null || t.branch_id === targetBranchId)));
 
-  useEffect(() => {
-    if (revAcc === "") { const r = postable.find((a: GLAccount) => a.type === "revenue"); if (r) setRevAcc(r.id); }
-    if (taxAcc === "") { const t = postable.find((a: GLAccount) => a.type === "liability" && /ضريبة|vat|tax/i.test(a.name)); if (t) setTaxAcc(t.id); }
-  }, [postable]); // eslint-disable-line
+  // لا نختار حسابات الإيراد أو ضريبة المخرجات تلقائيًا؛ يلزم اعتماد الحساب الصحيح لكل فرع.
 
   const totals = useMemo(() => DB.invoiceTotals(items.map((it) => ({ qty: Number(it.qty) || 0, unit_price: Number(it.unit_price) || 0 })), Number(taxRate) || 0, taxInclusive), [items, taxRate, taxInclusive]);
   const paid = payType === "cash" ? totals.total : payType === "credit" ? 0 : Math.min(Math.max(Number(paidAmount) || 0, 0), totals.total);
   const due = Math.round((totals.total - paid) * 100) / 100;
+  const selectedParty = partyId === "" ? null : parties.find((p: DB.GLParty) => p.id === Number(partyId)) || null;
+  const creditDays = Number(selectedParty?.credit_days) || 0;
+  const dueDate = (() => { if (!date || creditDays <= 0) return ""; const d = new Date(`${date}T00:00:00`); d.setDate(d.getDate() + creditDays); return d.toISOString().slice(0, 10); })();
 
   const setItem = (i: number, patch: any) => setItems((p) => p.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
   const addItem = () => setItems((p) => [...p, { description: "", qty: "1", unit_price: "" }]);
   const delItem = (i: number) => setItems((p) => (p.length > 1 ? p.filter((_, idx) => idx !== i) : p));
-  const resetForm = () => { setDate(today()); setPartyId(""); setCustAcc(null); setCustName(""); setPayType("cash"); setTreasuryAcc(""); setPaidAmount(""); setTaxRate("15"); setTaxInclusive(false); setItems([{ description: "", qty: "1", unit_price: "" }]); setNotes(""); setBranch(""); };
+  const resetForm = () => { setDate(today()); setPartyId(""); setCustAcc(null); setCustName(""); setPayType("cash"); setTreasuryAcc(""); setPaidAmount(""); setTaxRate("15"); setTaxInclusive(false); setItems([{ description: "", qty: "1", unit_price: "" }]); setNotes(""); setBranch(branches?.length === 1 ? String(branches[0].id) : ""); };
 
   const save = async () => {
     const its = items.map((it) => ({ description: it.description.trim(), qty: Number(it.qty) || 0, unit_price: Number(it.unit_price) || 0, line_total: Math.round((Number(it.qty) || 0) * (Number(it.unit_price) || 0) * 100) / 100 })).filter((it) => it.line_total > 0);
     if (!its.length) { alert("أضف صنفًا واحدًا على الأقل بقيمة."); return; }
+    if (multiBranch && !branch && !fBranch) { alert("اختر الفرع قبل إنشاء فاتورة المبيعات."); return; }
     if ((payType === "credit" || payType === "partial") && !custAcc) { alert("اختر العميل (حساب ذمة) للبيع الآجل/الجزئي."); return; }
+    if ((payType === "credit" || payType === "partial") && creditDays <= 0) { alert("حدد مدة التحصيل للعميل من بطاقة العميل أولًا؛ لا يمكن إدخال بيع آجل دون مدة استحقاق."); return; }
     if ((payType === "cash" || payType === "partial") && treasuryAcc === "") { alert("اختر خزنة/بنك التحصيل."); return; }
-    if (revAcc === "") { alert("اختر حساب إيراد المبيعات."); return; }
+    if (revAcc === "") { alert("اختر حساب إيراد المبيعات الخاص بالفرع."); return; }
+    if (totals.tax > 0 && taxAcc === "") { alert("اختر حساب ضريبة المخرجات المستحقة."); return; }
     setSaving(true);
     const res = await DB.createSalesInvoice(org.id, {
-      branch_id: branch ? Number(branch) : (fBranch ? Number(fBranch) : null), date,
+      branch_id: branch ? Number(branch) : (fBranch ? Number(fBranch) : (branches?.length === 1 ? Number(branches[0].id) : null)), date,
       party_id: partyId === "" ? null : Number(partyId), customer_name: custName.trim() || null,
       payment_type: payType, treasury_account_id: treasuryAcc === "" ? null : Number(treasuryAcc),
       customer_account_id: custAcc, revenue_account_id: Number(revAcc), tax_account_id: taxAcc === "" ? null : Number(taxAcc),
@@ -1622,8 +1629,14 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, shop 
             <div><label className={LABEL}>التاريخ</label><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={DATE} /></div>
             <div><label className={LABEL}>العميل</label><PartyPicker parties={parties} value={partyId} placeholder="— عميل نقدي/عابر" size="md" onPick={(p) => { const acc = resolvePartyAccount(p, parties); setPartyId(p.id); setCustAcc(acc); setCustName(p.name); }} /></div>
             <div><label className={LABEL}>اسم العميل (نقدي بلا حساب)</label><input value={custName} onChange={(e) => { setCustName(e.target.value); setPartyId(""); setCustAcc(null); }} placeholder="عميل نقدي" className={INPUT} /></div>
-            {multiBranch && <div><label className={LABEL}>الفرع</label><select value={branch} onChange={(e) => setBranch(e.target.value)} className={SELECT}><option value="">افتراضي</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
+            {multiBranch && <div><label className={LABEL}>الفرع <span className="text-red-400">*</span></label><select value={branch} onChange={(e) => setBranch(e.target.value)} className={SELECT}><option value="">— اختر الفرع —</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
           </div>
+
+          {(payType === "credit" || payType === "partial") && <div className="mb-3 rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs flex flex-wrap gap-x-5 gap-y-1">
+            <span className="text-slate-400">مدة التحصيل المعتمدة للعميل: <b className="text-amber-300">{creditDays > 0 ? `${creditDays} يوم` : "غير محددة"}</b></span>
+            <span className="text-slate-400">تاريخ الاستحقاق: <b className="text-amber-300 [direction:ltr] inline-block">{dueDate || "—"}</b></span>
+            <span className="text-slate-500">تُستخدم مدة ائتمان العميل في احتساب أعمار الديون.</span>
+          </div>}
 
           {/* الأصناف */}
           <div className="bg-slate-950 border border-slate-800 rounded-xl overflow-hidden mb-3">
@@ -1650,7 +1663,7 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, shop 
                 ))}
               </div>
             </div>
-            {payType !== "credit" && <div><label className={LABEL}>خزنة/بنك التحصيل</label><AccountPicker value={treasuryAcc} onChange={(v) => setTreasuryAcc(v === "" ? "" : v)} options={postable} placeholder="— اختر الخزنة" size="md" /></div>}
+            {payType !== "credit" && <div><label className={LABEL}>خزنة/بنك التحصيل</label><AccountPicker value={treasuryAcc} onChange={(v) => setTreasuryAcc(v === "" ? "" : v)} options={treasuryAccounts} placeholder={treasuryAccounts.length ? "— اختر خزنة/بنك الفرع" : "— لا توجد خزنة مرتبطة بالفرع"} size="md" /></div>}
             {payType === "partial" && <div><label className={LABEL}>المدفوع الآن</label><input type="number" step="0.01" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value)} placeholder="0.00" className={INPUT + " [direction:ltr] text-center"} /></div>}
             <div><label className={LABEL}>الضريبة %</label>
               <div className="flex gap-2">
@@ -1661,8 +1674,8 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, shop 
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
-            <div><label className={LABEL}>حساب إيراد المبيعات</label><AccountPicker value={revAcc} onChange={(v) => setRevAcc(v === "" ? "" : v)} options={postable} placeholder="— اختر الإيراد" size="md" /></div>
-            <div><label className={LABEL}>حساب الضريبة المستحقة</label><AccountPicker value={taxAcc} onChange={(v) => setTaxAcc(v === "" ? "" : v)} options={postable} placeholder="— اختر الضريبة" size="md" /></div>
+            <div><label className={LABEL}>حساب إيراد المبيعات <span className="text-red-400">*</span></label><AccountPicker value={revAcc} onChange={(v) => setRevAcc(v === "" ? "" : v)} options={postable.filter((a: GLAccount) => a.type === "revenue")} placeholder="— اختر إيراد الفرع" size="md" />{multiBranch && <p className="text-[10px] text-amber-300 mt-1">اختر حساب الإيراد المعتمد للفرع المحدد أعلاه.</p>}</div>
+            <div><label className={LABEL}>حساب ضريبة المخرجات المستحقة <span className="text-red-400">*</span></label><AccountPicker value={taxAcc} onChange={(v) => setTaxAcc(v === "" ? "" : v)} options={postable.filter((a: GLAccount) => a.type === "liability" && /ضريبة|vat|tax|مخرجات/i.test(a.name))} placeholder="— اختر ضريبة المخرجات" size="md" /></div>
             <div className="lg:col-span-2"><label className={LABEL}>ملاحظات</label><input value={notes} onChange={(e) => setNotes(e.target.value)} className={INPUT} /></div>
           </div>
 

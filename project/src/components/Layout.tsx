@@ -228,6 +228,7 @@ const OPERATIONS: OpEntry[] = [
     { labelEn: 'Chart',          labelAr: 'دليل الحسابات',    section: 'chart' },
     { labelEn: 'Ledger',         labelAr: 'كشف حساب',         section: 'ledger' },
     { labelEn: 'Trial Balance',  labelAr: 'ميزان المراجعة',   section: 'trial' },
+    { labelEn: 'Statements',     labelAr: 'القوائم المالية',   section: 'statements' },
     { labelEn: 'Assets',         labelAr: 'الأصول',           section: 'assets' },
     { labelEn: 'Fixed Expenses', labelAr: 'المصروفات الثابتة', page: 'fixed-expenses' },
   ] },

@@ -15,6 +15,7 @@ import {
   Plus, Pencil, Trash2, Download, Upload, Save, X, Check, Search,
   Building2, FileCheck2, Send, Layers, Paperclip, ExternalLink,
   Wallet, Landmark, ArrowDownCircle, ArrowUpCircle, Users, Phone, Printer,
+  TrendingDown, BarChart3,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../lib/supabase";
@@ -41,7 +42,7 @@ const BTN_SUCCESS = "inline-flex items-center justify-center gap-1.5 px-5 py-2.5
 const BTN_GHOST_EM = "inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-xs transition-colors disabled:opacity-50 hover:bg-emerald-500/20";
 const BTN_GHOST_BL = "inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-300 font-bold text-xs transition-colors disabled:opacity-50 hover:bg-blue-500/20";
 
-type Tab = "chart" | "journal" | "ledger" | "trial" | "assets" | "treasury" | "parties";
+type Tab = "chart" | "journal" | "ledger" | "trial" | "statements" | "assets" | "treasury" | "parties";
 const TYPE_OPTS: AccType[] = ["asset", "liability", "equity", "revenue", "expense"];
 const TABS: { k: Tab; label: string; icon: any }[] = [
   { k: "chart", label: "دليل الحسابات", icon: Network },
@@ -50,6 +51,7 @@ const TABS: { k: Tab; label: string; icon: any }[] = [
   { k: "parties", label: "العملاء والموردين", icon: Users },
   { k: "ledger", label: "كشف حساب", icon: FileText },
   { k: "trial", label: "ميزان المراجعة", icon: Scale },
+  { k: "statements", label: "القوائم المالية", icon: BarChart3 },
   { k: "assets", label: "الأصول", icon: Building2 },
 ];
 
@@ -370,6 +372,7 @@ export default function AccountingPage({ section, onSection }: { section?: strin
       {tab === "journal" && <JournalTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} parties={parties} />}
       {tab === "ledger" && <LedgerTab org={org} postable={postable} accounts={accounts} accById={accById} branches={branches} branchName={branchName} shop={shopInfo} />}
       {tab === "trial" && <TrialTab org={org} accById={accById} postable={postable} branches={branches} />}
+      {tab === "statements" && <StatementsTab org={org} accounts={accounts} branches={branches} shop={shopInfo} />}
       {tab === "assets" && <AssetsTab org={org} postable={postable} branches={branches} branchName={branchName} />}
       {tab === "treasury" && <TreasuryTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} parties={parties} />}
       {tab === "parties" && <PartiesTab org={org} postable={postable} accounts={accounts} accById={accById} branches={branches} shop={shopInfo} />}
@@ -1088,6 +1091,201 @@ function TrialTab({ org, accById, branches }: any) {
   );
 }
 
+// ══════════════ القوائم المالية (قائمة الدخل + الميزانية) ══════════════
+function StatementsTab({ org, accounts, branches, shop }: any) {
+  const multiBranch = branches && branches.length > 1;
+  const yearStart = `${new Date().getFullYear()}-01-01`;
+  const [from, setFrom] = useState(yearStart);
+  const [to, setTo] = useState(today());
+  const [fBranch, setFBranch] = useState<string>("");
+  const [view, setView] = useState<"income" | "balance">("income");
+  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState<null | { period: Map<number, number>; toDate: Map<number, number> }>(null);
+
+  const run = async () => {
+    setLoading(true);
+    const byId = new Map(accounts.map((a: GLAccount) => [a.id, a] as const));
+    const entries = await DB.fetchEntries(org.id, "2000-01-01", to, fBranch ? Number(fBranch) : null);
+    const period = new Map<number, number>(); const toDate = new Map<number, number>();
+    entries.forEach((e: EntryWithLines) => {
+      const inPeriod = e.date >= from && e.date <= to;
+      (e.lines || []).forEach((l) => {
+        if (fBranch && l.branch_id != null && Number(l.branch_id) !== Number(fBranch)) return;
+        const a = byId.get(l.account_id) as GLAccount | undefined; if (!a) return;
+        const signed = DB.natureOf(a.type) === "debit"
+          ? (Number(l.debit) || 0) - (Number(l.credit) || 0)
+          : (Number(l.credit) || 0) - (Number(l.debit) || 0);
+        toDate.set(l.account_id, (toDate.get(l.account_id) || 0) + signed);
+        if (inPeriod) period.set(l.account_id, (period.get(l.account_id) || 0) + signed);
+      });
+    });
+    setData({ period, toDate }); setLoading(false);
+  };
+
+  const income = useMemo(() => {
+    if (!data) return null;
+    const pick = (t: AccType) => accounts.filter((a: GLAccount) => a.type === t && !a.is_group)
+      .map((a: GLAccount) => ({ a, v: Math.round((data.period.get(a.id) || 0) * 100) / 100 }))
+      .filter((r: any) => Math.abs(r.v) > 0.009).sort((x: any, y: any) => x.a.code.localeCompare(y.a.code));
+    const rev = pick("revenue"); const exp = pick("expense");
+    const totRev = rev.reduce((s: number, r: any) => s + r.v, 0);
+    const totExp = exp.reduce((s: number, r: any) => s + r.v, 0);
+    return { rev, exp, totRev, totExp, net: Math.round((totRev - totExp) * 100) / 100 };
+  }, [data, accounts]);
+
+  const balance = useMemo(() => {
+    if (!data) return null;
+    const pick = (t: AccType) => accounts.filter((a: GLAccount) => a.type === t && !a.is_group)
+      .map((a: GLAccount) => ({ a, v: Math.round((data.toDate.get(a.id) || 0) * 100) / 100 }))
+      .filter((r: any) => Math.abs(r.v) > 0.009).sort((x: any, y: any) => x.a.code.localeCompare(y.a.code));
+    const sum = (rs: any[]) => rs.reduce((s, r) => s + r.v, 0);
+    const assets = pick("asset"); const liab = pick("liability"); const equity = pick("equity");
+    const revTD = accounts.filter((a: GLAccount) => a.type === "revenue").reduce((s: number, a: GLAccount) => s + (data.toDate.get(a.id) || 0), 0);
+    const expTD = accounts.filter((a: GLAccount) => a.type === "expense").reduce((s: number, a: GLAccount) => s + (data.toDate.get(a.id) || 0), 0);
+    const retained = Math.round((revTD - expTD) * 100) / 100;
+    const totA = Math.round(sum(assets) * 100) / 100;
+    const totL = Math.round(sum(liab) * 100) / 100;
+    const totE = Math.round(sum(equity) * 100) / 100;
+    const right = Math.round((totL + totE + retained) * 100) / 100;
+    return { assets, liab, equity, retained, totA, totL, totE, right, balanced: Math.abs(totA - right) < 0.5 };
+  }, [data, accounts]);
+
+  const orgName = shop?.shop_name || org.name;
+  const printStmt = () => {
+    if (!data) return;
+    const money = (n: number) => `<td style="border:1px solid #e5e7eb;padding:5px 10px;text-align:left;font-variant-numeric:tabular-nums;direction:ltr">${fmt(n)}</td>`;
+    const secTitle = (t: string) => `<tr><td colspan="2" style="background:#14304d;color:#fff;padding:6px 10px;font-weight:800;font-size:12px">${t}</td></tr>`;
+    const line = (name: string, v: number, bold = false) => `<tr><td style="border:1px solid #e5e7eb;padding:5px 10px;text-align:right;${bold ? "font-weight:800" : ""}">${name}</td>${money(v)}</tr>`;
+    let body = "";
+    if (view === "income" && income) {
+      body += secTitle("الإيرادات");
+      income.rev.forEach((r: any) => (body += line(r.a.name, r.v)));
+      body += line("إجمالي الإيرادات", income.totRev, true);
+      body += secTitle("المصروفات");
+      income.exp.forEach((r: any) => (body += line(r.a.name, r.v)));
+      body += line("إجمالي المصروفات", income.totExp, true);
+      body += `<tr><td style="border:2px solid #0f766e;padding:7px 10px;text-align:right;font-weight:800;background:#ecfdf5">${income.net >= 0 ? "صافي الربح" : "صافي الخسارة"}</td><td style="border:2px solid #0f766e;padding:7px 10px;text-align:left;font-weight:800;background:#ecfdf5;direction:ltr">${fmt(income.net)}</td></tr>`;
+    } else if (balance) {
+      body += secTitle("الأصول");
+      balance.assets.forEach((r: any) => (body += line(r.a.name, r.v)));
+      body += line("إجمالي الأصول", balance.totA, true);
+      body += secTitle("الخصوم");
+      balance.liab.forEach((r: any) => (body += line(r.a.name, r.v)));
+      body += line("إجمالي الخصوم", balance.totL, true);
+      body += secTitle("حقوق الملكية");
+      balance.equity.forEach((r: any) => (body += line(r.a.name, r.v)));
+      body += line(balance.retained >= 0 ? "الأرباح المحتجزة (صافي الدخل)" : "الخسائر المتراكمة", balance.retained);
+      body += line("إجمالي حقوق الملكية", balance.totE + balance.retained, true);
+      body += `<tr><td style="border:2px solid #0f766e;padding:7px 10px;text-align:right;font-weight:800;background:#ecfdf5">إجمالي الخصوم وحقوق الملكية</td><td style="border:2px solid #0f766e;padding:7px 10px;text-align:left;font-weight:800;background:#ecfdf5;direction:ltr">${fmt(balance.right)}</td></tr>`;
+    }
+    const title = view === "income" ? `قائمة الدخل — من ${from} إلى ${to}` : `الميزانية العمومية — كما في ${to}`;
+    const logo = shop?.logo_url ? `<img src="${shop.logo_url}" style="height:54px;object-fit:contain"/>` : "";
+    const vat = shop?.tax_number ? `<div>الرقم الضريبي: ${shop.tax_number}</div>` : "";
+    const html = `<html dir="rtl"><head><meta charset="UTF-8"><title>${title}</title></head><body style="font-family:'Segoe UI',Tahoma,sans-serif;padding:24px;color:#0f172a">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #14304d;padding-bottom:10px;margin-bottom:14px">
+        <div><div style="font-size:19px;font-weight:800">${orgName}</div>${vat}${shop?.address ? `<div style="font-size:12px;color:#475569">${shop.address}</div>` : ""}</div>${logo}
+      </div>
+      <h2 style="font-size:15px;margin:0 0 10px">${title}</h2>
+      <table style="border-collapse:collapse;width:100%;font-size:12px">${body}</table>
+      <div style="margin-top:22px;font-size:11px;color:#64748b;display:flex;justify-content:space-between">
+        <span>إعداد: المحاسب أحمد صالح / Prepared by: Accountant Ahmed Saleh</span><span>واتساب: +966 55 930 1659</span>
+      </div>
+    </body></html>`;
+    const w = window.open("", "_blank"); if (!w) { alert("فعّل النوافذ المنبثقة للطباعة."); return; }
+    w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 300);
+  };
+
+  const exportExcel = () => {
+    if (!data) return;
+    const rows: string[][] = [];
+    if (view === "income" && income) {
+      rows.push(["الإيرادات", ""]); income.rev.forEach((r: any) => rows.push([r.a.name, fmt(r.v)]));
+      rows.push(["إجمالي الإيرادات", fmt(income.totRev)]);
+      rows.push(["المصروفات", ""]); income.exp.forEach((r: any) => rows.push([r.a.name, fmt(r.v)]));
+      rows.push(["إجمالي المصروفات", fmt(income.totExp)]);
+      rows.push([income.net >= 0 ? "صافي الربح" : "صافي الخسارة", fmt(income.net)]);
+    } else if (balance) {
+      rows.push(["الأصول", ""]); balance.assets.forEach((r: any) => rows.push([r.a.name, fmt(r.v)]));
+      rows.push(["إجمالي الأصول", fmt(balance.totA)]);
+      rows.push(["الخصوم", ""]); balance.liab.forEach((r: any) => rows.push([r.a.name, fmt(r.v)]));
+      rows.push(["إجمالي الخصوم", fmt(balance.totL)]);
+      rows.push(["حقوق الملكية", ""]); balance.equity.forEach((r: any) => rows.push([r.a.name, fmt(r.v)]));
+      rows.push(["الأرباح المحتجزة (صافي الدخل)", fmt(balance.retained)]);
+      rows.push(["إجمالي حقوق الملكية", fmt(balance.totE + balance.retained)]);
+      rows.push(["إجمالي الخصوم وحقوق الملكية", fmt(balance.right)]);
+    }
+    const title = view === "income" ? `قائمة الدخل ${from} إلى ${to}` : `الميزانية كما في ${to}`;
+    const rowsHtml = rows.map((c) => `<tr><td style="border:1px solid #e5e7eb;padding:5px 8px;text-align:right;font-size:11px">${c[0]}</td><td style="border:1px solid #e5e7eb;padding:5px 8px;text-align:center;font-size:11px">${c[1]}</td></tr>`).join("");
+    const html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"></head><body dir="rtl"><h3>${orgName} — ${title}</h3><table style="border-collapse:collapse">${rowsHtml}</table></body></html>`;
+    const blob = new Blob(["﻿" + html], { type: "application/vnd.ms-excel;charset=utf-8" });
+    const el = document.createElement("a"); el.href = URL.createObjectURL(blob); el.download = `${title}.xls`; el.click(); URL.revokeObjectURL(el.href);
+  };
+
+  const Row = ({ name, v, strong, danger }: { name: string; v: number; strong?: boolean; danger?: boolean }) => (
+    <div className={`flex items-center justify-between px-4 py-2 border-b border-slate-800/60 ${strong ? "bg-slate-950/60" : ""}`}>
+      <span className={`text-xs ${strong ? "font-bold text-slate-100" : "text-slate-300"}`}>{name}</span>
+      <span className={`text-xs font-mono [direction:ltr] ${danger ? "text-red-300" : strong ? "text-emerald-300 font-bold" : "text-slate-200"}`}>{fmt(v)}</span>
+    </div>
+  );
+  const SecTitle = ({ t }: { t: string }) => <div className="px-4 py-2 bg-blue-500/10 text-blue-300 text-[11px] font-bold border-b border-slate-800">{t}</div>;
+
+  return (
+    <div>
+      <div className={`${CARD} p-3 mb-4`}>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="inline-flex gap-1 bg-slate-950 border border-slate-800 rounded-xl p-1">
+            <button onClick={() => setView("income")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${view === "income" ? "bg-blue-600 text-[#fff]" : "text-slate-400 hover:text-slate-200"}`}>قائمة الدخل</button>
+            <button onClick={() => setView("balance")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${view === "balance" ? "bg-blue-600 text-[#fff]" : "text-slate-400 hover:text-slate-200"}`}>الميزانية</button>
+          </div>
+          {view === "income" && <div><label className={LABEL}>من</label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={DATE} /></div>}
+          <div><label className={LABEL}>{view === "income" ? "إلى" : "كما في تاريخ"}</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={DATE} /></div>
+          {multiBranch && <div><label className={LABEL}>الفرع</label><select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className={SELECT}><option value="">كل الفروع</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
+          <button onClick={run} disabled={loading} className={BTN_PRIMARY}><BarChart3 size={14} /> {loading ? "جارٍ…" : "عرض"}</button>
+          <button onClick={exportExcel} disabled={!data} className={BTN_GHOST_BL}><Download size={14} /> Excel</button>
+          <button onClick={printStmt} disabled={!data} className={BTN_GHOST_EM}><Printer size={14} /> طباعة</button>
+        </div>
+      </div>
+
+      {!data ? (
+        <div className={`${CARD} p-10 text-center text-slate-500 text-sm`}>اختر النوع والفترة ثم اضغط «عرض».</div>
+      ) : view === "income" && income ? (
+        <div className={`${CARD} overflow-hidden max-w-2xl`}>
+          <SectionHead icon={BarChart3} title={`قائمة الدخل — من ${from} إلى ${to}`} extra={<span className={`text-[11px] font-bold ${income.net >= 0 ? "text-emerald-400" : "text-red-400"}`}>{income.net >= 0 ? "ربح" : "خسارة"}: {fmt(income.net)}</span>} />
+          <SecTitle t="الإيرادات" />
+          {income.rev.length ? income.rev.map((r: any) => <Row key={r.a.id} name={r.a.name} v={r.v} />) : <div className="px-4 py-3 text-xs text-slate-500">لا إيرادات في الفترة</div>}
+          <Row name="إجمالي الإيرادات" v={income.totRev} strong />
+          <SecTitle t="المصروفات" />
+          {income.exp.length ? income.exp.map((r: any) => <Row key={r.a.id} name={r.a.name} v={r.v} />) : <div className="px-4 py-3 text-xs text-slate-500">لا مصروفات في الفترة</div>}
+          <Row name="إجمالي المصروفات" v={income.totExp} strong />
+          <div className={`flex items-center justify-between px-4 py-3 ${income.net >= 0 ? "bg-emerald-500/10" : "bg-red-500/10"}`}>
+            <span className={`text-sm font-black ${income.net >= 0 ? "text-emerald-300" : "text-red-300"}`}>{income.net >= 0 ? "صافي الربح" : "صافي الخسارة"}</span>
+            <span className={`text-sm font-mono font-black [direction:ltr] ${income.net >= 0 ? "text-emerald-300" : "text-red-300"}`}>{fmt(income.net)}</span>
+          </div>
+        </div>
+      ) : balance ? (
+        <div className={`${CARD} overflow-hidden max-w-2xl`}>
+          <SectionHead icon={Scale} title={`الميزانية العمومية — كما في ${to}`} extra={<span className={`text-[11px] font-bold ${balance.balanced ? "text-emerald-400" : "text-amber-400"}`}>{balance.balanced ? "✓ متوازنة" : `فرق: ${fmt(balance.totA - balance.right)}`}</span>} />
+          <SecTitle t="الأصول" />
+          {balance.assets.map((r: any) => <Row key={r.a.id} name={r.a.name} v={r.v} danger={r.v < 0} />)}
+          <Row name="إجمالي الأصول" v={balance.totA} strong />
+          <SecTitle t="الخصوم" />
+          {balance.liab.length ? balance.liab.map((r: any) => <Row key={r.a.id} name={r.a.name} v={r.v} />) : <div className="px-4 py-3 text-xs text-slate-500">لا خصوم</div>}
+          <Row name="إجمالي الخصوم" v={balance.totL} strong />
+          <SecTitle t="حقوق الملكية" />
+          {balance.equity.map((r: any) => <Row key={r.a.id} name={r.a.name} v={r.v} />)}
+          <Row name={balance.retained >= 0 ? "الأرباح المحتجزة (صافي الدخل)" : "الخسائر المتراكمة"} v={balance.retained} danger={balance.retained < 0} />
+          <Row name="إجمالي حقوق الملكية" v={balance.totE + balance.retained} strong />
+          <div className={`flex items-center justify-between px-4 py-3 ${balance.balanced ? "bg-emerald-500/10" : "bg-amber-500/10"}`}>
+            <span className="text-sm font-black text-slate-100">إجمالي الخصوم وحقوق الملكية</span>
+            <span className="text-sm font-mono font-black [direction:ltr] text-slate-100">{fmt(balance.right)}</span>
+          </div>
+          {!balance.balanced && <div className="px-4 py-2 text-[11px] text-amber-400 bg-amber-500/5">⚠ الميزانية غير متوازنة بفارق {fmt(balance.totA - balance.right)} — راجع القيود غير المتوازنة أو حسابات بلا تصنيف صحيح.</div>}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 // ══════════════ الأصول الثابتة ══════════════
 function AssetsTab({ org, postable, branches, branchName }: any) {
   const multiBranch = branches && branches.length > 1;
@@ -1098,6 +1296,14 @@ function AssetsTab({ org, postable, branches, branchName }: any) {
   const [edit, setEdit] = useState<Partial<DB.GLAsset> | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // ترحيل الإهلاك
+  const [postOpen, setPostOpen] = useState(false);
+  const [pDate, setPDate] = useState(today());
+  const [pExp, setPExp] = useState<number | "">("");
+  const [pAcc, setPAcc] = useState<number | "">("");
+  const [pBranch, setPBranch] = useState<string>("");
+  const [posting, setPosting] = useState(false);
+
   const reload = useCallback(async () => {
     setLoading(true);
     setAssets(await DB.fetchAssets(org.id, fBranch ? Number(fBranch) : null));
@@ -1105,10 +1311,44 @@ function AssetsTab({ org, postable, branches, branchName }: any) {
   }, [org.id, fBranch]);
   useEffect(() => { reload(); }, [reload]);
 
-  const rows = useMemo(() => assets.map((a) => ({ a, dep: DB.depreciation(a, asOf) })), [assets, asOf]);
+  const rows = useMemo(() => assets.map((a) => {
+    const dep = DB.depreciation(a, asOf);
+    const posted = Number(a.depr_posted) || 0;
+    const due = Math.max(0, Math.round((dep.accumulated - posted) * 100) / 100);
+    return { a, dep, posted, due };
+  }), [assets, asOf]);
   const totCost = rows.reduce((s, r) => s + (Number(r.a.cost) || 0), 0);
   const totAcc = rows.reduce((s, r) => s + r.dep.accumulated, 0);
   const totBook = rows.reduce((s, r) => s + r.dep.bookValue, 0);
+  const totPosted = rows.reduce((s, r) => s + r.posted, 0);
+  const totDue = rows.reduce((s, r) => s + r.due, 0);
+
+  // صفوف الترحيل حتى pDate (المستحق غير المُرحَّل فقط)
+  const postRows = useMemo(() => assets
+    .filter((a) => a.is_active !== false)
+    .map((a) => {
+      const dep = DB.depreciation(a, pDate);
+      const prior = Number(a.depr_posted) || 0;
+      const due = Math.round((dep.accumulated - prior) * 100) / 100;
+      const expAcc = a.expense_account_id ?? (pExp === "" ? null : Number(pExp));
+      const accAcc = a.accum_account_id ?? (pAcc === "" ? null : Number(pAcc));
+      return { a, due, prior, expAcc, accAcc };
+    })
+    .filter((r) => r.due > 0.009), [assets, pDate, pExp, pAcc]);
+  const postTotal = postRows.reduce((s, r) => s + r.due, 0);
+  const missingAcc = postRows.some((r) => !r.expAcc || !r.accAcc);
+
+  const doPost = async () => {
+    if (!postRows.length) { alert("لا يوجد إهلاك مستحق للترحيل حتى هذا التاريخ."); return; }
+    if (missingAcc) { alert("بعض الأصول بلا حساب «مصروف إهلاك» أو «مجمع إهلاك». حدّد الحسابين الافتراضيين بالأعلى، أو على كل أصل من نافذة تعديله."); return; }
+    setPosting(true);
+    const items = postRows.map((r) => ({ assetId: r.a.id, name: r.a.name, amount: r.due, expAcc: r.expAcc as number, accAcc: r.accAcc as number, branch: r.a.branch_id ?? null, priorPosted: r.prior }));
+    const res = await DB.postDepreciation(org.id, { date: pDate, branch_id: pBranch ? Number(pBranch) : (fBranch ? Number(fBranch) : null), notes: null }, items);
+    setPosting(false);
+    if (!res.ok) { alert("تعذّر الترحيل: " + (res.error || "")); return; }
+    alert(`تم ترحيل قيد إهلاك بإجمالي ${fmt(res.total || 0)} — رقم القيد الداخلي ${res.id}.`);
+    setPostOpen(false); await reload();
+  };
 
   const save = async () => {
     if (!edit) return;
@@ -1120,6 +1360,8 @@ function AssetsTab({ org, postable, branches, branchName }: any) {
       name: String(edit.name).trim(), category: edit.category || null,
       acquire_date: edit.acquire_date, cost: num(edit.cost), salvage_value: num(edit.salvage_value),
       useful_life_years: num(edit.useful_life_years) || 1, account_id: edit.account_id ?? null,
+      expense_account_id: edit.expense_account_id ?? null, accum_account_id: edit.accum_account_id ?? null,
+      depr_posted: Number(edit.depr_posted) || 0,
       notes: edit.notes || null, is_active: edit.is_active !== false,
     };
     if (edit.id) payload.id = edit.id;
@@ -1153,8 +1395,9 @@ function AssetsTab({ org, postable, branches, branchName }: any) {
           <div><label className={LABEL}>الإهلاك حتى تاريخ</label><input type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)} className={DATE} /></div>
           {multiBranch && <div><label className={LABEL}>الفرع</label><select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className={SELECT}><option value="">كل الفروع</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
           <button onClick={() => setEdit({ acquire_date: today(), cost: 0 as any, salvage_value: 0 as any, useful_life_years: 5 as any, is_active: true })} className={BTN_GHOST_EM}><Plus size={14} /> أصل جديد</button>
+          <button onClick={() => { setPDate(asOf); setPostOpen(true); }} disabled={!rows.length} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-bold bg-amber-500/10 text-amber-300 border border-amber-500/30 hover:bg-amber-500/20 disabled:opacity-40 disabled:cursor-not-allowed"><TrendingDown size={14} /> ترحيل الإهلاك</button>
           <button onClick={exportExcel} disabled={!rows.length} className={BTN_GHOST_BL}><Download size={14} /> Excel</button>
-          <span className="text-[11px] text-slate-500 mr-auto">{assets.length} أصل</span>
+          <span className="text-[11px] text-slate-500 mr-auto">{assets.length} أصل · مستحق للترحيل: <span className="font-mono text-amber-300 font-bold">{fmt(totDue)}</span></span>
         </div>
       </div>
 
@@ -1163,10 +1406,10 @@ function AssetsTab({ org, postable, branches, branchName }: any) {
           <span className="text-[11px] text-slate-500">القيمة الدفترية: <span className="font-mono text-emerald-400 font-bold">{fmt(totBook)}</span></span>
         } />
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse" style={{ minWidth: 840 }}>
-            <thead><tr>{["الأصل", "الفئة", "تاريخ الاقتناء", "التكلفة", "العمر/سنة", "إهلاك سنوي", "مجمع الإهلاك", "القيمة الدفترية", ...(multiBranch ? ["الفرع"] : []), ""].map((h, i) => <th key={i} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
+          <table className="w-full border-collapse" style={{ minWidth: 980 }}>
+            <thead><tr>{["الأصل", "الفئة", "تاريخ الاقتناء", "التكلفة", "العمر/سنة", "إهلاك سنوي", "مجمع الإهلاك", "مُرحَّل", "مستحق الترحيل", "القيمة الدفترية", ...(multiBranch ? ["الفرع"] : []), ""].map((h, i) => <th key={i} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
             <tbody>
-              {rows.map(({ a, dep }) => (
+              {rows.map(({ a, dep, posted, due }) => (
                 <tr key={a.id} className="hover:bg-white/[0.02]">
                   <td className="px-2 py-2 text-xs text-right text-slate-200 border-b border-slate-800">{a.name}{!a.is_active && <span className="text-[9px] text-red-400"> (موقوف)</span>}</td>
                   <td className="px-2 py-2 text-xs text-right text-slate-400 border-b border-slate-800">{a.category || "—"}</td>
@@ -1175,12 +1418,14 @@ function AssetsTab({ org, postable, branches, branchName }: any) {
                   <td className="px-2 py-2 text-xs text-center font-mono text-slate-400 [direction:ltr] border-b border-slate-800">{a.useful_life_years}</td>
                   <td className="px-2 py-2 text-xs text-center font-mono text-amber-400 [direction:ltr] border-b border-slate-800">{fmt(dep.annual)}</td>
                   <td className="px-2 py-2 text-xs text-center font-mono text-amber-300 [direction:ltr] border-b border-slate-800">{fmt(dep.accumulated)}</td>
+                  <td className="px-2 py-2 text-xs text-center font-mono text-slate-400 [direction:ltr] border-b border-slate-800">{fmt(posted)}</td>
+                  <td className={`px-2 py-2 text-xs text-center font-mono [direction:ltr] border-b border-slate-800 ${due > 0.009 ? "text-red-300 font-bold" : "text-slate-600"}`}>{fmt(due)}</td>
                   <td className="px-2 py-2 text-xs text-center font-mono font-bold text-emerald-400 [direction:ltr] border-b border-slate-800">{fmt(dep.bookValue)}</td>
                   {multiBranch && <td className="px-2 py-2 text-xs text-center text-slate-400 border-b border-slate-800">{a.branch_id != null ? branchName(a.branch_id) : "—"}</td>}
                   <td className="px-2 py-2 border-b border-slate-800"><div className="flex items-center gap-1 justify-center"><button onClick={() => setEdit({ ...a })} title="تعديل" className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-300 flex items-center justify-center hover:bg-blue-500/20"><Pencil size={13} /></button><button onClick={() => del(a)} title="حذف" className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400 flex items-center justify-center hover:bg-red-500/20"><Trash2 size={13} /></button></div></td>
                 </tr>
               ))}
-              {rows.length === 0 && <tr><td colSpan={multiBranch ? 10 : 9} className="p-8 text-center text-slate-500 text-sm">{loading ? "جارٍ…" : "لا توجد أصول بعد. اضغط «أصل جديد»."}</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={multiBranch ? 12 : 11} className="p-8 text-center text-slate-500 text-sm">{loading ? "جارٍ…" : "لا توجد أصول بعد. اضغط «أصل جديد»."}</td></tr>}
             </tbody>
             {rows.length > 0 && (
               <tfoot><tr className="bg-slate-950 font-bold">
@@ -1188,6 +1433,8 @@ function AssetsTab({ org, postable, branches, branchName }: any) {
                 <td className="px-2 py-2.5 text-center font-mono text-xs text-slate-100 [direction:ltr] border-t border-slate-600">{fmt(totCost)}</td>
                 <td className="border-t border-slate-600" colSpan={2} />
                 <td className="px-2 py-2.5 text-center font-mono text-xs text-amber-300 [direction:ltr] border-t border-slate-600">{fmt(totAcc)}</td>
+                <td className="px-2 py-2.5 text-center font-mono text-xs text-slate-300 [direction:ltr] border-t border-slate-600">{fmt(totPosted)}</td>
+                <td className="px-2 py-2.5 text-center font-mono text-xs text-red-300 [direction:ltr] border-t border-slate-600">{fmt(totDue)}</td>
                 <td className="px-2 py-2.5 text-center font-mono text-xs text-emerald-400 [direction:ltr] border-t border-slate-600">{fmt(totBook)}</td>
                 <td className="border-t border-slate-600" colSpan={multiBranch ? 2 : 1} />
               </tr></tfoot>
@@ -1215,6 +1462,11 @@ function AssetsTab({ org, postable, branches, branchName }: any) {
                 <div><label className={LABEL}>حساب الأصل (اختياري)</label><AccountPicker value={edit.account_id ?? ""} onChange={(v) => setEdit({ ...edit, account_id: v === "" ? null : v })} options={postable} placeholder="— بدون" size="md" /></div>
                 {multiBranch && <div><label className={LABEL}>مركز التكلفة (فرع)</label><select value={edit.branch_id ?? ""} onChange={(e) => setEdit({ ...edit, branch_id: e.target.value ? Number(e.target.value) : null })} className={SELECT}><option value="">— بدون</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className={LABEL}>حساب مصروف الإهلاك</label><AccountPicker value={edit.expense_account_id ?? ""} onChange={(v) => setEdit({ ...edit, expense_account_id: v === "" ? null : v })} options={postable} placeholder="— افتراضي عند الترحيل" size="md" /></div>
+                <div><label className={LABEL}>حساب مجمع الإهلاك</label><AccountPicker value={edit.accum_account_id ?? ""} onChange={(v) => setEdit({ ...edit, accum_account_id: v === "" ? null : v })} options={postable} placeholder="— افتراضي عند الترحيل" size="md" /></div>
+              </div>
+              <p className="text-[10px] text-slate-500 -mt-1">إن تُركا فارغين، يُستخدم الحسابان الافتراضيان اللذان تختارهما في نافذة «ترحيل الإهلاك».</p>
               <div><label className={LABEL}>ملاحظات</label><input value={edit.notes || ""} onChange={(e) => setEdit({ ...edit, notes: e.target.value })} className={INPUT} /></div>
               {num(edit.cost) > 0 && num(edit.useful_life_years) > 0 && (() => {
                 const d = DB.depreciation({ cost: num(edit.cost), salvage_value: num(edit.salvage_value), useful_life_years: num(edit.useful_life_years), acquire_date: edit.acquire_date || today() }, asOf);
@@ -1232,6 +1484,56 @@ function AssetsTab({ org, postable, branches, branchName }: any) {
             <div className="flex gap-2 justify-end mt-5">
               <button onClick={() => setEdit(null)} className={BTN_SOFT}><X size={14} /> إلغاء</button>
               <button onClick={save} disabled={busy} className={BTN_SUCCESS}><Save size={15} /> {busy ? "جارٍ…" : "حفظ"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {postOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" dir="rtl">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl p-5 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h3 className="text-white font-bold text-base mb-1 flex items-center gap-2"><TrendingDown size={18} className="text-amber-400" /> ترحيل قيد الإهلاك</h3>
+            <p className="text-[11px] text-slate-500 mb-4">يُنشئ قيدًا واحدًا: مدين «مصروف الإهلاك» / دائن «مجمع الإهلاك» بقيمة المستحق غير المُرحَّل لكل أصل حتى التاريخ المحدد.</p>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div><label className={LABEL}>الإهلاك حتى تاريخ</label><input type="date" value={pDate} onChange={(e) => setPDate(e.target.value)} className={DATE} /></div>
+              {multiBranch && <div><label className={LABEL}>مركز تكلفة القيد</label><select value={pBranch} onChange={(e) => setPBranch(e.target.value)} className={SELECT}><option value="">— حسب فرع كل أصل</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
+            </div>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div><label className={LABEL}>حساب مصروف الإهلاك (افتراضي)</label><AccountPicker value={pExp} onChange={(v) => setPExp(v === "" ? "" : v)} options={postable} placeholder="— اختر حساب المصروف" size="md" /></div>
+              <div><label className={LABEL}>حساب مجمع الإهلاك (افتراضي)</label><AccountPicker value={pAcc} onChange={(v) => setPAcc(v === "" ? "" : v)} options={postable} placeholder="— اختر حساب المجمع" size="md" /></div>
+            </div>
+            <p className="text-[10px] text-slate-500 mb-3">يُستخدم الحسابان الافتراضيان لأي أصل لم تُحدَّد له حساباته الخاصة في نافذة تعديله.</p>
+
+            <div className="bg-slate-950 border border-slate-800 rounded-xl overflow-hidden mb-3">
+              <div className="px-3 py-2 text-[11px] text-slate-400 border-b border-slate-800 flex items-center justify-between">
+                <span>الأصول المستحقة للترحيل</span>
+                <span>{postRows.length} أصل · إجمالي: <span className="font-mono text-amber-300 font-bold">{fmt(postTotal)}</span></span>
+              </div>
+              <div className="max-h-56 overflow-y-auto">
+                {postRows.length === 0 ? (
+                  <div className="p-6 text-center text-slate-500 text-xs">لا يوجد إهلاك مستحق للترحيل حتى هذا التاريخ.</div>
+                ) : (
+                  <table className="w-full border-collapse">
+                    <thead><tr>{["الأصل", "المستحق", "حساب المصروف", "حساب المجمع"].map((h, i) => <th key={i} className="text-[10px] px-2 py-1.5 bg-slate-950 text-slate-500 whitespace-nowrap border-b border-slate-800 sticky top-0">{h}</th>)}</tr></thead>
+                    <tbody>
+                      {postRows.map((r) => (
+                        <tr key={r.a.id}>
+                          <td className="px-2 py-1.5 text-xs text-right text-slate-200 border-b border-slate-800/60">{r.a.name}</td>
+                          <td className="px-2 py-1.5 text-xs text-center font-mono text-amber-300 [direction:ltr] border-b border-slate-800/60">{fmt(r.due)}</td>
+                          <td className={`px-2 py-1.5 text-[11px] text-center border-b border-slate-800/60 ${r.expAcc ? "text-slate-400" : "text-red-400"}`}>{r.expAcc ? (postable.find((x: any) => x.id === r.expAcc)?.name || `#${r.expAcc}`) : "غير محدد"}</td>
+                          <td className={`px-2 py-1.5 text-[11px] text-center border-b border-slate-800/60 ${r.accAcc ? "text-slate-400" : "text-red-400"}`}>{r.accAcc ? (postable.find((x: any) => x.id === r.accAcc)?.name || `#${r.accAcc}`) : "غير محدد"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+            {missingAcc && <p className="text-[11px] text-red-400 mb-3">⚠ بعض الأصول بلا حساب مصروف/مجمع — حدّد الحسابين الافتراضيين أعلاه أو على الأصل نفسه.</p>}
+
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setPostOpen(false)} className={BTN_SOFT}><X size={14} /> إلغاء</button>
+              <button onClick={doPost} disabled={posting || !postRows.length || missingAcc} className={BTN_SUCCESS}><Check size={15} /> {posting ? "جارٍ الترحيل…" : `ترحيل ${fmt(postTotal)}`}</button>
             </div>
           </div>
         </div>

@@ -58,7 +58,7 @@ export const TYPE_LABEL: Record<AccType, string> = {
 };
 
 // أنواع القيود (لتصنيف القيد وتسهيل الفلترة والربط لاحقًا)
-export type EntryType = "general" | "purchases" | "sales" | "settlement" | "receipt" | "payment";
+export type EntryType = "general" | "purchases" | "sales" | "settlement" | "receipt" | "payment" | "depreciation";
 export const ENTRY_TYPE_LABEL: Record<string, string> = {
   general: "عام",
   purchases: "مشتريات",
@@ -66,8 +66,9 @@ export const ENTRY_TYPE_LABEL: Record<string, string> = {
   settlement: "تسوية",
   receipt: "سند قبض",
   payment: "سند صرف",
+  depreciation: "قيد إهلاك",
 };
-export const ENTRY_TYPE_OPTS: EntryType[] = ["general", "purchases", "sales", "settlement", "receipt", "payment"];
+export const ENTRY_TYPE_OPTS: EntryType[] = ["general", "purchases", "sales", "settlement", "receipt", "payment", "depreciation"];
 
 // ── المؤسسة النشطة من الفرع الحالي ──
 export async function getOrgForBranch(branchId: number | null): Promise<{ id: number; name: string } | null> {
@@ -432,6 +433,9 @@ export type GLAsset = {
   salvage_value: number;            // القيمة التخريدية
   useful_life_years: number;        // العمر الإنتاجي بالسنوات
   account_id: number | null;        // حساب الأصل (اختياري)
+  expense_account_id: number | null; // حساب مصروف الإهلاك (مدين عند الترحيل)
+  accum_account_id: number | null;   // حساب مجمع الإهلاك (دائن عند الترحيل)
+  depr_posted: number;               // الإهلاك المُرحَّل محاسبيًا حتى الآن (لمنع الازدواج)
   notes: string | null;
   is_active: boolean;
   created_at?: string;
@@ -488,6 +492,41 @@ export function depreciation(a: { cost: number; salvage_value: number; useful_li
   const accumulated = Math.min(depreciable, monthly * months);
   const bookValue = cost - accumulated;
   return { depreciable, annual, monthly, months, accumulated, bookValue };
+}
+
+// ترحيل قيد الإهلاك: لكل أصل سطر مدين «مصروف إهلاك» وسطر دائن «مجمع إهلاك» بقيمة
+// المستحق غير المُرحَّل، ثم تحديث depr_posted لمنع الازدواج عند إعادة الترحيل.
+export async function postDepreciation(
+  orgId: number,
+  header: { date: string; branch_id: number | null; notes?: string | null },
+  items: { assetId: number; name: string; amount: number; expAcc: number; accAcc: number; branch: number | null; priorPosted: number }[]
+): Promise<{ ok: boolean; error?: string; id?: number; total?: number }> {
+  const lines: GLLine[] = [];
+  let total = 0;
+  for (const it of items) {
+    if (!(it.amount > 0) || !it.expAcc || !it.accAcc) continue;
+    const amt = Math.round(it.amount * 100) / 100;
+    lines.push({ account_id: it.expAcc, debit: amt, credit: 0, branch_id: it.branch ?? header.branch_id, note: `إهلاك ${it.name}` });
+    lines.push({ account_id: it.accAcc, debit: 0, credit: amt, branch_id: it.branch ?? header.branch_id, note: `مجمع إهلاك ${it.name}` });
+    total += amt;
+  }
+  if (!lines.length) return { ok: false, error: "لا يوجد إهلاك مستحق للترحيل" };
+  const res = await createEntry(orgId, {
+    date: header.date,
+    description: `قيد إهلاك الأصول حتى ${header.date}`,
+    branch_id: header.branch_id,
+    entry_type: "depreciation",
+    notes: header.notes || null,
+    status: "posted",
+  }, lines);
+  if (!res.ok) return { ok: false, error: res.error };
+  // تحديث المُرحَّل لكل أصل (بعد نجاح القيد)
+  for (const it of items) {
+    if (!(it.amount > 0)) continue;
+    const newPosted = Math.round((it.priorPosted + it.amount) * 100) / 100;
+    await supabase.from("gl_assets").update({ depr_posted: newPosted }).eq("id", it.assetId);
+  }
+  return { ok: true, id: res.id, total };
 }
 
 // ── الخزن والبنوك + سندات القبض/الصرف ──

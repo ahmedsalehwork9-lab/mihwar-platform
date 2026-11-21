@@ -775,12 +775,18 @@ export type GLQuotation = {
   created_at?: string;
 };
 
-export async function nextQuotationNo(orgId: number, year: number): Promise<number> {
-  const { data, error } = await supabase.from("gl_sales_quotations").select("quotation_no")
-    .eq("organization_id", orgId).eq("quotation_year", year)
-    .order("quotation_no", { ascending: false }).limit(1);
-  if (error) { console.error("nextQuotationNo", error); throw new Error(error.message); }
-  return (((data as any[])?.[0]?.quotation_no as number) || 0) + 1;
+export async function nextQuotationNo(orgId: number, year: number, branchId: number | null): Promise<number> {
+  // Atomic, branch-scoped counter. Requires the migration RPC below.
+  const { data, error } = await supabase.rpc("next_gl_sales_quotation_no", {
+    p_org_id: orgId,
+    p_branch_id: branchId,
+    p_year: year,
+  });
+  if (error) {
+    console.error("nextQuotationNo", error);
+    throw new Error(error.message);
+  }
+  return Number(data);
 }
 
 export async function fetchQuotations(orgId: number, from: string, to: string, branchId?: number | null): Promise<GLQuotation[]> {
@@ -807,7 +813,7 @@ export async function createQuotation(orgId: number, quotation: {
     return { ok: false, error: "أضف صنفًا واحدًا على الأقل بقيمة صحيحة." };
   const year = Number(quotation.date.slice(0, 4));
   let quotationNo: number;
-  try { quotationNo = await nextQuotationNo(orgId, year); }
+  try { quotationNo = await nextQuotationNo(orgId, year, quotation.branch_id); }
   catch (e) { return { ok: false, error: e instanceof Error ? e.message : "تعذر إنشاء رقم العرض." }; }
   const { data, error } = await supabase.from("gl_sales_quotations").insert({
     organization_id: orgId, branch_id: quotation.branch_id, quotation_no: quotationNo, quotation_year: year,

@@ -74,6 +74,8 @@ export default function QuotationPage() {
     return {subtotal:afterDiscount.subtotal,discount:disc,tax:afterDiscount.tax,total:afterDiscount.total};
   },[items,taxRate,taxInclusive,discount]);
   const branchId=branch?Number(branch):(branches?.length===1?Number(branches[0].id):null);
+  const branchLabel=(id:number|null|undefined)=>id==null?"الفرع العام":(branches||[]).find((b:any)=>Number(b.id)===Number(id))?.name||`فرع ${id}`;
+  const quoteCode=(q:GLQuotation)=>`QT-B${q.branch_id??0}-${q.quotation_year}-${String(q.quotation_no).padStart(6,"0")}`;
   const setItem=(i:number,p:Partial<DraftItem>)=>setItems(old=>old.map((v,n)=>n===i?{...v,...p}:v));
   const reset=()=>{setDate(today());setValidUntil("");setBranch(branches?.length===1?String(branches[0].id):"");setPartyId("");setCustomerName("");setTaxRate("15");setTaxInclusive(false);setDiscount("0");setNotes("");setItems([{description:"",qty:"1",unit_price:""}]);};
 
@@ -126,8 +128,11 @@ export default function QuotationPage() {
 
   const filtered=rows.filter(q=>{
     const name=q.customer_name||parties.find(p=>p.id===q.party_id)?.name||"";
-    return !search||`${q.quotation_no} ${name}`.toLowerCase().includes(search.toLowerCase());
+    const code=quoteCode(q);
+    const needle=search.trim().toLowerCase();
+    return !needle||`${q.quotation_no} ${q.quotation_year} ${code} ${name}`.toLowerCase().includes(needle);
   });
+  const stats={total:filtered.length,accepted:filtered.filter(q=>q.status==="accepted").length,pending:filtered.filter(q=>q.status==="draft"||q.status==="sent").length,rejected:filtered.filter(q=>q.status==="rejected").length};
   const postable=accounts.filter(a=>!a.is_group);
   if(loading&&!org)return <div className="p-8 text-center text-slate-400">جارٍ تحميل بيانات المؤسسة…</div>;
   if(!org)return <div className="m-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-6 text-center text-amber-300" dir="rtl">الفرع الحالي غير مرتبط بمؤسسة. اربط الفرع بمؤسسة أولًا لتفعيل عروض الأسعار.</div>;
@@ -135,19 +140,22 @@ export default function QuotationPage() {
   return <div className="min-h-screen p-4 lg:p-6 text-white" dir="rtl">
     <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
       <div><h1 className="text-2xl font-black">عروض الأسعار</h1><p className="mt-1 text-xs text-slate-400">إنشاء ومتابعة عروض الأسعار وتحويل المقبول منها إلى فاتورة مبيعات</p></div>
-      <button className={`${btn} bg-blue-600 text-white`} onClick={()=>{reset();setShowForm(true);}}><FilePlus2 size={16}/> عرض سعر جديد</button>
+      <button className={`${btn} bg-blue-600 text-white`} onClick={()=>{reset();if(branchFilter)setBranch(branchFilter);setShowForm(true);}}><FilePlus2 size={16}/> عرض سعر جديد</button>
     </div>
     <div className="mb-4 grid grid-cols-1 gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-4 md:grid-cols-5">
+      <label className="text-xs text-slate-400">دفتر عروض الفرع<select className={`${input} mt-1`} value={branchFilter} onChange={e=>setBranchFilter(e.target.value)}><option value="">كل دفاتر الفروع</option>{(branches||[]).map((b:any)=><option key={b.id} value={b.id}>{b.name} — دفتر مستقل</option>)}</select></label>
       <label className="text-xs text-slate-400">من تاريخ<input className={`${input} mt-1`} type="date" value={from} onChange={e=>setFrom(e.target.value)}/></label>
       <label className="text-xs text-slate-400">إلى تاريخ<input className={`${input} mt-1`} type="date" value={to} onChange={e=>setTo(e.target.value)}/></label>
-      <label className="text-xs text-slate-400">الفرع<select className={`${input} mt-1`} value={branchFilter} onChange={e=>setBranchFilter(e.target.value)}><option value="">كل الفروع</option>{(branches||[]).map((b:any)=><option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
-      <label className="text-xs text-slate-400 md:col-span-2">بحث برقم العرض أو العميل<div className="relative mt-1"><Search className="absolute right-3 top-2.5 text-slate-500" size={15}/><input className={`${input} pr-9`} value={search} onChange={e=>setSearch(e.target.value)} placeholder="بحث..."/></div></label>
+      <label className="text-xs text-slate-400 md:col-span-2">بحث برقم العرض أو اسم العميل<div className="relative mt-1"><Search className="absolute right-3 top-2.5 text-slate-500" size={15}/><input className={`${input} pr-9`} value={search} onChange={e=>setSearch(e.target.value)} placeholder="مثال: QT-B12-2026-000145 أو اسم العميل"/></div></label>
+    </div>
+    <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {[{label:"إجمالي العروض",value:stats.total,style:"border-blue-500/30 bg-blue-500/10 text-blue-200"},{label:"مقبولة",value:stats.accepted,style:"border-emerald-500/30 bg-emerald-500/10 text-emerald-200"},{label:"قيد المتابعة",value:stats.pending,style:"border-amber-500/30 bg-amber-500/10 text-amber-200"},{label:"مرفوضة",value:stats.rejected,style:"border-rose-500/30 bg-rose-500/10 text-rose-200"}].map(k=><div key={k.label} className={`rounded-2xl border p-4 ${k.style}`}><div className="text-xs opacity-80">{k.label}</div><div className="mt-2 text-2xl font-black">{k.value}</div></div>)}
     </div>
     <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
-      <div className="flex items-center justify-between border-b border-slate-800 p-4"><b className="text-sm">سجل عروض الأسعار</b><button className={`${btn} bg-slate-800 text-slate-300`} onClick={()=>void reload()}><RefreshCw size={14}/> تحديث</button></div>
-      <div className="overflow-x-auto"><table className="w-full min-w-[850px] text-right text-xs"><thead className="bg-slate-950 text-slate-400"><tr>{["رقم العرض","التاريخ","العميل","الإجمالي","الصلاحية","الحالة","الإجراءات"].map(x=><th className="p-3" key={x}>{x}</th>)}</tr></thead><tbody>
-        {filtered.map(q=><tr className="border-t border-slate-800" key={q.id}><td className="p-3 font-bold">QT-{q.quotation_year}-{String(q.quotation_no).padStart(4,"0")}</td><td className="p-3">{q.date}</td><td className="p-3">{q.customer_name||parties.find(p=>p.id===q.party_id)?.name||"—"}</td><td className="p-3 font-bold">{money(q.total)} ر.س</td><td className="p-3">{q.valid_until||"—"}</td><td className="p-3"><span className="rounded-lg bg-slate-800 px-2 py-1">{q.status==="converted"?"تم التحويل":q.status==="accepted"?"مقبول":q.status==="rejected"?"مرفوض":q.status==="sent"?"مرسل":"مسودة"}</span></td><td className="p-3"><div className="flex gap-2"><button title="طباعة" className="rounded-lg bg-slate-800 p-2 text-blue-300" onClick={()=>print(q)}><Printer size={15}/></button>{!q.invoice_id&&q.status!=="converted"&&<><button title="تحويل إلى فاتورة" className="rounded-lg bg-emerald-500/10 p-2 text-emerald-300" onClick={()=>{setConvertRow(q);setPayType("cash");setTreasuryAcc("");setCustomerAcc(String(parties.find(p=>p.id===q.party_id)?.account_id||""));setRevenueAcc("");setTaxAcc("");}}><ArrowRightLeft size={15}/></button><button title="حذف" className="rounded-lg bg-red-500/10 p-2 text-red-300" onClick={async()=>{if(confirm("حذف عرض السعر؟")){const r=await DB.deleteQuotation(q.id);if(!r.ok)alert(r.error);await reload();}}}><Trash2 size={15}/></button></>}</div></td></tr>)}
-        {!filtered.length&&<tr><td colSpan={7} className="p-10 text-center text-slate-500">{loading?"جارٍ التحميل…":"لا توجد عروض أسعار خلال الفترة المحددة."}</td></tr>}
+      <div className="flex items-center justify-between border-b border-slate-800 p-4"><div><b className="text-sm">{branchFilter?`دفتر عروض ${branchLabel(Number(branchFilter))}`:"دفاتر عروض الأسعار"}</b><p className="mt-1 text-[11px] text-slate-500">تسلسل مستقل لكل فرع — البحث يشمل رقم العرض واسم العميل</p></div><button className={`${btn} bg-slate-800 text-slate-300`} onClick={()=>void reload()}><RefreshCw size={14}/> تحديث</button></div>
+      <div className="overflow-x-auto"><table className="w-full min-w-[850px] text-right text-xs"><thead className="bg-slate-950 text-slate-400"><tr>{["رقم العرض","التاريخ","العميل","الفرع","الإجمالي","الصلاحية","الحالة","الإجراءات"].map(x=><th className="p-3" key={x}>{x}</th>)}</tr></thead><tbody>
+        {filtered.map(q=><tr className="border-t border-slate-800" key={q.id}><td className="p-3 font-bold text-blue-300">{quoteCode(q)}</td><td className="p-3">{q.date}</td><td className="p-3">{q.customer_name||parties.find(p=>p.id===q.party_id)?.name||"—"}</td><td className="p-3"><span className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1">{branchLabel(q.branch_id)}</span></td><td className="p-3 font-bold">{money(q.total)} ر.س</td><td className="p-3">{q.valid_until||"—"}</td><td className="p-3"><span className="rounded-lg bg-slate-800 px-2 py-1">{q.status==="converted"?"تم التحويل":q.status==="accepted"?"مقبول":q.status==="rejected"?"مرفوض":q.status==="sent"?"مرسل":"مسودة"}</span></td><td className="p-3"><div className="flex gap-2"><button title="طباعة" className="rounded-lg bg-slate-800 p-2 text-blue-300" onClick={()=>print(q)}><Printer size={15}/></button>{!q.invoice_id&&q.status!=="converted"&&<><button title="تحويل إلى فاتورة" className="rounded-lg bg-emerald-500/10 p-2 text-emerald-300" onClick={()=>{setConvertRow(q);setPayType("cash");setTreasuryAcc("");setCustomerAcc(String(parties.find(p=>p.id===q.party_id)?.account_id||""));setRevenueAcc("");setTaxAcc("");}}><ArrowRightLeft size={15}/></button><button title="حذف" className="rounded-lg bg-red-500/10 p-2 text-red-300" onClick={async()=>{if(confirm("حذف عرض السعر؟")){const r=await DB.deleteQuotation(q.id);if(!r.ok)alert(r.error);await reload();}}}><Trash2 size={15}/></button></>}</div></td></tr>)}
+        {!filtered.length&&<tr><td colSpan={8} className="p-10 text-center text-slate-500">{loading?"جارٍ التحميل…":"لا توجد عروض أسعار خلال الفترة المحددة."}</td></tr>}
       </tbody></table></div>
     </div>
 

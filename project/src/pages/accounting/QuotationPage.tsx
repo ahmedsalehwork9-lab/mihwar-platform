@@ -160,9 +160,9 @@ export default function QuotationPage() {
       </tbody></table></div>
     </div>
 
-    {showForm&&<div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-slate-950/85 p-2 backdrop-blur-sm sm:p-5">
-      <div className="my-auto flex max-h-[96vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-blue-400/25 bg-[#081326] shadow-[0_25px_90px_rgba(0,0,0,.65)]">
-        <div className="shrink-0 border-b border-slate-700/80 bg-gradient-to-l from-blue-950/70 to-slate-900/80 px-4 py-4 sm:px-7">
+    {showForm&&<div className="fixed inset-0 z-[100] flex h-[100dvh] w-screen items-stretch justify-stretch overflow-hidden bg-slate-950/95 p-0 backdrop-blur-sm">
+      <div className="flex h-full min-h-0 w-full max-h-none max-w-none flex-col overflow-hidden rounded-none border-0 bg-[#081326] shadow-none">
+        <div className="shrink-0 border-b border-slate-700/80 bg-gradient-to-l from-blue-950/70 to-slate-900/80 px-4 py-4 sm:px-8 lg:px-10">
           <div className="flex items-start justify-between gap-3">
             <div><div className="flex items-center gap-2 text-blue-300"><FilePlus2 size={18}/><span className="text-[11px] font-bold tracking-wide">MIHWAR · SALES</span></div><h2 className="mt-1 text-xl font-black sm:text-2xl">إنشاء عرض سعر</h2><p className="mt-1 text-xs text-slate-400">أدخل بيانات العرض على مراحل، وراجع الإجمالي قبل الحفظ</p></div>
             <button aria-label="إغلاق" className="rounded-xl border border-slate-700 bg-slate-900/80 p-2 text-slate-300 transition hover:border-red-400/50 hover:text-red-300" onClick={()=>setShowForm(false)}><X size={19}/></button>
@@ -176,7 +176,7 @@ export default function QuotationPage() {
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-7">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-8 lg:px-10">
           {formStep==="basic"&&<section className="space-y-4"><div className="mb-2"><h3 className="text-base font-black">بيانات العرض والعميل</h3><p className="mt-1 text-xs text-slate-500">حدد الفرع والعميل وتاريخ إصدار العرض وصلاحيته</p></div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <label className="text-xs font-semibold text-slate-300">تاريخ العرض <span className="text-rose-400">*</span><input className={`${input} mt-2 h-12`} type="date" value={date} onChange={e=>setDate(e.target.value)}/></label>
@@ -206,7 +206,7 @@ export default function QuotationPage() {
           </section>}
         </div>
 
-        <div className="shrink-0 border-t border-slate-700 bg-slate-950/80 px-4 py-3 sm:px-7"><div className="flex flex-wrap items-center justify-between gap-3"><div className="flex gap-2"><button className={`${btn} border border-slate-700 bg-slate-900 text-slate-300`} onClick={()=>setShowForm(false)}>إلغاء</button>{formStep!=="basic"&&<button className={`${btn} border border-slate-700 bg-slate-900 text-slate-200`} onClick={()=>setFormStep(formStep==="preview"?"terms":formStep==="terms"?"items":"basic")}>السابق</button>}</div><div className="flex gap-2">{formStep!=="preview"?<button className={`${btn} bg-blue-600 px-5 py-3 text-white shadow-lg shadow-blue-950/40`} onClick={()=>setFormStep(formStep==="basic"?"items":formStep==="items"?"terms":"preview")}>التالي <span>←</span></button>:<button disabled={saving} className={`${btn} bg-blue-600 px-6 py-3 text-white shadow-lg shadow-blue-950/40 disabled:opacity-50`} onClick={()=>void save()}>{saving?"جارٍ الحفظ…":"حفظ عرض السعر"}</button>}</div></div></div>
+        <div className="shrink-0 border-t border-slate-700 bg-slate-950/95 px-4 py-3 sm:px-8 lg:px-10"><div className="flex flex-wrap items-center justify-between gap-3"><div className="flex gap-2"><button className={`${btn} border border-slate-700 bg-slate-900 text-slate-300`} onClick={()=>setShowForm(false)}>إلغاء</button>{formStep!=="basic"&&<button className={`${btn} border border-slate-700 bg-slate-900 text-slate-200`} onClick={()=>setFormStep(formStep==="preview"?"terms":formStep==="terms"?"items":"basic")}>السابق</button>}</div><div className="flex gap-2">{formStep!=="preview"?<button className={`${btn} bg-blue-600 px-5 py-3 text-white shadow-lg shadow-blue-950/40`} onClick={()=>setFormStep(formStep==="basic"?"items":formStep==="items"?"terms":"preview")}>التالي <span>←</span></button>:<button disabled={saving} className={`${btn} bg-blue-600 px-6 py-3 text-white shadow-lg shadow-blue-950/40 disabled:opacity-50`} onClick={()=>void save()}>{saving?"جارٍ الحفظ…":"حفظ عرض السعر"}</button>}</div></div></div>
       </div>
     </div>}
 

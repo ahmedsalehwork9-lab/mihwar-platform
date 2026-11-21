@@ -750,6 +750,93 @@ export function partyAging(
 }
 
 // ══════════════ فواتير المبيعات (نقدي/آجل/جزئي + ضريبة) ══════════════
+
+// ── عروض أسعار المبيعات ──
+export type GLQuotation = {
+  id: number;
+  organization_id: number;
+  branch_id: number | null;
+  quotation_no: number;
+  quotation_year: number;
+  date: string;
+  valid_until: string | null;
+  party_id: number | null;
+  customer_name: string | null;
+  items: SalesItem[];
+  subtotal: number;
+  discount_amount: number;
+  tax_rate: number;
+  tax_amount: number;
+  tax_inclusive: boolean;
+  total: number;
+  notes: string | null;
+  status: "draft" | "sent" | "accepted" | "rejected" | "expired" | "converted";
+  invoice_id: number | null;
+  created_at?: string;
+};
+
+export async function nextQuotationNo(orgId: number, year: number): Promise<number> {
+  const { data, error } = await supabase.from("gl_sales_quotations").select("quotation_no")
+    .eq("organization_id", orgId).eq("quotation_year", year)
+    .order("quotation_no", { ascending: false }).limit(1);
+  if (error) { console.error("nextQuotationNo", error); throw new Error(error.message); }
+  return (((data as any[])?.[0]?.quotation_no as number) || 0) + 1;
+}
+
+export async function fetchQuotations(orgId: number, from: string, to: string, branchId?: number | null): Promise<GLQuotation[]> {
+  let q = supabase.from("gl_sales_quotations").select("*").eq("organization_id", orgId)
+    .gte("date", from).lte("date", to).order("date", { ascending: false }).order("quotation_no", { ascending: false });
+  if (branchId != null) q = q.eq("branch_id", branchId);
+  const { data, error } = await q;
+  if (error) { console.error("fetchQuotations", error); return []; }
+  return (data as GLQuotation[]) || [];
+}
+
+export async function createQuotation(orgId: number, quotation: {
+  branch_id: number | null; date: string; valid_until: string | null;
+  party_id: number | null; customer_name: string | null; items: SalesItem[];
+  discount_amount: number; tax_rate: number; tax_inclusive: boolean; notes: string | null;
+}): Promise<{ ok: boolean; error?: string; id?: number; quotationNo?: number }> {
+  const gross = Math.round(quotation.items.reduce((sum, item) =>
+    sum + (Number(item.qty) || 0) * (Number(item.unit_price) || 0), 0) * 100) / 100;
+  const discount = Math.min(Math.max(Number(quotation.discount_amount) || 0, 0), gross);
+  const discountedGross = Math.round((gross - discount) * 100) / 100;
+  const rate = Math.max(0, Number(quotation.tax_rate) || 0);
+  const totals = invoiceTotals([{ qty: 1, unit_price: discountedGross }], rate, quotation.tax_inclusive);
+  if (!quotation.items.length || gross <= 0 || totals.total <= 0)
+    return { ok: false, error: "أضف صنفًا واحدًا على الأقل بقيمة صحيحة." };
+  const year = Number(quotation.date.slice(0, 4));
+  let quotationNo: number;
+  try { quotationNo = await nextQuotationNo(orgId, year); }
+  catch (e) { return { ok: false, error: e instanceof Error ? e.message : "تعذر إنشاء رقم العرض." }; }
+  const { data, error } = await supabase.from("gl_sales_quotations").insert({
+    organization_id: orgId, branch_id: quotation.branch_id, quotation_no: quotationNo, quotation_year: year,
+    date: quotation.date, valid_until: quotation.valid_until, party_id: quotation.party_id,
+    customer_name: quotation.customer_name, items: quotation.items, subtotal: totals.subtotal,
+    discount_amount: discount, tax_rate: rate, tax_amount: totals.tax, tax_inclusive: quotation.tax_inclusive,
+    total: totals.total, notes: quotation.notes, status: "draft",
+  }).select("id").single();
+  if (error) { console.error("createQuotation", error); return { ok: false, error: error.message }; }
+  return { ok: true, id: Number((data as any).id), quotationNo };
+}
+
+export async function deleteQuotation(id: number): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.from("gl_sales_quotations").delete()
+    .eq("id", id).is("invoice_id", null).neq("status", "converted");
+  if (error) console.error("deleteQuotation", error);
+  return { ok: !error, error: error?.message };
+}
+
+export async function markQuotationConverted(id: number, invoiceId: number): Promise<{ ok: boolean; error?: string }> {
+  const { data, error } = await supabase.from("gl_sales_quotations").update({
+    status: "converted", invoice_id: invoiceId, updated_at: new Date().toISOString()
+  }).eq("id", id).is("invoice_id", null).neq("status", "converted").select("id").maybeSingle();
+  if (error) { console.error("markQuotationConverted", error); return { ok: false, error: error.message }; }
+  if (!data) return { ok: false, error: "تم تحويل العرض مسبقًا أو لم يعد متاحًا للتحديث." };
+  return { ok: true };
+}
+
+
 export type SalesItem = { description: string; qty: number; unit_price: number; line_total: number };
 export type SalesPayType = "cash" | "credit" | "partial";
 export const PAYTYPE_LABEL: Record<SalesPayType, string> = { cash: "نقدي", credit: "آجل", partial: "جزئي" };

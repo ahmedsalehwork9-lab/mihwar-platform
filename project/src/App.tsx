@@ -28,6 +28,7 @@ const FixedExpensesPage = lazy(() => import('./pages/expenses/FixedExpensesPage'
 const FinancialReportPage = lazy(() => import('./pages/finance/FinancialReportPage'));
 const ReportsHubPage = lazy(() => import('./pages/ReportsHubPage'));
 const AccountingPage = lazy(() => import('./pages/accounting/AccountingPage'));
+const QuotationPage = lazy(() => import('./pages/accounting/QuotationPage'));
 
 // ── Admin pages ─────────────────────────────────────────────────────────────
 const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
@@ -135,7 +136,7 @@ function AppContent() {
           {/* صفحات قيد التطوير (مجموعات المبيعات/المشتريات) */}
           {page === 'sales' && <ComingSoon title="المبيعات" />}
           {page === 'pos' && <ComingSoon title="نقاط البيع" />}
-          {page === 'quotation' && <ComingSoon title="عرض سعر" />}
+          {page === 'quotation' && <QuotationPage />}
           {page === 'purchase-orders' && <ComingSoon title="أوامر الشراء" />}
           {page === 'purchase-reconciliation' && <ComingSoon title="تسوية المشتريات" />}
           {page === 'purchase-returns' && <ComingSoon title="مرتجعات المشتريات" />}

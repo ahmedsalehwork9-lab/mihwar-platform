@@ -53,6 +53,11 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
 export default function PurchasesPage() {
   const { ownedShopId } = (useAuth() as any) ?? {};
   const [branch, setBranch] = useState<string>("");
+  const [accountingOrg,setAccountingOrg]=useState<{id:number;name:string}|null>(null);
+  const [glAccounts,setGlAccounts]=useState<GLAccount[]>([]);
+  const [glParties,setGlParties]=useState<GLParty[]>([]);
+  const [supplierEditorOpen,setSupplierEditorOpen]=useState(false);
+  const [supplierEditorRow,setSupplierEditorRow]=useState<GLParty|null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const waNum = SUPPORT_WA;
   const [qr, setQr] = useState<string>("");
@@ -70,6 +75,9 @@ export default function PurchasesPage() {
     return () => { active = false; };
   }, [ownedShopId]);
   useEffect(() => { let a = true; (async () => { const d = await waQrDataUrl(waNum); if (a) setQr(d); })(); return () => { a = false; }; }, [waNum]);
+  useEffect(()=>{let live=true;(async()=>{const org=await DB.getOrgForBranch(ownedShopId??null);if(!live)return;setAccountingOrg(org);if(org){const [accounts,parties]=await Promise.all([DB.fetchAccounts(org.id),DB.fetchParties(org.id,"supplier")]);if(live){setGlAccounts(accounts);setGlParties(parties);}}else{setGlAccounts([]);setGlParties([]);}})();return()=>{live=false;};},[ownedShopId]);
+  const refreshGlParties=useCallback(async()=>{if(accountingOrg)setGlParties(await DB.fetchParties(accountingOrg.id,"supplier"));},[accountingOrg]);
+  const matchedSupplier=glParties.find(x=>normName(x.name)===normName(supplier))||null;
 
   const [tab, setTab] = useState<"entry" | "report">("entry");
   useEffect(() => { try { if (sessionStorage.getItem("mihwar_open_tab") === "purchases") { setTab("report"); sessionStorage.removeItem("mihwar_open_tab"); } } catch (e) {} }, []);
@@ -614,7 +622,8 @@ export default function PurchasesPage() {
             <div className="flex flex-col gap-1">
               <label className="text-[10px] text-slate-500 font-bold">المورّد</label>
               <input list="supList" value={supplier} onChange={(e) => setSupplier(e.target.value)} placeholder="اسم المورّد" className="bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm" />
-              <datalist id="supList">{supplierSuggest.map((s) => <option key={s} value={s} />)}</datalist>
+              <datalist id="supList">{[...new Set([...supplierSuggest,...glParties.map(x=>x.name)])].map((s) => <option key={s} value={s} />)}</datalist>
+              {accountingOrg&&<div className="mt-1 flex gap-2"><button type="button" onClick={()=>{setSupplierEditorRow(null);setSupplierEditorOpen(true);}} className="text-[11px] font-bold text-emerald-300">+ إنشاء مورد</button>{matchedSupplier&&<button type="button" onClick={()=>{setSupplierEditorRow(matchedSupplier);setSupplierEditorOpen(true);}} className="text-[11px] font-bold text-blue-300">تحرير المورد المحدد</button>}{matchedSupplier&&<span className="text-[10px] text-slate-500">مرتبط بحساب: {glAccounts.find(a=>a.id===matchedSupplier.account_id)?.code||"غير محدد"}</span>}</div>}
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-[10px] text-slate-500 font-bold">مرجع المورد</label>
@@ -901,6 +910,7 @@ export default function PurchasesPage() {
           </div>
         </div>
       )}
+      {accountingOrg&&<PartyQuickEditor open={supplierEditorOpen} onClose={()=>setSupplierEditorOpen(false)} orgId={accountingOrg.id} branchId={ownedShopId?Number(ownedShopId):null} type="supplier" accounts={glAccounts} party={supplierEditorRow} onSaved={async(saved)=>{await refreshGlParties();setSupplier(saved.name);}} />}
     </div>
   );
 }

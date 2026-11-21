@@ -20,6 +20,7 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import * as DB from "../lib/accountingDb";
+import PartyQuickEditor from "../lib/PartyQuickEditor";
 import type { GLAccount, GLLine, EntryWithLines, LedgerLine, AccType } from "../lib/accountingDb";
 
 const fmt = (n: number) => (Math.round(n * 100) / 100).toLocaleString("en-US", { maximumFractionDigits: 2 });
@@ -323,6 +324,7 @@ export default function AccountingPage({ section, onSection }: { section?: strin
   // قائمة الأطراف (عملاء/موردين) — لاختيارها داخل القيود والسندات
   const [parties, setParties] = useState<DB.GLParty[]>([]);
   useEffect(() => { if (org) DB.fetchParties(org.id).then(setParties); }, [org]);
+  const refreshParties = useCallback(async () => { if (org) setParties(await DB.fetchParties(org.id)); }, [org]);
 
   const postable = useMemo(() => accounts.filter((a) => !a.is_group).sort((a, b) => a.code.localeCompare(b.code)), [accounts]);
   const accById = useMemo(() => new Map(accounts.map((a) => [a.id, a] as const)), [accounts]);
@@ -373,7 +375,7 @@ export default function AccountingPage({ section, onSection }: { section?: strin
       {tab === "chart" && <ChartTab org={org} accounts={accounts} reload={reloadAccounts} busy={busy} setBusy={setBusy} />}
       {tab === "opening" && <OpeningTab org={org} accounts={accounts} postable={postable} branches={branches} />}
       {tab === "journal" && <JournalTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} parties={parties} />}
-      {tab === "sales" && <SalesTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} parties={parties} shop={shopInfo} />}
+      {tab === "sales" && <SalesTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} parties={parties} onPartiesChange={refreshParties} shop={shopInfo} />}
       {tab === "ledger" && <LedgerTab org={org} postable={postable} accounts={accounts} accById={accById} branches={branches} branchName={branchName} shop={shopInfo} />}
       {tab === "trial" && <TrialTab org={org} accById={accById} postable={postable} branches={branches} />}
       {tab === "statements" && <StatementsTab org={org} accounts={accounts} branches={branches} shop={shopInfo} />}
@@ -1428,7 +1430,7 @@ function LineChart({ data, height = 190 }: { data: { label: string; value: numbe
 }
 
 // ══════════════ فواتير المبيعات (نقدي/آجل/جزئي + ضريبة) ══════════════
-function SalesTab({ org, postable, accById, branches, branchName, parties, shop }: any) {
+function SalesTab({ org, postable, accById, branches, branchName, parties, onPartiesChange, shop }: any) {
   const multiBranch = branches && branches.length > 1;
   const [from, setFrom] = useState(monthStart());
   const [to, setTo] = useState(today());
@@ -1453,6 +1455,8 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, shop 
   const [items, setItems] = useState<{ description: string; qty: string; unit_price: string }[]>([{ description: "", qty: "1", unit_price: "" }]);
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [partyEditorOpen, setPartyEditorOpen] = useState(false);
+  const [partyEditorRow, setPartyEditorRow] = useState<DB.GLParty | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -1627,7 +1631,7 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, shop 
           <h3 className="text-white font-bold text-sm mb-3 flex items-center gap-2"><ShoppingCart size={16} className="text-blue-400" /> فاتورة مبيعات جديدة</h3>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
             <div><label className={LABEL}>التاريخ</label><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={DATE} /></div>
-            <div><label className={LABEL}>العميل</label><PartyPicker parties={parties} value={partyId} placeholder="— عميل نقدي/عابر" size="md" onPick={(p) => { const acc = resolvePartyAccount(p, parties); setPartyId(p.id); setCustAcc(acc); setCustName(p.name); }} /></div>
+            <div><label className={LABEL}>العميل</label><PartyPicker parties={parties} value={partyId} placeholder="— عميل نقدي/عابر" size="md" onPick={(p) => { const acc = resolvePartyAccount(p, parties); setPartyId(p.id); setCustAcc(acc); setCustName(p.name); }} /><div className="mt-1 flex gap-2"><button type="button" onClick={() => { setPartyEditorRow(null); setPartyEditorOpen(true); }} className="text-[11px] font-bold text-emerald-300 hover:text-emerald-200">+ إنشاء</button>{partyId!==""&&<button type="button" onClick={() => { setPartyEditorRow(parties.find((p:DB.GLParty)=>p.id===Number(partyId))||null); setPartyEditorOpen(true); }} className="text-[11px] font-bold text-blue-300 hover:text-blue-200">تحرير</button>}</div></div>
             <div><label className={LABEL}>اسم العميل (نقدي بلا حساب)</label><input value={custName} onChange={(e) => { setCustName(e.target.value); setPartyId(""); setCustAcc(null); }} placeholder="عميل نقدي" className={INPUT} /></div>
             {multiBranch && <div><label className={LABEL}>الفرع <span className="text-red-400">*</span></label><select value={branch} onChange={(e) => setBranch(e.target.value)} className={SELECT}><option value="">— اختر الفرع —</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
           </div>
@@ -1728,6 +1732,8 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, shop 
           </table>
         </div>
       </div>
+
+      <PartyQuickEditor open={partyEditorOpen} onClose={() => setPartyEditorOpen(false)} orgId={org.id} branchId={branch ? Number(branch) : (branches?.length===1?Number(branches[0].id):null)} type="customer" accounts={postable} party={partyEditorRow} onSaved={async (saved) => { await onPartiesChange?.(); setPartyId(saved.id); setCustAcc(saved.account_id ?? null); setCustName(saved.name); }} />
     </div>
   );
 }

@@ -1439,6 +1439,7 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, onPar
   const [loading, setLoading] = useState(false);
 
   const [showForm, setShowForm] = useState(false);
+  const [showReturnForm, setShowReturnForm] = useState(false);
   const [date, setDate] = useState(today());
   const [branch, setBranch] = useState<string>(branches?.length === 1 ? String(branches[0].id) : "");
   const [partyId, setPartyId] = useState<number | "">("");
@@ -1573,6 +1574,7 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, onPar
           <div><label className={LABEL}>إلى</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={DATE} /></div>
           {multiBranch && <div><label className={LABEL}>الفرع</label><select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className={SELECT}><option value="">كل الفروع</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
           <button onClick={() => { resetForm(); setShowForm((v) => !v); }} className={BTN_GHOST_EM}><Plus size={14} /> {showForm ? "إخفاء النموذج" : "فاتورة جديدة"}</button>
+          <button onClick={() => setShowReturnForm(true)} disabled={invoices.length === 0} className={BTN_GHOST_BL} title={invoices.length === 0 ? "لا توجد فواتير ضمن الفترة المحددة" : "إنشاء مرتجع مبيعات"}><ArrowDownCircle size={14} /> إنشاء مرتجع</button>
           <span className="text-[11px] text-slate-500 mr-auto">{invoices.length} فاتورة · متبقٍّ على العملاء: <span className="font-mono text-amber-300 font-bold">{fmt(tDue)}</span></span>
         </div>
       </div>
@@ -1733,9 +1735,216 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, onPar
         </div>
       </div>
 
+      <SalesReturnsPanel org={org} invoices={invoices} parties={parties} postable={postable} treasuryAccounts={treasuryAccounts} branchName={branchName} reloadInvoices={reload} open={showReturnForm} setOpen={setShowReturnForm} />
+
       <PartyQuickEditor open={partyEditorOpen} onClose={() => setPartyEditorOpen(false)} orgId={org.id} branchId={branch ? Number(branch) : (branches?.length===1?Number(branches[0].id):null)} type="customer" accounts={postable} party={partyEditorRow} onSaved={async (saved) => { await onPartiesChange?.(); setPartyId(saved.id); setCustAcc(saved.account_id ?? null); setCustName(saved.name); }} />
     </div>
   );
+}
+
+// يطابق حساب مردودات المبيعات المخصص فقط (ولا يستخدم حساب المبيعات الأصلي بدلًا منه).
+function normalizeAccountLabel(value: string) {
+  return String(value || "").toLowerCase().replace(/[\u064B-\u065F\u0670ـ]/g, "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/[\s_\-–—]/g, "");
+}
+function isDedicatedSalesReturnsAccount(account: GLAccount) {
+  if (account.type !== "revenue" || account.is_group || account.is_active === false) return false;
+  const name = normalizeAccountLabel(account.name);
+  const aliases = ["مردوداتالمبيعات", "مرتجعاتالمبيعات", "مردودالمبيعات", "مرتجعالمبيعات", "مردوداتمبيعات", "مرتجعاتمبيعات", "مردوداتالبيع", "مرتجعاتالبيع", "salesreturns", "salesreturn", "returnsales"];
+  return aliases.some((alias) => name === alias || name.includes(alias));
+}
+
+// ══════════════ مرتجعات المبيعات — مستند مستقل SR ══════════════
+function SalesReturnsPanel({ org, invoices, parties, postable, treasuryAccounts, branchName, reloadInvoices, open, setOpen }: any) {
+  const [rows, setRows] = useState<DB.GLSalesReturn[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [invoiceId, setInvoiceId] = useState("");
+  const [returnDate, setReturnDate] = useState(today());
+  const [reason, setReason] = useState("");
+  const [refundMode, setRefundMode] = useState<"cash" | "credit">("cash");
+  const [refundAccount, setRefundAccount] = useState<number | "">("");
+  const [qtys, setQtys] = useState<Record<number, string>>({});
+  const [saving, setSaving] = useState(false);
+  const selected = invoices.find((x: DB.GLSalesInvoice) => String(x.id) === invoiceId) as DB.GLSalesInvoice | undefined;
+  const returnAccountMatches = useMemo(() => postable.filter((a: GLAccount) => isDedicatedSalesReturnsAccount(a)), [postable]);
+  const autoReturnAccount: GLAccount | null = returnAccountMatches.length === 1 ? returnAccountMatches[0] : null;
+  const [sourceTaxAccount, setSourceTaxAccount] = useState<GLAccount | null>(null);
+  const [taxAccountStatus, setTaxAccountStatus] = useState<"idle" | "loading" | "ready" | "none" | "missing" | "ambiguous">("idle");
+  const reload = useCallback(async () => { setBusy(true); setRows(await DB.fetchSalesReturns(org.id)); setBusy(false); }, [org.id]);
+  useEffect(() => { reload(); }, [reload]);
+  useEffect(() => {
+    if (open) {
+      setInvoiceId("");
+      setReturnDate(today());
+      setReason("");
+      setQtys({});
+      setRefundAccount("");
+      setRefundMode("cash");
+    }
+  }, [open]);
+  useEffect(() => {
+    let alive = true;
+    setSourceTaxAccount(null);
+    if (!selected || Number(selected.tax_amount || 0) <= 0.009) {
+      setTaxAccountStatus("none");
+      return () => { alive = false; };
+    }
+    if (!selected.entry_id) {
+      setTaxAccountStatus("missing");
+      return () => { alive = false; };
+    }
+    setTaxAccountStatus("loading");
+    DB.fetchJournalLines(Number(selected.entry_id)).then((lines: GLLine[]) => {
+      if (!alive) return;
+      const tax = Number(selected.tax_amount) || 0;
+      const candidates = lines
+        .filter((line) => Number(line.credit || 0) > 0.001 && Math.abs(Number(line.credit) - tax) < 0.02)
+        .map((line) => postable.find((account: GLAccount) => account.id === Number(line.account_id) && account.type === "liability" && account.is_active !== false))
+        .filter(Boolean) as GLAccount[];
+      const unique = [...new Map(candidates.map((account) => [account.id, account])).values()];
+      if (unique.length === 1) {
+        setSourceTaxAccount(unique[0]);
+        setTaxAccountStatus("ready");
+      } else {
+        setTaxAccountStatus(unique.length > 1 ? "ambiguous" : "missing");
+      }
+    }).catch(() => { if (alive) setTaxAccountStatus("missing"); });
+    return () => { alive = false; };
+  }, [selected?.id, selected?.entry_id, selected?.tax_amount, postable]);
+  const usedByIndex = useMemo(() => {
+    const out: Record<number, number> = {};
+    rows.filter((r) => r.original_invoice_id === selected?.id && r.status === "posted").forEach((r) => (r.items || []).forEach((it) => { out[it.original_item_index] = (out[it.original_item_index] || 0) + Number(it.qty || 0); }));
+    return out;
+  }, [rows, selected?.id]);
+  const returnItems = (selected?.items || []).map((it, i) => ({ ...it, index: i, remaining: Math.max(0, Number(it.qty || 0) - (usedByIndex[i] || 0)), qty: Number(qtys[i] || 0) })).filter((it) => it.remaining > 0);
+  const picked = returnItems.filter((it) => it.qty > 0).map((it) => ({ original_item_index: it.index, description: it.description, qty: it.qty, unit_price: Number(it.unit_price), line_total: Math.round(it.qty * Number(it.unit_price) * 100) / 100 }));
+  const totals = selected ? DB.invoiceTotals(picked, Number(selected.tax_rate) || 0, !!selected.tax_inclusive) : { subtotal: 0, tax: 0, total: 0 };
+  const party = selected?.party_id == null ? null : parties.find((p: DB.GLParty) => p.id === selected.party_id);
+  const customerAccount = party?.account_id || null;
+  const cashOptions = treasuryAccounts.filter((a: GLAccount) => a.is_active !== false);
+  const save = async () => {
+    if (!selected) { alert("اختر فاتورة المبيعات الأصلية."); return; }
+    if (!picked.length) { alert("أدخل كمية مرتجعة واحدة على الأقل."); return; }
+    if (picked.some((it) => it.qty > Number(selected.items[it.original_item_index]?.qty || 0) - (usedByIndex[it.original_item_index] || 0) + 0.000001)) { alert("الكمية تتجاوز المتاح للإرجاع."); return; }
+    if (!autoReturnAccount) {
+      alert(returnAccountMatches.length > 1
+        ? "يوجد أكثر من حساب مطابق لمردودات المبيعات. احتفظ بحساب واحد مخصص باسم واضح «مردودات المبيعات»."
+        : "لم يتم العثور على حساب «مردودات المبيعات». أضف الحساب ضمن مجموعة الإيرادات ثم أعد فتح المرتجع.");
+      return;
+    }
+    if (totals.tax > 0 && taxAccountStatus !== "ready") {
+      alert("تعذّر تحديد حساب ضريبة المخرجات من قيد الفاتورة الأصلية. تأكد من وجود قيد الفاتورة وحساب ضريبة التزام مرتبط به.");
+      return;
+    }
+    if (refundMode === "cash" && refundAccount === "") { alert("اختر خزنة/بنك رد المبلغ."); return; }
+    if (refundMode === "credit" && !customerAccount) { alert("الفاتورة لا تحتوي على حساب عميل؛ اختر ردًا نقديًا أو اربط العميل بحساب ذمم."); return; }
+    const lines: GLLine[] = [
+      { account_id: Number(autoReturnAccount.id), debit: totals.subtotal, credit: 0, branch_id: selected.branch_id },
+      ...(totals.tax > 0 ? [{ account_id: Number(sourceTaxAccount!.id), debit: totals.tax, credit: 0, branch_id: selected.branch_id } as GLLine] : []),
+      refundMode === "cash"
+        ? { account_id: Number(refundAccount), debit: 0, credit: totals.total, branch_id: selected.branch_id }
+        : { account_id: Number(customerAccount), debit: 0, credit: totals.total, branch_id: selected.branch_id, party_id: selected.party_id },
+    ];
+    setSaving(true);
+    const result = await DB.createSalesReturn(org.id, { original_invoice: selected, date: returnDate, items: picked, subtotal: totals.subtotal, tax_amount: totals.tax, total: totals.total, notes: reason.trim() || null, refund_mode: refundMode, refund_account_id: refundMode === "cash" ? Number(refundAccount) : null, entry_lines: lines });
+    setSaving(false);
+    if (!result.ok) { alert("تعذّر إنشاء المرتجع: " + (result.error || "")); return; }
+    alert(`تم إنشاء مرتجع ${result.returnLabel} وربطه بالفاتورة ${selected.invoice_no}.`);
+    setOpen(false); await reload(); await reloadInvoices?.();
+  };
+  return <>
+    {!open && <div className={`${CARD} overflow-hidden mt-4`}>
+      <SectionHead icon={ArrowDownCircle} title="مرتجعات المبيعات" extra={<span className="text-[11px] text-slate-500">مستندات المرتجعات المرتبطة بفواتير المبيعات</span>} />
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead className="bg-slate-950 text-slate-500"><tr>{["رقم المرتجع","التاريخ","الفاتورة الأصلية","العميل","طريقة التسوية","الإجمالي","القيد"].map(h=><th key={h} className="p-3">{h}</th>)}</tr></thead>
+          <tbody>{rows.map(r=><tr key={r.id} className="border-t border-slate-800 hover:bg-slate-800/40">
+            <td className="p-3 text-center font-mono text-emerald-300">SR-{r.return_year}-{String(r.return_no).padStart(4,"0")}</td>
+            <td className="p-3 text-center">{r.date}</td><td className="p-3 text-center">{r.original_invoice_no}/{r.original_invoice_year}</td>
+            <td className="p-3">{r.customer_name||"—"}</td><td className="p-3 text-center">{r.refund_mode==="cash"?"رد نقدي":"إشعار دائن"}</td>
+            <td className="p-3 text-center font-mono text-emerald-300">{fmt(r.total)}</td><td className="p-3 text-center">{r.entry_id||"—"}</td>
+          </tr>)}{!rows.length&&<tr><td colSpan={7} className="p-8 text-center text-slate-500">{busy?"جارٍ التحميل…":"لا توجد مرتجعات مسجلة."}</td></tr>}</tbody>
+        </table>
+      </div>
+    </div>}
+
+    {open && <div className="fixed inset-0 z-[100] min-h-screen overflow-y-auto bg-slate-950 text-slate-100" dir="rtl"><div className="min-h-screen w-full bg-slate-900">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-700 bg-slate-950 px-5 py-5">
+          <div className="flex items-center gap-3">
+            <div className="rounded-xl bg-blue-500/15 p-2.5 text-blue-300"><ArrowDownCircle size={21}/></div>
+            <div><div className="text-xs text-sky-300 mb-1">الحسابات　›　المبيعات　›　مرتجع مبيعات</div><h2 className="text-2xl font-extrabold text-white">إنشاء مرتجع مبيعات</h2><p className="mt-1 text-sm text-slate-400">تسجيل مرتجع جزئي أو كلي على فاتورة مبيعات</p></div>
+          </div>
+          <button onClick={()=>setOpen(false)} className="inline-flex items-center gap-2 rounded-xl border border-slate-600 bg-slate-800 px-4 py-3 text-sm font-bold text-slate-200 hover:bg-slate-700">العودة إلى المبيعات <ArrowDownCircle size={16}/></button>
+        </div>
+
+        <div className="p-5 md:p-7 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 rounded-xl border border-slate-700 bg-slate-950/60 p-5">
+            <div className="md:col-span-1"><label className={LABEL}>الفاتورة الأصلية</label>
+              <select value={invoiceId} onChange={(e) => { setInvoiceId(e.target.value); setQtys({}); }} className={`${SELECT} mt-1`}>
+                <option value="">— اختر فاتورة —</option>
+                {invoices.map((x: DB.GLSalesInvoice) => <option key={x.id} value={x.id}>INV-{x.invoice_year}-{String(x.invoice_no).padStart(4,"0")} · {x.customer_name || parties.find((p: DB.GLParty) => p.id===x.party_id)?.name || "عميل نقدي"} · {fmt(x.total)}</option>)}
+              </select>
+            </div>
+            <div><label className={LABEL}>تاريخ المرتجع</label><input type="date" value={returnDate} onChange={(e)=>setReturnDate(e.target.value)} className={`${DATE} mt-1`}/></div>
+            <div><label className={LABEL}>سبب الإرجاع</label><input value={reason} onChange={(e)=>setReason(e.target.value)} placeholder="اكتب سبب المرتجع" className={`${INPUT} mt-1`}/></div>
+          </div>
+
+          {selected ? <>
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+              <div className="rounded-xl border border-slate-700 bg-slate-950/70 p-3"><div className="text-xs text-slate-400">رقم الفاتورة</div><div className="mt-1 font-bold text-white">{selected.invoice_no}/{selected.invoice_year}</div></div>
+              <div className="rounded-xl border border-slate-700 bg-slate-950/70 p-3"><div className="text-xs text-slate-400">العميل</div><div className="mt-1 font-bold text-white">{selected.customer_name || party?.name || "عميل نقدي"}</div></div>
+              <div className="rounded-xl border border-slate-700 bg-slate-950/70 p-3"><div className="text-xs text-slate-400">إجمالي الفاتورة</div><div className="mt-1 font-bold text-white">{fmt(selected.total)}</div></div>
+              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3"><div className="text-xs text-emerald-300">إجمالي المرتجع الحالي</div><div className="mt-1 font-bold text-emerald-300">{fmt(totals.total)}</div></div>
+            </div>
+
+            <section className="overflow-hidden rounded-xl border border-slate-700">
+              <div className="flex items-center justify-between bg-slate-800/80 px-4 py-3"><h3 className="font-bold text-white">أصناف الفاتورة</h3><span className="text-xs text-slate-400">أدخل الكمية في الخانة الزرقاء</span></div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[850px] text-sm">
+                  <thead className="bg-slate-950 text-slate-300"><tr>{["الصنف","الكمية المباعة","مرتجع سابق","المتاح للإرجاع","كمية الإرجاع","سعر الوحدة","قيمة المرتجع"].map(h=><th key={h} className="px-3 py-3 text-center font-semibold">{h}</th>)}</tr></thead>
+                  <tbody>{(selected.items || []).map((it: DB.SalesItem,i:number)=>{
+                    const sold=Number(it.qty)||0, already=usedByIndex[i]||0, remaining=Math.max(0,sold-already), entered=Number(qtys[i])||0;
+                    return <tr key={i} className="border-t border-slate-700 hover:bg-slate-800/40">
+                      <td className="px-3 py-3 font-medium text-white">{it.description}</td>
+                      <td className="px-3 py-3 text-center text-slate-200">{fmt(sold)}</td>
+                      <td className="px-3 py-3 text-center"><span className="inline-flex rounded-lg bg-amber-500/15 px-3 py-1 font-bold text-amber-300">{fmt(already)}</span></td>
+                      <td className="px-3 py-3 text-center"><span className="inline-flex rounded-lg bg-emerald-500/15 px-3 py-1 font-bold text-emerald-300">{fmt(remaining)}</span></td>
+                      <td className="px-3 py-3 text-center"><input aria-label={`كمية إرجاع ${it.description}`} type="number" min="0" max={remaining} step="0.01" disabled={!remaining} value={qtys[i]||""} onChange={(e)=>setQtys(p=>({...p,[i]:e.target.value}))} className="w-28 rounded-lg border-2 border-sky-400 bg-sky-950 px-3 py-2 text-center text-base font-extrabold text-white shadow-inner outline-none placeholder:text-sky-300 focus:border-sky-300 focus:ring-2 focus:ring-sky-400/30 disabled:opacity-40"/></td>
+                      <td className="px-3 py-3 text-center text-slate-200">{fmt(it.unit_price)}</td>
+                      <td className="px-3 py-3 text-center font-bold text-emerald-300">{fmt(entered*Number(it.unit_price))}</td>
+                    </tr>;
+                  })}</tbody>
+                </table>
+              </div>
+            </section>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 rounded-xl border border-slate-700 bg-slate-950/50 p-5">
+              <div className="rounded-xl border border-slate-700 bg-slate-900/70 p-3">
+                <label className={LABEL}>حساب مردودات المبيعات — ربط تلقائي</label>
+                {autoReturnAccount ? <div className="mt-2 flex items-center gap-2 text-sm font-bold text-emerald-300"><Check size={16}/><span>{autoReturnAccount.code} — {autoReturnAccount.name}</span></div> : <div className="mt-2 text-xs font-bold text-amber-300">{returnAccountMatches.length > 1 ? "توجد حسابات متعددة مطابقة؛ يلزم ترك حساب مخصص واحد." : "لم يُضف الحساب بعد. أضف «مردودات المبيعات» ضمن الإيرادات وسيتم ربطه تلقائيًا."}</div>}
+              </div>
+              <div className="rounded-xl border border-slate-700 bg-slate-900/70 p-3">
+                <label className={LABEL}>ضريبة المخرجات — من قيد الفاتورة الأصلية</label>
+                {Number(selected.tax_amount || 0) <= 0.009 ? <div className="mt-2 text-sm font-bold text-slate-400">لا توجد ضريبة على الفاتورة</div> : taxAccountStatus === "loading" ? <div className="mt-2 text-xs text-sky-300">جارٍ تحديد حساب الضريبة من القيد الأصلي…</div> : sourceTaxAccount ? <div className="mt-2 flex items-center gap-2 text-sm font-bold text-emerald-300"><Check size={16}/><span>{sourceTaxAccount.code} — {sourceTaxAccount.name}</span></div> : <div className="mt-2 text-xs font-bold text-amber-300">{taxAccountStatus === "ambiguous" ? "تعذر التحديد: أكثر من حساب ضريبة مطابق في قيد الفاتورة." : "لم يتم العثور على حساب ضريبة التزام في قيد الفاتورة الأصلية."}</div>}
+              </div>
+              <div><label className={LABEL}>طريقة التسوية</label><select value={refundMode} onChange={e=>setRefundMode(e.target.value as "cash"|"credit")} className={SELECT}><option value="cash">رد نقدي من الخزنة</option><option value="credit">إشعار دائن على حساب العميل</option></select></div>
+              {refundMode==="cash" && <div><label className={LABEL}>خزنة/بنك رد المبلغ</label><AccountPicker value={refundAccount} onChange={setRefundAccount} options={cashOptions} placeholder="اختر الخزنة" size="md"/></div>}
+            </div>
+          </> : <div className="rounded-xl border border-dashed border-slate-600 bg-slate-950/40 p-12 text-center"><div className="text-slate-300 font-semibold">اختر الفاتورة الأصلية للبدء</div><p className="mt-2 text-xs text-slate-500">ستظهر هنا أصناف الفاتورة والكميات المتاحة للإرجاع</p></div>}
+        </div>
+
+        <div className="border-t border-slate-700 bg-slate-950 px-5 py-5">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="grid grid-cols-3 gap-3 text-center lg:min-w-[420px]">
+              <div><div className="text-xs text-slate-400">الصافي</div><div className="mt-1 font-bold text-white">{fmt(totals.subtotal)}</div></div>
+              <div><div className="text-xs text-slate-400">الضريبة</div><div className="mt-1 font-bold text-amber-300">{fmt(totals.tax)}</div></div>
+              <div><div className="text-xs text-slate-400">إجمالي المرتجع</div><div className="mt-1 text-lg font-extrabold text-emerald-300">{fmt(totals.total)}</div></div>
+            </div>
+            <div className="flex flex-wrap gap-3"><button onClick={()=>setOpen(false)} className={BTN_SOFT}>إلغاء والعودة</button><button disabled={saving || !selected || !autoReturnAccount || (totals.tax > 0 && taxAccountStatus !== "ready")} onClick={save} className={BTN_SUCCESS}><Save size={14}/>{saving?"جارٍ الحفظ…":"حفظ وترحيل المرتجع"}</button></div>
+          </div>
+        </div>
+      </div>
+    </div>}
+  </>;
 }
 
 // ══════════════ الأصول الثابتة ══════════════

@@ -9,7 +9,6 @@ const fmt = (n: number) => (Number(n) || 0).toLocaleString("en-US", { minimumFra
 const r2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
 
 type CartLine = { product: POSProduct; qty: number; disc: number };
-type Held = { id: number; cart: CartLine[]; discount: string; custId: number | ""; payType: "cash" | "card" | "credit"; at: string };
 const PAGE = 60;
 
 export default function POSPage() {
@@ -42,7 +41,7 @@ export default function POSPage() {
   const [saving, setSaving] = useState(false);
   const [showToday, setShowToday] = useState(false);
   const [todayList, setTodayList] = useState<DB.GLSalesInvoice[]>([]);
-  const [held, setHeld] = useState<Held[]>([]);
+  const [held, setHeld] = useState<DB.GLParked[]>([]);
   const [showHeld, setShowHeld] = useState(false);
 
   // الورديات
@@ -136,13 +135,23 @@ export default function POSPage() {
   const removeLine = (id: number) => setCart((c) => c.filter((l) => l.product.id !== id));
   const clearCart = () => { setCart([]); setDiscount("0"); setCustId(""); setPayType("cash"); setSplCash(""); setSplCard(""); setSplCredit(""); };
 
-  // تعليق الفاتورة (مؤقت في الذاكرة — يُحفظ دائمًا في مرحلة لاحقة)
-  const holdCart = () => {
-    if (!cart.length) return;
-    setHeld((h) => [...h, { id: Date.now(), cart, discount, custId, payType, at: new Date().toLocaleTimeString("ar-SA") }]);
-    clearCart();
+  // تعليق الفاتورة (محفوظ في قاعدة البيانات — يبقى بعد إغلاق المتصفّح)
+  const loadParked = useCallback(async () => { if (org) setHeld(await DB.fetchParked(org.id, ownedShopId ? Number(ownedShopId) : null)); }, [org, ownedShopId]);
+  useEffect(() => { loadParked(); }, [loadParked]);
+  const holdCart = async () => {
+    if (!org || !cart.length) return;
+    const custName = custId === "" ? "" : parties.find((p) => p.id === Number(custId))?.name || "";
+    const data: DB.ParkedData = { items: cart.map((l) => ({ productId: l.product.id, qty: l.qty, disc: l.disc })), discount, custId, payType: payType === "split" ? "cash" : payType };
+    const res = await DB.parkInvoice(org.id, { branch_id: ownedShopId ? Number(ownedShopId) : null, cashier: user?.email ?? null, label: custName || `${cart.length} صنف`, data });
+    if (!res.ok) { alert("تعذّر التعليق: " + (res.error || "")); return; }
+    clearCart(); await loadParked();
   };
-  const restoreHeld = (h: Held) => { setCart(h.cart); setDiscount(h.discount); setCustId(h.custId); setPayType(h.payType); setHeld((x) => x.filter((y) => y.id !== h.id)); setShowHeld(false); };
+  const restoreHeld = async (h: DB.GLParked) => {
+    const d = h.data || ({} as DB.ParkedData);
+    const lines: CartLine[] = (d.items || []).map((it) => { const p = products.find((x) => x.id === it.productId); return p ? { product: p, qty: Math.max(1, Math.min(it.qty, p.quantity || it.qty)), disc: it.disc || 0 } : null; }).filter(Boolean) as CartLine[];
+    setCart(lines); setDiscount(d.discount || "0"); setCustId(d.custId ?? ""); setPayType((d.payType as any) || "cash");
+    await DB.deleteParked(h.id); setShowHeld(false); await loadParked();
+  };
 
   const onSearchEnter = (e: React.KeyboardEvent) => {
     if (e.key !== "Enter") return;
@@ -555,16 +564,20 @@ export default function POSPage() {
       {showHeld && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" dir="rtl" onClick={() => setShowHeld(false)}>
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="p-3 border-b border-slate-800 flex items-center justify-between"><span className="text-sm font-bold text-white">فواتير معلّقة (مؤقتة)</span><button onClick={() => setShowHeld(false)} className="w-7 h-7 rounded-lg bg-slate-800 text-slate-300 flex items-center justify-center"><X size={14} /></button></div>
+            <div className="p-3 border-b border-slate-800 flex items-center justify-between"><span className="text-sm font-bold text-white">فواتير معلّقة</span><button onClick={() => setShowHeld(false)} className="w-7 h-7 rounded-lg bg-slate-800 text-slate-300 flex items-center justify-center"><X size={14} /></button></div>
             <div className="overflow-y-auto">
               {held.length === 0 ? <div className="p-6 text-center text-slate-500 text-sm">لا فواتير معلّقة.</div> : held.map((h) => (
-                <button key={h.id} onClick={() => restoreHeld(h)} className="w-full text-right flex items-center justify-between px-4 py-3 border-b border-slate-800/60 hover:bg-white/[0.03]">
-                  <span className="text-xs text-slate-300">{h.cart.length} صنف · {h.at}</span>
-                  <span className="text-[11px] text-blue-300 font-bold">استعادة</span>
-                </button>
+                <div key={h.id} className="flex items-center gap-2 px-4 py-3 border-b border-slate-800/60 hover:bg-white/[0.03]">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs text-slate-200 truncate">{h.label || `${h.data?.items?.length ?? 0} صنف`}</div>
+                    <div className="text-[10px] text-slate-500">{(h.data?.items?.length ?? 0)} صنف{h.created_at ? ` · ${new Date(h.created_at).toLocaleTimeString("ar-SA")}` : ""}</div>
+                  </div>
+                  <button onClick={() => restoreHeld(h)} className="px-3 py-1.5 rounded-lg bg-blue-600 text-[#fff] text-[11px] font-bold">استعادة</button>
+                  <button onClick={async () => { await DB.deleteParked(h.id); await loadParked(); }} title="حذف" className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400 flex items-center justify-center"><Trash2 size={13} /></button>
+                </div>
               ))}
             </div>
-            <div className="p-2 text-[10px] text-slate-500 text-center border-t border-slate-800">التعليق مؤقت في الجلسة — الحفظ الدائم في مرحلة لاحقة.</div>
+            <div className="p-2 text-[10px] text-slate-500 text-center border-t border-slate-800">محفوظة على مستوى الفرع — تبقى بعد إغلاق المتصفّح.</div>
           </div>
         </div>
       )}

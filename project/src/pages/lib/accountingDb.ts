@@ -2231,3 +2231,21 @@ export async function closeShift(orgId: number, shiftId: number, closing_cash: n
   const { error } = await supabase.from("gl_pos_shifts").update({ status: "closed", closed_at: new Date().toISOString(), closing_cash: Math.round((Number(closing_cash) || 0) * 100) / 100, expected_cash: Math.round((Number(expected_cash) || 0) * 100) / 100 }).eq("id", shiftId);
   return { ok: !error, error: error?.message };
 }
+
+// ══════════════ الفواتير المعلّقة (محفوظة) ══════════════
+export type ParkedData = { items: { productId: number; qty: number; disc: number }[]; discount: string; custId: number | ""; payType: string };
+export type GLParked = { id: number; organization_id: number; branch_id: number | null; cashier: string | null; label: string | null; data: ParkedData; created_at?: string };
+
+export async function fetchParked(orgId: number, branchId: number | null): Promise<GLParked[]> {
+  let q = supabase.from("gl_pos_parked").select("*").eq("organization_id", orgId).order("id", { ascending: false });
+  if (branchId != null) q = q.eq("branch_id", branchId);
+  const { data } = await q;
+  return (data as GLParked[]) || [];
+}
+export async function parkInvoice(orgId: number, a: { branch_id: number | null; cashier: string | null; label: string | null; data: ParkedData }): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.from("gl_pos_parked").insert({ organization_id: orgId, branch_id: a.branch_id, cashier: a.cashier, label: a.label, data: a.data });
+  return { ok: !error, error: error?.message };
+}
+export async function deleteParked(id: number): Promise<void> {
+  await supabase.from("gl_pos_parked").delete().eq("id", id);
+}

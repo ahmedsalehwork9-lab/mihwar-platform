@@ -1898,7 +1898,7 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="max-w-[1400px] mx-auto pb-10 px-4 sm:px-6 animate-in fade-in duration-500" dir={isRTL ? 'rtl' : 'ltr'}>
+    <div className="w-full pb-10 px-4 sm:px-6 lg:px-8 animate-in fade-in duration-500" dir={isRTL ? 'rtl' : 'ltr'}>
 
       {/* ── Toast ── */}
       {successMsg && (

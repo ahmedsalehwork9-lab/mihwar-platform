@@ -36,6 +36,7 @@ export default function PurchaseInvoicesPage() {
   const [suppliers, setSuppliers] = useState<GLParty[]>([]);
   const [products, setProducts] = useState<POSProduct[]>([]);
   const [list, setList] = useState<GLPurchaseInvoice[]>([]);
+  const [retByInv, setRetByInv] = useState<Record<number, number>>({});
   const [loading, setLoading] = useState(true);
   const [from, setFrom] = useState(monthStart());
   const [to, setTo] = useState(today());
@@ -94,7 +95,15 @@ export default function PurchaseInvoicesPage() {
 
   const loadList = useCallback(async () => {
     if (!org) return;
-    setList(await DB.fetchPurchaseInvoices(org.id, from, to, ownedShopId ? Number(ownedShopId) : null));
+    const br = ownedShopId ? Number(ownedShopId) : null;
+    const [inv, rets] = await Promise.all([
+      DB.fetchPurchaseInvoices(org.id, from, to, br),
+      DB.fetchPurchaseReturns(org.id, undefined, undefined, br),
+    ]);
+    setList(inv);
+    const m: Record<number, number> = {};
+    for (const r of rets) m[r.original_invoice_id] = r2((m[r.original_invoice_id] || 0) + (Number(r.total) || 0));
+    setRetByInv(m);
   }, [org, from, to, ownedShopId]);
   useEffect(() => { loadList(); }, [loadList]);
 
@@ -182,6 +191,7 @@ export default function PurchaseInvoicesPage() {
       organization_id: org.id, type: "supplier", name: nsName,
       phone: nsPhone.trim() || null, tax_number: nsTax.trim() || null,
       branch_id: ownedShopId ? Number(ownedShopId) : null,
+      account_id: defaultSupplierAcc?.id ?? null,   // ربط المورد بحساب «الموردون 2101» (مثل محرّر الأطراف) ليظهر في كشف الحساب والأعمار
     });
     setAddingSup(false);
     if (!res.ok || !res.id) { setErr(res.error || "تعذّر إضافة المورد."); return; }
@@ -277,7 +287,13 @@ export default function PurchaseInvoicesPage() {
                 <div className="flex gap-1.5">
                   <select value={fSupplierId} onChange={(e) => setFSupplierId(e.target.value ? Number(e.target.value) : "")} className={`${inp} ${supplierRequired && !fSupplierId ? "border-amber-500/60" : ""}`}>
                     <option value="">{supplierRequired ? "— اختر موردًا —" : "— مورد نقدي / بدون —"}</option>
-                    {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    {defaultSupplierAcc ? (
+                      <optgroup label={`${defaultSupplierAcc.code} · ${defaultSupplierAcc.name}`}>
+                        {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </optgroup>
+                    ) : (
+                      suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)
+                    )}
                   </select>
                   <button type="button" onClick={() => setShowAddSup((v) => !v)} title="إضافة مورد جديد" className="shrink-0 px-2.5 rounded-lg bg-slate-800 border border-slate-700 text-blue-400 hover:text-blue-300"><UserPlus size={16} /></button>
                 </div>
@@ -467,17 +483,21 @@ export default function PurchaseInvoicesPage() {
                 <th className="text-left font-semibold px-3 py-2.5">المدفوع</th>
                 <th className="text-left font-semibold px-3 py-2.5">المستحق</th>
                 <th className="text-center font-semibold px-3 py-2.5">السداد</th>
+                <th className="text-center font-semibold px-3 py-2.5">الحالة</th>
               </tr>
             </thead>
             <tbody>
               {list.length === 0 && (
-                <tr><td colSpan={8} className="text-center text-slate-600 py-10">
+                <tr><td colSpan={9} className="text-center text-slate-600 py-10">
                   <Package size={30} className="mx-auto mb-2 opacity-40" />
                   لا توجد فواتير مشتريات في هذه الفترة.
                 </td></tr>
               )}
               {list.map((inv) => {
-                const due = r2((Number(inv.total) || 0) - (Number(inv.paid_amount) || 0));
+                const tot = Number(inv.total) || 0;
+                const due = r2(tot - (Number(inv.paid_amount) || 0));
+                const returned = retByInv[inv.id] || 0;
+                const retStatus = returned <= 0.005 ? null : (returned >= tot - 0.005 ? "full" : "partial");
                 return (
                   <tr key={inv.id} className="border-b border-slate-800/60 hover:bg-slate-800/30">
                     <td className="px-3 py-2.5 text-slate-300 font-mono">{inv.invoice_no}/{inv.invoice_year}</td>
@@ -489,6 +509,15 @@ export default function PurchaseInvoicesPage() {
                     <td className={`px-3 py-2.5 text-left ${due > 0 ? "text-amber-400" : "text-slate-600"}`}>{fmt(due)}</td>
                     <td className="px-3 py-2.5 text-center">
                       <span className={`inline-block px-2 py-0.5 rounded-lg text-xs font-bold ${payBadge[inv.payment_type as PurchasePayType] ?? "bg-slate-700 text-slate-300"}`}>{PAY_LABEL[inv.payment_type as PurchasePayType] ?? inv.payment_type}</span>
+                    </td>
+                    <td className="px-3 py-2.5 text-center">
+                      {retStatus === "full" ? (
+                        <span className="inline-block px-2 py-0.5 rounded-lg text-xs font-bold bg-rose-500/15 text-rose-400" title={`قيمة المرتجع ${fmt(returned)}`}>مرتجعة بالكامل</span>
+                      ) : retStatus === "partial" ? (
+                        <span className="inline-block px-2 py-0.5 rounded-lg text-xs font-bold bg-orange-500/15 text-orange-400" title={`قيمة المرتجع ${fmt(returned)}`}>مرتجعة جزئيًا</span>
+                      ) : (
+                        <span className="text-slate-600 text-xs">—</span>
+                      )}
                     </td>
                   </tr>
                 );

@@ -2697,3 +2697,58 @@ export async function createSupplierPayment(orgId: number, args: {
   }
   return { ok: true, id: newId, paymentNo: payment_no, paymentYear: year };
 }
+
+
+// ══════════════════════════════════════════════════════════════════════════
+//  الجرد والتسويات (المخزون — المرحلة 2)
+//    تعديل رصيد صنف بحركة موثّقة في gl_stock_moves (سبب + مستخدم + تاريخ)،
+//    دون السماح بتعديل الرصيد مباشرة بلا حركة. لا يلمس منطق البيع/الشراء.
+// ══════════════════════════════════════════════════════════════════════════
+
+export type GLStockMove = {
+  id: number; organization_id: number; branch_id: number | null; product_id: number;
+  move_type: string; qty: number; unit_cost: number | null;
+  ref_type: string | null; ref_id: number | null; notes: string | null;
+  created_by: string | null; created_at: string;
+};
+
+export async function fetchStockAdjustments(orgId: number, from?: string, to?: string, branchId?: number | null): Promise<GLStockMove[]> {
+  let q = supabase.from("gl_stock_moves").select("*").eq("organization_id", orgId).eq("move_type", "adjust");
+  if (from) q = q.gte("created_at", from);
+  if (to) q = q.lte("created_at", to + "T23:59:59");
+  if (branchId != null) q = q.eq("branch_id", branchId);
+  q = q.order("created_at", { ascending: false }).limit(300);
+  const { data, error } = await q;
+  if (error) { console.error("fetchStockAdjustments", error); return []; }
+  return (data as GLStockMove[]) || [];
+}
+
+// تسوية رصيد صنف إلى كمية جديدة (أو بفارق). تكتب حركة موثّقة وتحدّث الرصيد.
+export async function createStockAdjustment(orgId: number, args: {
+  product_id: number; branch_id: number | null;
+  new_qty: number;            // الرصيد الفعلي بعد الجرد
+  reason: string;             // سبب التسوية (مطلوب)
+  user_id: string | null;     // منفّذ التسوية
+}): Promise<{ ok: boolean; error?: string; delta?: number; newQty?: number }> {
+  const reason = (args.reason || "").trim();
+  if (!reason) return { ok: false, error: "اكتب سبب التسوية." };
+  if (!args.product_id) return { ok: false, error: "اختر الصنف." };
+  const { data: prod, error: pErr } = await supabase.from("products").select("quantity, price").eq("id", args.product_id).single();
+  if (pErr || !prod) return { ok: false, error: "تعذّر قراءة الصنف." };
+  const cur = Number((prod as any).quantity) || 0;
+  const cost = Number((prod as any).price) || 0;
+  const newQty = Math.round((Number(args.new_qty) || 0) * 1000) / 1000;
+  const delta = Math.round((newQty - cur) * 1000) / 1000;
+  if (delta === 0) return { ok: false, error: "لا فرق بين الرصيد الحالي والجديد." };
+
+  const { error: mvErr } = await supabase.from("gl_stock_moves").insert({
+    organization_id: orgId, branch_id: args.branch_id, product_id: args.product_id,
+    move_type: "adjust", qty: delta, unit_cost: cost,
+    ref_type: "adjustment", ref_id: null, notes: reason, created_by: args.user_id ?? null,
+  });
+  if (mvErr) { console.error("createStockAdjustment.move", mvErr); return { ok: false, error: mvErr.message }; }
+
+  const { error: upErr } = await supabase.from("products").update({ quantity: newQty }).eq("id", args.product_id);
+  if (upErr) { console.error("createStockAdjustment.update", upErr); return { ok: false, error: upErr.message }; }
+  return { ok: true, delta, newQty };
+}

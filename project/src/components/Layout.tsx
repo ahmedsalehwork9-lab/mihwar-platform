@@ -29,6 +29,7 @@ import {
   FileBarChart,
   FolderOpen,
   Calculator,
+  ClipboardCheck,
 } from 'lucide-react';
 
 import { supabase } from '../pages/lib/supabase';
@@ -46,6 +47,7 @@ export type Page =
   | 'dashboard'
   | 'search'
   | 'inventory'
+  | 'stock-adjustments'
   | 'orders'
   | 'reports'
   | 'sales'
@@ -82,6 +84,7 @@ const pageTitles: Record<Page, { en: string; ar: string }> = {
   'dashboard':       { en: 'Dashboard',       ar: 'الرئيسية'        },
   'search':          { en: 'Store',         ar: 'المتجر'        },
   'inventory':       { en: 'Inventory',        ar: 'المخزون'         },
+  'stock-adjustments': { en: 'Stock Adjustments', ar: 'الجرد والتسويات' },
   'orders':          { en: 'Orders',           ar: 'الطلبات'         },
   'reports':         { en: 'Reports',          ar: 'التقارير'        },
   'sales':           { en: 'Sales',            ar: 'المبيعات'        },
@@ -203,6 +206,7 @@ const OPERATIONS: OpEntry[] = [
   { type: 'item', id: 'dashboard', icon: <LayoutDashboard size={17} />, labelEn: 'Dashboard', labelAr: 'الرئيسية' },
   { type: 'item', id: 'search',    icon: <Search size={17} />,          labelEn: 'Store',     labelAr: 'المتجر' },
   { type: 'item', id: 'inventory', icon: <Package size={17} />,         labelEn: 'Inventory', labelAr: 'المخزون' },
+  { type: 'item', id: 'stock-adjustments', icon: <ClipboardCheck size={17} />, labelEn: 'Stock Count', labelAr: 'الجرد والتسويات' },
   { type: 'item', id: 'orders',    icon: <ShoppingCart size={17} />,    labelEn: 'Orders',    labelAr: 'الطلبات' },
 
   { type: 'group', key: 'sales', icon: <TrendingUp size={17} />, labelEn: 'Sales', labelAr: 'المبيعات', homePage: 'sales-reconciliation', children: [

@@ -221,7 +221,19 @@ export default function POSPage() {
       <div style="text-align:center;font-size:11px;margin-top:4px">شكرًا لزيارتكم</div>
       </body></html>`;
   };
-  const printHTML = (html: string) => { const w = window.open("", "_blank", "width=320,height=640"); if (!w) { alert("فعّل النوافذ المنبثقة للطباعة."); return; } w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 250); };
+  // الطباعة عبر iframe مخفي — لا تعتمد على نوافذ منبثقة (تعمل بعد الحفظ غير المتزامن)
+  const printHTML = (html: string) => {
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("style", "position:fixed;right:0;bottom:0;width:0;height:0;border:0;");
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow?.document;
+    if (!doc) { try { document.body.removeChild(iframe); } catch {} return; }
+    doc.open(); doc.write(html); doc.close();
+    setTimeout(() => {
+      try { iframe.contentWindow?.focus(); iframe.contentWindow?.print(); } catch {}
+      setTimeout(() => { try { document.body.removeChild(iframe); } catch {} }, 1500);
+    }, 350);
+  };
   const printReceipt = (no: number, items: SalesItem[]) => printHTML(receiptHTML(no, new Date().toISOString(), items, t.net, t.vat, t.total, DB.PAYTYPE_LABEL[payType]));
   const reprint = (inv: DB.GLSalesInvoice) => printHTML(receiptHTML(inv.invoice_no, inv.date, inv.items || [], inv.subtotal, inv.tax_amount, inv.total, DB.PAYTYPE_LABEL[inv.payment_type]));
 

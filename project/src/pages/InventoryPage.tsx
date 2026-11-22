@@ -27,6 +27,11 @@ type Product = {
   visibility_scope?: VisibilityScope;
   product_image_url?: string | null;
   barcode?: string | null;
+  // ── إدارة المخزون (أعمدة إضافية اختيارية — تتطلب هجرة SQL) ──
+  category?: string | null;
+  min_quantity?: number | null;
+  reorder_level?: number | null;
+  max_quantity?: number | null;
   // Optional per-product margin override (%). When null/undefined, the
   // shop's default_margin_percent applies instead. Cost price (this
   // page) is never affected by margin — margin only changes the price
@@ -38,7 +43,7 @@ type Product = {
   selling_price?: number | null;
 };
 
-type FilterStatus = 'all' | 'in_stock' | 'low_stock' | 'out_of_stock';
+type FilterStatus = 'all' | 'in_stock' | 'low_stock' | 'out_of_stock' | 'reorder';
 
 type FormState = {
   product_code: string;
@@ -53,6 +58,10 @@ type FormState = {
   margin_percent: string;
   // Empty string = "use margin instead". A number here overrides margin.
   selling_price: string;
+  category: string;
+  min_quantity: string;
+  reorder_level: string;
+  max_quantity: string;
 };
 
 type ShopOption = {
@@ -76,6 +85,10 @@ const EMPTY_FORM: FormState = {
   product_image_url: '',
   margin_percent: '',
   selling_price: '',
+  category: '',
+  min_quantity: '',
+  reorder_level: '',
+  max_quantity: '',
 };
 
 const PAGE_SIZE   = 12;
@@ -95,6 +108,19 @@ function getStatus(qty: number): FilterStatus {
   if (qty > 5) return "in_stock";
   if (qty > 0) return "low_stock";
   return "out_of_stock";
+}
+
+// يحتاج إعادة طلب: حسب reorder_level لكل صنف إن وُجد، وإلا عتبة افتراضية.
+function needsReorder(p: Product): boolean {
+  if (p.reorder_level != null) return p.quantity <= p.reorder_level;
+  return p.quantity > 0 && p.quantity <= 5;
+}
+
+// سعر البيع الفعّال: الثابت إن وُجد، وإلا التكلفة × (1 + الهامش%).
+function effectiveSelling(p: Product, defMargin: number): number {
+  if (p.selling_price != null) return Number(p.selling_price);
+  const m = p.margin_percent != null ? Number(p.margin_percent) : (defMargin || 0);
+  return Number(p.price) * (1 + (m || 0) / 100);
 }
 
 function safeVisibilityScope(val: string | undefined | null): VisibilityScope {
@@ -560,6 +586,7 @@ export default function InventoryPage() {
 
   const [showModal, setShowModal]       = useState(false);
   const [editItem, setEditItem]         = useState<Product | null>(null);
+  const [detailItem, setDetailItem]     = useState<Product | null>(null);
   const [form, setForm]                 = useState<FormState>(EMPTY_FORM);
   const [formError, setFormError]       = useState<string | null>(null);
 
@@ -625,7 +652,7 @@ export default function InventoryPage() {
 
         const { data: chunk, error: fetchErr } = await supabase
           .from("products")
-          .select("id, product_code, product_name, brand, model, quantity, price, shop_id, visibility_scope, product_image_url, barcode, margin_percent, selling_price")
+          .select("id, product_code, product_name, brand, model, quantity, price, shop_id, visibility_scope, product_image_url, barcode, margin_percent, selling_price, category, min_quantity, reorder_level, max_quantity")
           .eq("shop_id", ownedShopId)
           .order("created_at", { ascending: false })
           .range(from, to);
@@ -926,6 +953,10 @@ export default function InventoryPage() {
         visibility_scope: safeVisibilityScope(form.visibility_scope),
         margin_percent:   parsedMargin,
         selling_price:    parsedSellingPrice,
+        category:         form.category.trim() || null,
+        min_quantity:     form.min_quantity === '' ? null : Number(form.min_quantity),
+        reorder_level:    form.reorder_level === '' ? null : Number(form.reorder_level),
+        max_quantity:     form.max_quantity === '' ? null : Number(form.max_quantity),
       };
 
       let productId: number;
@@ -1337,7 +1368,7 @@ export default function InventoryPage() {
   // ── Derived Data ──────────────────────────────────────────────────────────
   const { filtered, counts, totals } = useMemo(() => {
     const q = search.toLowerCase().trim();
-    let inStock = 0, lowStock = 0, outOfStock = 0;
+    let inStock = 0, lowStock = 0, outOfStock = 0, reorder = 0;
     let totalValue = 0, totalQty = 0;
 
     const allFiltered: Product[] = [];
@@ -1347,21 +1378,24 @@ export default function InventoryPage() {
       if (s === 'in_stock') inStock++;
       else if (s === 'low_stock') lowStock++;
       else outOfStock++;
+      if (needsReorder(p)) reorder++;
       totalValue += p.quantity * p.price;
       totalQty   += p.quantity;
 
-      const matchesFilter = filter === 'all' || s === filter;
+      const matchesFilter = filter === 'all' || (filter === 'reorder' ? needsReorder(p) : s === filter);
       const matchesSearch = !q
         || p.product_code?.toLowerCase().includes(q)
         || p.product_name?.toLowerCase().includes(q)
-        || p.brand?.toLowerCase().includes(q);
+        || p.brand?.toLowerCase().includes(q)
+        || p.barcode?.toLowerCase().includes(q)
+        || p.category?.toLowerCase().includes(q);
 
       if (matchesFilter && matchesSearch) allFiltered.push(p);
     }
 
     return {
       filtered: allFiltered,
-      counts: { all: products.length, in_stock: inStock, low_stock: lowStock, out_of_stock: outOfStock },
+      counts: { all: products.length, in_stock: inStock, low_stock: lowStock, out_of_stock: outOfStock, reorder },
       totals: { value: totalValue, qty: totalQty },
     };
   }, [products, filter, search]);
@@ -1402,6 +1436,10 @@ export default function InventoryPage() {
       product_image_url:  p.product_image_url ?? '',
       margin_percent:     p.margin_percent != null ? String(p.margin_percent) : '',
       selling_price:      p.selling_price != null ? String(p.selling_price) : '',
+      category:           p.category ?? '',
+      min_quantity:       p.min_quantity != null ? String(p.min_quantity) : '',
+      reorder_level:      p.reorder_level != null ? String(p.reorder_level) : '',
+      max_quantity:       p.max_quantity != null ? String(p.max_quantity) : '',
     });
     setAllowedShopIds([]);
     setAllowedShopsLoading(true);
@@ -1844,7 +1882,7 @@ export default function InventoryPage() {
         <div className="flex items-center gap-1.5 px-2 py-1 text-slate-500 text-[10px] font-bold border-r border-slate-800 mr-1 uppercase tracking-widest shrink-0">
           <Filter size={12} /> {t('Filter', 'تصفية')}
         </div>
-        {(['all', 'in_stock', 'low_stock', 'out_of_stock'] as FilterStatus[]).map(s => (
+        {(['all', 'in_stock', 'low_stock', 'out_of_stock', 'reorder'] as FilterStatus[]).map(s => (
           <button
             key={s}
             onClick={() => handleFilterChange(s)}
@@ -1855,7 +1893,7 @@ export default function InventoryPage() {
                 : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-600 hover:text-slate-200'
             }`}
           >
-            {t(s.replace('_', ' '), s === 'all' ? 'الكل' : s === 'in_stock' ? 'متوفر' : s === 'low_stock' ? 'منخفض' : 'نفد')}
+            {t(s.replace('_', ' '), s === 'all' ? 'الكل' : s === 'in_stock' ? 'متوفر' : s === 'low_stock' ? 'منخفض' : s === 'out_of_stock' ? 'نافد' : 'إعادة طلب')}
             <span className={`${isRTL ? 'mr-2' : 'ml-2'} px-1.5 py-0.5 rounded-md text-[10px] ${filter === s ? 'bg-white/20' : 'bg-slate-800'}`}>
               {counts[s]}
             </span>
@@ -1869,25 +1907,29 @@ export default function InventoryPage() {
         aria-label={t('Inventory summary', 'ملخص المخزون')}
         aria-hidden={isSearching}
       >
-        {/* Desktop: 5-column grid */}
-        <div className="hidden md:grid md:grid-cols-5 gap-2.5">
+        {/* Desktop: 6-column grid — الضغط على البطاقة يصفّي الجدول */}
+        <div className="hidden md:grid md:grid-cols-6 gap-2.5">
           {[
-            { label: t('Total Value', 'إجمالي القيمة'), val: `${totals.value.toLocaleString()} ر.س`, icon: DollarSign, color: 'text-emerald-400' },
-            { label: t('Total Parts', 'إجمالي القطع'),  val: counts.all,          icon: Boxes,        color: 'text-blue-400' },
-            { label: t('In Stock', 'متوفر'),             val: counts.in_stock,     icon: PackageCheck, color: 'text-emerald-500' },
-            { label: t('Low Stock', 'منخفض'),            val: counts.low_stock,    icon: TrendingDown, color: 'text-amber-400' },
-            { label: t('Out of Stock', 'نفد'),           val: counts.out_of_stock, icon: PackageX,     color: 'text-red-400' },
+            { label: t('Total Value', 'قيمة المخزون'), val: `${totals.value.toLocaleString()} ر.س`, icon: DollarSign, color: 'text-emerald-400', fk: 'all' as FilterStatus },
+            { label: t('Total Parts', 'إجمالي الأصناف'),  val: counts.all,          icon: Boxes,        color: 'text-blue-400',    fk: 'all' as FilterStatus },
+            { label: t('In Stock', 'متوفر'),             val: counts.in_stock,     icon: PackageCheck, color: 'text-emerald-500', fk: 'in_stock' as FilterStatus },
+            { label: t('Low Stock', 'منخفض'),            val: counts.low_stock,    icon: TrendingDown, color: 'text-amber-400',   fk: 'low_stock' as FilterStatus },
+            { label: t('Out of Stock', 'نافد'),          val: counts.out_of_stock, icon: PackageX,     color: 'text-red-400',     fk: 'out_of_stock' as FilterStatus },
+            { label: t('Needs Reorder', 'يحتاج إعادة طلب'), val: counts.reorder,   icon: AlertCircle,  color: 'text-orange-400',  fk: 'reorder' as FilterStatus },
           ].map((kpi, i) => (
-            <div
+            <button
               key={i}
-              className="p-3 rounded-xl border border-slate-800/60 bg-slate-900 flex flex-col justify-between min-h-[90px] transition-colors hover:border-slate-700"
+              type="button"
+              onClick={() => handleFilterChange(kpi.fk)}
+              aria-pressed={filter === kpi.fk}
+              className={`p-3 rounded-xl border bg-slate-900 flex flex-col justify-between min-h-[90px] text-right transition-all hover:border-slate-600 active:scale-[0.98] ${filter === kpi.fk ? 'border-emerald-500/60 ring-1 ring-emerald-500/30' : 'border-slate-800/60'}`}
             >
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate mr-2">{kpi.label}</span>
                 <kpi.icon size={12} className={`${kpi.color} shrink-0`} />
               </div>
               <div className={`text-xl font-black ${kpi.color} mt-0.5 truncate`}>{kpi.val}</div>
-            </div>
+            </button>
           ))}
         </div>
 
@@ -2083,7 +2125,9 @@ export default function InventoryPage() {
                 <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Product Details', 'تفاصيل المنتج')}</th>
                 <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Category / Details', 'الصنف / التفاصيل')}</th>
                 <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Stock Level', 'المخزون')}</th>
-                <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Unit Price', 'سعر الوحدة')}</th>
+                <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Unit Cost', 'التكلفة')}</th>
+                <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Selling Price', 'سعر البيع')}</th>
+                <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Stock Value', 'قيمة المخزون')}</th>
                 <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Visibility', 'نطاق الظهور')}</th>
                 <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest text-center">{t('Actions', 'إجراء')}</th>
               </tr>
@@ -2091,14 +2135,14 @@ export default function InventoryPage() {
             <tbody className="divide-y divide-slate-800/50">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="p-20 text-center text-slate-500">
+                  <td colSpan={10} className="p-20 text-center text-slate-500">
                     <RefreshCw className="animate-spin mx-auto mb-4" />
                     {t('Loading...', 'جاري التحميل...')}
                   </td>
                 </tr>
               ) : pageItems.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-20 text-center text-slate-600 italic">
+                  <td colSpan={10} className="p-20 text-center text-slate-600 italic">
                     {t('No inventory records found.', 'لا توجد سجلات مخزون.')}
                   </td>
                 </tr>
@@ -2128,7 +2172,7 @@ export default function InventoryPage() {
                     </td>
                     <td className="p-4">
                       <div className="flex flex-col">
-                        <span className="text-white font-bold text-sm mb-1">{p.product_name}</span>
+                        <button type="button" onClick={() => setDetailItem(p)} className="text-white font-bold text-sm mb-1 text-right hover:text-emerald-400 transition-colors">{p.product_name}</button>
                         <div className="flex items-center gap-2">
                           <span className="font-mono text-[10px] text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded leading-none">{p.product_code}</span>
                           <CopyButton text={p.product_code} />
@@ -2149,6 +2193,12 @@ export default function InventoryPage() {
                     </td>
                     <td className="p-4 font-bold text-slate-100">
                       {p.price.toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-[10px] text-slate-500 font-normal">ر.س</span>
+                    </td>
+                    <td className="p-4 text-slate-300">
+                      {effectiveSelling(p, defaultMarginPercent).toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-[10px] text-slate-500 font-normal">ر.س</span>
+                    </td>
+                    <td className="p-4 font-bold text-emerald-400">
+                      {(p.quantity * p.price).toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-[10px] text-slate-500 font-normal">ر.س</span>
                     </td>
                     <td className="p-4">
                       <VisibilityBadge scope={p.visibility_scope} t={t} />
@@ -2255,12 +2305,52 @@ export default function InventoryPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Unit Price', 'السعر')}</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Unit Cost', 'التكلفة')}</label>
                   <input
                     type="number"
                     className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-emerald-500 focus:outline-none transition-colors text-sm"
                     value={form.price}
                     onChange={e => setForm(f => ({ ...f, price: e.target.value }))}
+                  />
+                </div>
+
+                {/* ── إدارة المخزون: التصنيف + حدود المخزون ── */}
+                <div className="col-span-2">
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Category', 'التصنيف')}</label>
+                  <input
+                    type="text"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-emerald-500 focus:outline-none transition-colors text-sm"
+                    value={form.category}
+                    onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+                    placeholder={t('e.g. Filters, Oils…', 'مثال: فلاتر، زيوت…')}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Reorder Level', 'حد إعادة الطلب')}</label>
+                  <input
+                    type="number"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-emerald-500 focus:outline-none transition-colors text-sm"
+                    value={form.reorder_level}
+                    onChange={e => setForm(f => ({ ...f, reorder_level: e.target.value }))}
+                    placeholder={t('Alert when ≤', 'تنبيه عند ≤')}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Min Qty', 'الحد الأدنى')}</label>
+                  <input
+                    type="number"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-emerald-500 focus:outline-none transition-colors text-sm"
+                    value={form.min_quantity}
+                    onChange={e => setForm(f => ({ ...f, min_quantity: e.target.value }))}
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Max Qty', 'الحد الأقصى')}</label>
+                  <input
+                    type="number"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-emerald-500 focus:outline-none transition-colors text-sm"
+                    value={form.max_quantity}
+                    onChange={e => setForm(f => ({ ...f, max_quantity: e.target.value }))}
                   />
                 </div>
 
@@ -2565,6 +2655,128 @@ export default function InventoryPage() {
           <button onClick={() => setError(null)} className="underline font-bold text-xs shrink-0">{t('Dismiss', 'إغلاق')}</button>
         </div>
       )}
+
+      {/* ── Product Details Drawer ── */}
+      {detailItem && (
+        <ProductDetailDrawer
+          p={detailItem}
+          defMargin={defaultMarginPercent}
+          t={t}
+          isRTL={isRTL}
+          onClose={() => setDetailItem(null)}
+          onEdit={() => { const it = detailItem; setDetailItem(null); openEdit(it); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Product Details Drawer ──────────────────────────────────────────────────
+type StockMove = { id: number; created_at: string; move_type: string; qty: number; unit_cost: number | null; ref_type: string | null; ref_id: number | null; notes: string | null };
+
+function ProductDetailDrawer({ p, defMargin, t, isRTL, onClose, onEdit }: {
+  p: Product; defMargin: number; t: (en: string, ar: string) => string; isRTL: boolean;
+  onClose: () => void; onEdit: () => void;
+}) {
+  const [moves, setMoves] = useState<StockMove[]>([]);
+  const [loadingMoves, setLoadingMoves] = useState(true);
+  const money = (n: number) => (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setLoadingMoves(true);
+      const { data } = await supabase
+        .from("gl_stock_moves")
+        .select("id, created_at, move_type, qty, unit_cost, ref_type, ref_id, notes")
+        .eq("product_id", p.id)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (!alive) return;
+      setMoves((data as StockMove[]) || []);
+      setLoadingMoves(false);
+    })();
+    return () => { alive = false; };
+  }, [p.id]);
+
+  const sell = effectiveSelling(p, defMargin);
+  const margin = p.price > 0 ? ((sell - p.price) / p.price) * 100 : 0;
+  const status = getStatus(p.quantity);
+  const statusLabel = status === 'in_stock' ? t('In Stock', 'متوفر') : status === 'low_stock' ? t('Low Stock', 'منخفض') : t('Out of Stock', 'نافد');
+  const statusColor = status === 'in_stock' ? 'text-emerald-400' : status === 'low_stock' ? 'text-amber-400' : 'text-red-400';
+  const moveLabel = (m: string) => m === 'purchase_in' ? t('Purchase In', 'وارد شراء') : m === 'purchase_return' ? t('Purchase Return', 'مرتجع شراء') : m === 'adjust' ? t('Adjustment', 'تسوية') : m;
+
+  return (
+    <div className="fixed inset-0 z-[90] bg-black/60 flex justify-start" dir={isRTL ? 'rtl' : 'ltr'} onClick={onClose}>
+      <div className={`h-full w-full max-w-lg bg-slate-900 border-slate-800 overflow-y-auto ${isRTL ? 'border-l mr-auto' : 'border-r ml-auto'}`} onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 bg-slate-900 border-b border-slate-800 px-5 py-3.5 flex items-center justify-between z-10">
+          <h2 className="text-white font-black text-base flex items-center gap-2"><Package size={18} className="text-emerald-500" /> {t('Product Details', 'بطاقة الصنف')}</h2>
+          <div className="flex items-center gap-2">
+            <button onClick={onEdit} className="flex items-center gap-1.5 text-xs font-bold text-emerald-400 hover:text-emerald-300 px-2 py-1"><Edit2 size={14} /> {t('Edit', 'تعديل')}</button>
+            <button onClick={onClose} className="text-slate-500 hover:text-white"><X size={20} /></button>
+          </div>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* basic */}
+          <div className="flex items-start gap-3">
+            <ProductThumb src={p.product_image_url} alt={p.product_name} sizeCls="w-16 h-16" iconSize={22} roundedCls="rounded-xl" t={t} />
+            <div className="min-w-0">
+              <div className="text-white font-black text-lg leading-tight">{p.product_name}</div>
+              <div className="text-xs text-slate-500 font-mono mt-1">{p.product_code}{p.barcode ? ` · ${p.barcode}` : ''}</div>
+              <div className="text-xs text-slate-400 mt-1">{[p.brand, p.model, p.category].filter(Boolean).join(' · ') || '—'}</div>
+            </div>
+          </div>
+
+          {/* money */}
+          <div className="grid grid-cols-3 gap-2">
+            <Stat label={t('Unit Cost', 'التكلفة')} value={money(p.price)} />
+            <Stat label={t('Selling Price', 'سعر البيع')} value={money(sell)} />
+            <Stat label={t('Margin', 'الهامش')} value={`${margin.toFixed(1)}%`} tone="emerald" />
+          </div>
+
+          {/* stock */}
+          <div className="grid grid-cols-2 gap-2">
+            <Stat label={t('On Hand', 'الرصيد')} value={String(p.quantity)} tone={status === 'out_of_stock' ? 'red' : status === 'low_stock' ? 'amber' : 'emerald'} />
+            <Stat label={t('Stock Value', 'قيمة المخزون')} value={money(p.quantity * p.price)} tone="emerald" />
+            <Stat label={t('Reorder Level', 'حد إعادة الطلب')} value={p.reorder_level != null ? String(p.reorder_level) : '—'} />
+            <Stat label={t('Min / Max', 'الأدنى / الأقصى')} value={`${p.min_quantity ?? '—'} / ${p.max_quantity ?? '—'}`} />
+          </div>
+          <div className={`text-sm font-bold ${statusColor}`}>{t('Status', 'الحالة')}: {statusLabel}{needsReorder(p) ? ` · ${t('Needs reorder', 'يحتاج إعادة طلب')}` : ''}</div>
+
+          {/* movements */}
+          <div>
+            <div className="text-xs font-bold text-slate-400 mb-2">{t('Stock Movements', 'حركات المخزون')}</div>
+            {loadingMoves ? (
+              <div className="text-slate-600 text-xs py-3">{t('Loading…', 'جارٍ التحميل…')}</div>
+            ) : moves.length === 0 ? (
+              <div className="text-slate-600 text-xs py-3 bg-slate-800/40 rounded-lg px-3">{t('No recorded movements yet (purchases/returns log here).', 'لا توجد حركات مسجّلة بعد (المشتريات/المرتجعات تُسجَّل هنا).')}</div>
+            ) : (
+              <div className="space-y-1.5 max-h-72 overflow-y-auto">
+                {moves.map((m) => (
+                  <div key={m.id} className="flex items-center justify-between bg-slate-800/40 rounded-lg px-3 py-2 text-xs">
+                    <div className="min-w-0">
+                      <div className="text-slate-300">{moveLabel(m.move_type)}</div>
+                      <div className="text-slate-600">{(m.created_at || '').slice(0, 10)}{m.unit_cost != null ? ` · ${money(m.unit_cost)}` : ''}</div>
+                    </div>
+                    <div className={`font-bold font-mono ${m.qty >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{m.qty >= 0 ? '+' : ''}{m.qty}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value, tone }: { label: string; value: string; tone?: 'emerald' | 'amber' | 'red' }) {
+  const c = tone === 'emerald' ? 'text-emerald-400' : tone === 'amber' ? 'text-amber-400' : tone === 'red' ? 'text-red-400' : 'text-white';
+  return (
+    <div className="bg-slate-800/40 rounded-lg px-3 py-2">
+      <div className="text-[10px] text-slate-500">{label}</div>
+      <div className={`text-sm font-black ${c} mt-0.5`}>{value}</div>
     </div>
   );
 }

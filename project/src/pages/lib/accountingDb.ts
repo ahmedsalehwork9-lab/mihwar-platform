@@ -1694,9 +1694,9 @@ export async function markQuotationConverted(id: number, invoiceId: number): Pro
 
 export type SalesItem = { description: string; qty: number; unit_price: number; line_total: number };
 
-export type SalesPayType = "cash" | "credit" | "partial" | "card";
+export type SalesPayType = "cash" | "credit" | "partial" | "card" | "split";
 
-export const PAYTYPE_LABEL: Record<SalesPayType, string> = { cash: "نقدي", credit: "آجل", partial: "جزئي", card: "شبكة" };
+export const PAYTYPE_LABEL: Record<SalesPayType, string> = { cash: "نقدي", credit: "آجل", partial: "جزئي", card: "شبكة" , split: "تقسيم" };
 
 
 
@@ -2095,4 +2095,69 @@ export type ShopInfo = { shop_name: string | null; logo_url: string | null; tax_
 export async function fetchShopInfo(shopId: number): Promise<ShopInfo | null> {
   const { data } = await supabase.from("shops").select("shop_name, logo_url, tax_number, commercial_registration, phone, address").eq("id", shopId).maybeSingle();
   return (data as ShopInfo) ?? null;
+}
+
+// ══════════════ تقسيم الدفع (عدة وسائل في فاتورة واحدة) ══════════════
+export type SalesTender = { method: "cash" | "card" | "credit"; account_id: number; party_id?: number | null; amount: number };
+
+export async function fetchInvoicePayments(invoiceId: number): Promise<{ method: string; amount: number }[]> {
+  const { data } = await supabase.from("gl_sales_payments").select("method, amount").eq("invoice_id", invoiceId);
+  return (data as any[] || []).map((r) => ({ method: r.method, amount: Number(r.amount) || 0 }));
+}
+
+// ينشئ فاتورة مبيعات مدفوعة بعدة وسائل. tenders: كل عنصر {method, account_id, amount}
+// account_id = حساب الخزنة/البنك للنقدي/الشبكة، أو حساب ذمة العميل للآجل.
+export async function createSalesInvoiceMulti(orgId: number, inv: {
+  branch_id: number | null; date: string;
+  party_id: number | null; customer_name: string | null;
+  revenue_account_id: number; tax_account_id: number | null;
+  tax_rate: number; tax_inclusive: boolean;
+  items: SalesItem[]; notes: string | null;
+}, tenders: SalesTender[]): Promise<{ ok: boolean; error?: string; id?: number; entryId?: number; invoiceNo?: number }> {
+  const t = invoiceTotals(inv.items, inv.tax_rate, inv.tax_inclusive);
+  if (t.total <= 0) return { ok: false, error: "إجمالي الفاتورة صفر — أضف أصنافًا بقيمة." };
+  const valid = tenders.filter((x) => (Number(x.amount) || 0) > 0);
+  if (!valid.length) return { ok: false, error: "أدخل مبلغ دفع واحدًا على الأقل." };
+  const sum = Math.round(valid.reduce((s, x) => s + Number(x.amount), 0) * 100) / 100;
+  if (Math.abs(sum - t.total) > 0.05) return { ok: false, error: `مجموع المدفوعات (${sum}) لا يساوي إجمالي الفاتورة (${t.total}).` };
+  for (const x of valid) if (!x.account_id) return { ok: false, error: "كل وسيلة دفع تحتاج حسابًا (خزنة/بنك/عميل)." };
+  if (t.tax > 0 && !inv.tax_account_id) return { ok: false, error: "اختر حساب «الضريبة المستحقة»." };
+
+  // قيد الفاتورة: مدين (كل وسيلة دفع) = دائن (إيراد + ضريبة)
+  const lines: GLLine[] = [];
+  for (const x of valid) {
+    const amt = Math.round(Number(x.amount) * 100) / 100;
+    lines.push({ account_id: x.account_id, debit: amt, credit: 0, branch_id: inv.branch_id, party_id: x.method === "credit" ? (x.party_id ?? inv.party_id ?? null) : null });
+  }
+  lines.push({ account_id: inv.revenue_account_id, debit: 0, credit: t.subtotal, branch_id: inv.branch_id });
+  if (t.tax > 0) lines.push({ account_id: inv.tax_account_id as number, debit: 0, credit: t.tax, branch_id: inv.branch_id });
+
+  const cust = inv.customer_name || "عميل نقدي";
+  const res = await createEntry(orgId, { date: inv.date, description: `فاتورة مبيعات (تقسيم) — ${cust}`, branch_id: inv.branch_id, entry_type: "sales", notes: inv.notes || null, status: "posted" }, lines);
+  if (!res.ok) return { ok: false, error: res.error };
+
+  const paidNonCredit = Math.round(valid.filter((x) => x.method !== "credit").reduce((s, x) => s + Number(x.amount), 0) * 100) / 100;
+  const firstCollect = valid.find((x) => x.method !== "credit");
+  const ptype: SalesPayType = valid.length > 1 ? "split" : (valid[0]?.method ?? "cash");
+  const year = Number(inv.date.slice(0, 4));
+  const invoice_no = await nextInvoiceNo(orgId, year);
+  const { data, error } = await supabase.from("gl_sales_invoices").insert({
+    organization_id: orgId, branch_id: inv.branch_id, invoice_no, invoice_year: year, date: inv.date,
+    party_id: inv.party_id ?? null, customer_name: inv.customer_name || null,
+    payment_type: ptype, treasury_account_id: firstCollect?.account_id ?? null,
+    paid_amount: paidNonCredit, subtotal: t.subtotal, tax_rate: inv.tax_rate, tax_amount: t.tax,
+    tax_inclusive: inv.tax_inclusive, total: t.total, items: inv.items, notes: inv.notes || null,
+    entry_id: res.id, status: "posted",
+  }).select("id").single();
+  if (error) { if (res.id) await deleteEntry(res.id); console.error("createSalesInvoiceMulti", error); return { ok: false, error: error.message }; }
+  const invId = (data as any).id;
+  const rows = valid.map((x) => ({
+    organization_id: orgId, invoice_id: invId, method: x.method,
+    treasury_account_id: x.method === "credit" ? null : x.account_id,
+    customer_account_id: x.method === "credit" ? x.account_id : null,
+    party_id: x.method === "credit" ? (x.party_id ?? inv.party_id ?? null) : null,
+    amount: Math.round(Number(x.amount) * 100) / 100,
+  }));
+  await supabase.from("gl_sales_payments").insert(rows);
+  return { ok: true, id: invId, entryId: res.id, invoiceNo: invoice_no };
 }

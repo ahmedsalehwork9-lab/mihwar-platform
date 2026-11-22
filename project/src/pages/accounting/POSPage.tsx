@@ -30,7 +30,10 @@ export default function POSPage() {
 
   const [cart, setCart] = useState<CartLine[]>([]);
   const [discount, setDiscount] = useState("0");
-  const [payType, setPayType] = useState<"cash" | "card" | "credit">("cash");
+  const [payType, setPayType] = useState<"cash" | "card" | "credit" | "split">("cash");
+  const [splCash, setSplCash] = useState("");
+  const [splCard, setSplCard] = useState("");
+  const [splCredit, setSplCredit] = useState("");
   const [custId, setCustId] = useState<number | "">("");
   const [revAcc, setRevAcc] = useState<number | "">("");
   const [vatAcc, setVatAcc] = useState<number | "">("");
@@ -117,7 +120,7 @@ export default function POSPage() {
   const setQty = (id: number, qty: number) => setCart((c) => c.map((l) => (l.product.id === id ? { ...l, qty: Math.min(Math.max(1, qty), l.product.quantity || 1) } : l)));
   const setLineDisc = (id: number, d: number) => setCart((c) => c.map((l) => (l.product.id === id ? { ...l, disc: Math.max(0, d) } : l)));
   const removeLine = (id: number) => setCart((c) => c.filter((l) => l.product.id !== id));
-  const clearCart = () => { setCart([]); setDiscount("0"); setCustId(""); setPayType("cash"); };
+  const clearCart = () => { setCart([]); setDiscount("0"); setCustId(""); setPayType("cash"); setSplCash(""); setSplCard(""); setSplCredit(""); };
 
   // تعليق الفاتورة (مؤقت في الذاكرة — يُحفظ دائمًا في مرحلة لاحقة)
   const holdCart = () => {
@@ -158,12 +161,8 @@ export default function POSPage() {
     if (t.vat > 0 && vatAcc === "") { alert("حساب الضريبة المستحقة (المخرجات) غير محدد."); return; }
     // تحقّق المخزون قبل البيع
     for (const l of cart) { const live = products.find((p) => p.id === l.product.id); if (live && l.qty > live.quantity) { alert(`الكمية المطلوبة من «${l.product.product_name}» تتجاوز المتاح (${live.quantity}).`); return; } }
-    let collectAcc: number | null = null;
-    if (payType === "cash") { collectAcc = treasAccOf(cashTreas); if (!collectAcc) { alert("خزنة النقد غير محددة لهذا الفرع."); return; } }
-    if (payType === "card") { collectAcc = treasAccOf(cardTreas); if (!collectAcc) { alert("حساب الشبكة/البنك غير محدد — أنشئ خزنة بنك في «الخزن والبنوك»."); return; } }
     const custParty = custId === "" ? undefined : parties.find((x) => x.id === Number(custId));
-    let custAcc: number | null = null;
-    if (payType === "credit") { custAcc = custAccountOf(custParty); if (!custAcc) { alert("اختر عميلًا مرتبطًا بحساب ذمة للبيع الآجل."); return; } }
+    const custAccResolved = custAccountOf(custParty);
 
     const items: SalesItem[] = cart.map((l) => {
       const gross = DB.posPrice(l.product) * l.qty;
@@ -173,21 +172,49 @@ export default function POSPage() {
     });
     if (t.invDisc > 0) items.push({ description: "خصم على الفاتورة", qty: 1, unit_price: -t.invDisc, line_total: -t.invDisc });
 
+    const finish = async (res: { ok: boolean; error?: string; invoiceNo?: number }) => {
+      if (!res.ok) { setSaving(false); alert("تعذّر إصدار الفاتورة: " + (res.error || "")); return; }
+      for (const l of cart) await DB.adjustProductStock(l.product.id, -l.qty);
+      setSaving(false);
+      printReceipt(res.invoiceNo || 0, items);
+      clearCart(); await reloadProducts(); if (showToday) await loadToday();
+    };
+
+    // ── تقسيم الدفع ──
+    if (payType === "split") {
+      const cashAcc = treasAccOf(cashTreas), cardAcc = treasAccOf(cardTreas);
+      const nC = Number(splCash) || 0, nK = Number(splCard) || 0, nR = Number(splCredit) || 0;
+      if (nC > 0 && !cashAcc) { alert("خزنة النقد غير محددة لهذا الفرع."); return; }
+      if (nK > 0 && !cardAcc) { alert("حساب الشبكة/البنك غير محدد."); return; }
+      if (nR > 0 && !custAccResolved) { alert("اختر عميلًا بحساب ذمة للجزء الآجل (F3)."); return; }
+      if (Math.abs(r2(nC + nK + nR) - t.total) > 0.05) { alert(`مجموع المدفوعات ${fmt(r2(nC + nK + nR))} لا يساوي الإجمالي ${fmt(t.total)}.`); return; }
+      const tenders: DB.SalesTender[] = [];
+      if (nC > 0) tenders.push({ method: "cash", account_id: cashAcc as number, amount: nC });
+      if (nK > 0) tenders.push({ method: "card", account_id: cardAcc as number, amount: nK });
+      if (nR > 0) tenders.push({ method: "credit", account_id: custAccResolved as number, party_id: custId === "" ? null : Number(custId), amount: nR });
+      setSaving(true);
+      await finish(await DB.createSalesInvoiceMulti(org.id, {
+        branch_id: ownedShopId ? Number(ownedShopId) : null, date: today(),
+        party_id: custId === "" ? null : Number(custId), customer_name: custParty?.name ?? null,
+        revenue_account_id: Number(revAcc), tax_account_id: vatAcc === "" ? null : Number(vatAcc),
+        tax_rate: 15, tax_inclusive: false, items, notes: null,
+      }, tenders));
+      return;
+    }
+
+    // ── دفع مفرد ──
+    let collectAcc: number | null = null; let custAcc: number | null = null;
+    if (payType === "cash") { collectAcc = treasAccOf(cashTreas); if (!collectAcc) { alert("خزنة النقد غير محددة لهذا الفرع."); return; } }
+    if (payType === "card") { collectAcc = treasAccOf(cardTreas); if (!collectAcc) { alert("حساب الشبكة/البنك غير محدد — أنشئ خزنة بنك في «الخزن والبنوك»."); return; } }
+    if (payType === "credit") { custAcc = custAccResolved; if (!custAcc) { alert("اختر عميلًا مرتبطًا بحساب ذمة للبيع الآجل."); return; } }
     setSaving(true);
-    const res = await DB.createSalesInvoice(org.id, {
+    await finish(await DB.createSalesInvoice(org.id, {
       branch_id: ownedShopId ? Number(ownedShopId) : null, date: today(),
       party_id: custId === "" ? null : Number(custId), customer_name: custParty?.name ?? null,
       payment_type: payType, treasury_account_id: collectAcc,
       customer_account_id: custAcc, revenue_account_id: Number(revAcc), tax_account_id: vatAcc === "" ? null : Number(vatAcc),
       tax_rate: 15, tax_inclusive: false, items, paid_amount: payType === "credit" ? 0 : t.total, notes: null,
-    });
-    if (!res.ok) { setSaving(false); alert("تعذّر إصدار الفاتورة: " + (res.error || "")); return; }
-    for (const l of cart) await DB.adjustProductStock(l.product.id, -l.qty);
-    setSaving(false);
-    printReceipt(res.invoiceNo || 0, items);
-    clearCart();
-    await reloadProducts();
-    if (showToday) await loadToday();
+    }));
   };
 
   // فاتورة ضريبية مبسّطة (إيصال حراري ~ 280px)
@@ -256,10 +283,32 @@ export default function POSPage() {
   const PayPanel = (
     <>
       <div className="inline-flex gap-1 bg-slate-950 border border-slate-800 rounded-xl p-1 w-full">
-        {([["cash", "نقدي"], ["card", "شبكة"], ["credit", "آجل"]] as const).map(([pt, label]) => (
-          <button key={pt} onClick={() => setPayType(pt)} className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-bold ${payType === pt ? "bg-blue-600 text-[#fff]" : "text-slate-400"}`}>{label}</button>
+        {([["cash", "نقدي"], ["card", "شبكة"], ["credit", "آجل"], ["split", "تقسيم"]] as const).map(([pt, label]) => (
+          <button key={pt} onClick={() => setPayType(pt)} className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold ${payType === pt ? "bg-blue-600 text-[#fff]" : "text-slate-400"}`}>{label}</button>
         ))}
       </div>
+      {payType === "split" && (() => {
+        const nC = Number(splCash) || 0, nK = Number(splCard) || 0, nR = Number(splCredit) || 0;
+        const paid = r2(nC + nK + nR); const remain = r2(t.total - paid);
+        const row = (label: string, val: string, set: (v: string) => void, hint?: string) => (
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-slate-400 w-10">{label}</span>
+            <input type="number" step="0.01" value={val} onChange={(e) => set(e.target.value)} placeholder="0.00" className="flex-1 bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs text-center [direction:ltr] outline-none focus:border-blue-500" />
+            {hint && <span className="text-[9px] text-amber-400 w-16 truncate">{hint}</span>}
+          </div>
+        );
+        return (
+          <div className="space-y-1.5 bg-slate-950 border border-slate-800 rounded-xl p-2">
+            {row("نقدي", splCash, setSplCash)}
+            {row("شبكة", splCard, setSplCard, cardOptions.length ? "" : "لا حساب بنك")}
+            {row("آجل", splCredit, setSplCredit, custId === "" ? "اختر عميلًا" : "")}
+            <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-800">
+              <button onClick={() => { if (remain > 0) setSplCash(String(r2((Number(splCash) || 0) + remain))); }} className="text-blue-300 font-bold">الباقي نقدي</button>
+              <span className={remain === 0 ? "text-emerald-400 font-bold" : "text-amber-400"}>{remain === 0 ? "✓ مكتمل" : `متبقٍّ: ${fmt(remain)}`}</span>
+            </div>
+          </div>
+        );
+      })()}
       {payType === "cash" && (cashOptions.length > 1 ? (
         <select value={cashTreas} onChange={(e) => setCashTreas(e.target.value ? Number(e.target.value) : "")} className="w-full bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-2 text-xs outline-none focus:border-blue-500">
           {cashOptions.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}

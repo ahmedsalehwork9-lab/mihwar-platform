@@ -1885,7 +1885,7 @@ export async function createSalesInvoice(orgId: number, inv: {
 
   tax_rate: number; tax_inclusive: boolean;
 
-  items: SalesItem[]; paid_amount: number; notes: string | null;
+  items: SalesItem[]; paid_amount: number; notes: string | null; shift_id?: number | null;
 
 }): Promise<{ ok: boolean; error?: string; id?: number; entryId?: number; invoiceNo?: number }> {
 
@@ -1951,7 +1951,7 @@ export async function createSalesInvoice(orgId: number, inv: {
 
     tax_inclusive: inv.tax_inclusive, total: t.total, items: inv.items, notes: inv.notes || null,
 
-    entry_id: res.id, status: "posted",
+    entry_id: res.id, status: "posted", shift_id: inv.shift_id ?? null,
 
   }).select("id").single();
 
@@ -2112,7 +2112,7 @@ export async function createSalesInvoiceMulti(orgId: number, inv: {
   party_id: number | null; customer_name: string | null;
   revenue_account_id: number; tax_account_id: number | null;
   tax_rate: number; tax_inclusive: boolean;
-  items: SalesItem[]; notes: string | null;
+  items: SalesItem[]; notes: string | null; shift_id?: number | null;
 }, tenders: SalesTender[]): Promise<{ ok: boolean; error?: string; id?: number; entryId?: number; invoiceNo?: number }> {
   const t = invoiceTotals(inv.items, inv.tax_rate, inv.tax_inclusive);
   if (t.total <= 0) return { ok: false, error: "إجمالي الفاتورة صفر — أضف أصنافًا بقيمة." };
@@ -2147,7 +2147,7 @@ export async function createSalesInvoiceMulti(orgId: number, inv: {
     payment_type: ptype, treasury_account_id: firstCollect?.account_id ?? null,
     paid_amount: paidNonCredit, subtotal: t.subtotal, tax_rate: inv.tax_rate, tax_amount: t.tax,
     tax_inclusive: inv.tax_inclusive, total: t.total, items: inv.items, notes: inv.notes || null,
-    entry_id: res.id, status: "posted",
+    entry_id: res.id, status: "posted", shift_id: inv.shift_id ?? null,
   }).select("id").single();
   if (error) { if (res.id) await deleteEntry(res.id); console.error("createSalesInvoiceMulti", error); return { ok: false, error: error.message }; }
   const invId = (data as any).id;
@@ -2160,4 +2160,74 @@ export async function createSalesInvoiceMulti(orgId: number, inv: {
   }));
   await supabase.from("gl_sales_payments").insert(rows);
   return { ok: true, id: invId, entryId: res.id, invoiceNo: invoice_no };
+}
+
+// ══════════════ الورديات والصندوق ══════════════
+export type GLShift = { id: number; organization_id: number; branch_id: number | null; cashier: string | null; opened_at: string; opening_cash: number; closed_at: string | null; closing_cash: number | null; expected_cash: number | null; status: string; notes: string | null };
+export type ShiftExpense = { id: number; shift_id: number; amount: number; reason: string | null; expense_account_id: number | null; entry_id: number | null; created_at?: string };
+export type ShiftSummary = { count: number; cashCollected: number; cardCollected: number; creditTotal: number; salesTotal: number; expenses: number; expected: number };
+
+export async function fetchOpenShift(orgId: number, branchId: number | null): Promise<GLShift | null> {
+  let q = supabase.from("gl_pos_shifts").select("*").eq("organization_id", orgId).eq("status", "open").order("opened_at", { ascending: false }).limit(1);
+  if (branchId != null) q = q.eq("branch_id", branchId);
+  const { data } = await q;
+  return (((data as any[]) || [])[0] as GLShift) ?? null;
+}
+
+export async function openShift(orgId: number, a: { branch_id: number | null; cashier: string | null; opening_cash: number }): Promise<{ ok: boolean; error?: string; shift?: GLShift }> {
+  const existing = await fetchOpenShift(orgId, a.branch_id);
+  if (existing) return { ok: false, error: "يوجد وردية مفتوحة بالفعل لهذا الفرع." };
+  const { data, error } = await supabase.from("gl_pos_shifts").insert({ organization_id: orgId, branch_id: a.branch_id, cashier: a.cashier, opening_cash: Math.round((Number(a.opening_cash) || 0) * 100) / 100, status: "open" }).select("*").single();
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, shift: data as GLShift };
+}
+
+export async function fetchShiftExpenses(shiftId: number): Promise<ShiftExpense[]> {
+  const { data } = await supabase.from("gl_pos_shift_expenses").select("*").eq("shift_id", shiftId).order("id");
+  return (data as ShiftExpense[]) || [];
+}
+
+// مصروف نقدي من الصندوق: مدين المصروف / دائن الصندوق
+export async function addShiftExpense(orgId: number, a: { shift_id: number; branch_id: number | null; date: string; amount: number; reason: string | null; expense_account_id: number; cash_account_id: number }): Promise<{ ok: boolean; error?: string }> {
+  const amt = Math.round((Number(a.amount) || 0) * 100) / 100;
+  if (amt <= 0) return { ok: false, error: "أدخل مبلغًا صحيحًا." };
+  if (!a.expense_account_id) return { ok: false, error: "اختر حساب المصروف." };
+  if (!a.cash_account_id) return { ok: false, error: "حساب الصندوق غير محدد." };
+  const res = await createEntry(orgId, { date: a.date, description: `مصروف نقدي من الصندوق — ${a.reason || ""}`, branch_id: a.branch_id, entry_type: "payment", notes: null, status: "posted" }, [
+    { account_id: a.expense_account_id, debit: amt, credit: 0, branch_id: a.branch_id },
+    { account_id: a.cash_account_id, debit: 0, credit: amt, branch_id: a.branch_id },
+  ]);
+  if (!res.ok) return { ok: false, error: res.error };
+  const { error } = await supabase.from("gl_pos_shift_expenses").insert({ organization_id: orgId, shift_id: a.shift_id, amount: amt, reason: a.reason, expense_account_id: a.expense_account_id, entry_id: res.id });
+  if (error) { if (res.id) await deleteEntry(res.id); return { ok: false, error: error.message }; }
+  return { ok: true };
+}
+
+export async function shiftSummary(orgId: number, shift: GLShift): Promise<ShiftSummary> {
+  const { data: invs } = await supabase.from("gl_sales_invoices").select("id, total, payment_type").eq("organization_id", orgId).eq("shift_id", shift.id);
+  const list = (invs as any[]) || [];
+  let cash = 0, card = 0, credit = 0, salesTotal = 0; const splitIds: number[] = [];
+  for (const i of list) {
+    const tot = Number(i.total) || 0; salesTotal += tot;
+    if (i.payment_type === "cash") cash += tot;
+    else if (i.payment_type === "card") card += tot;
+    else if (i.payment_type === "credit") credit += tot;
+    else if (i.payment_type === "split") splitIds.push(i.id);
+  }
+  if (splitIds.length) {
+    const { data: pays } = await supabase.from("gl_sales_payments").select("invoice_id, method, amount").in("invoice_id", splitIds);
+    for (const p of (pays as any[]) || []) {
+      const amt = Number(p.amount) || 0;
+      if (p.method === "cash") cash += amt; else if (p.method === "card") card += amt; else if (p.method === "credit") credit += amt;
+    }
+  }
+  const exps = await fetchShiftExpenses(shift.id);
+  const expenses = Math.round(exps.reduce((s, e) => s + (Number(e.amount) || 0), 0) * 100) / 100;
+  const expected = Math.round(((Number(shift.opening_cash) || 0) + cash - expenses) * 100) / 100;
+  return { count: list.length, cashCollected: Math.round(cash * 100) / 100, cardCollected: Math.round(card * 100) / 100, creditTotal: Math.round(credit * 100) / 100, salesTotal: Math.round(salesTotal * 100) / 100, expenses, expected };
+}
+
+export async function closeShift(orgId: number, shiftId: number, closing_cash: number, expected_cash: number): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.from("gl_pos_shifts").update({ status: "closed", closed_at: new Date().toISOString(), closing_cash: Math.round((Number(closing_cash) || 0) * 100) / 100, expected_cash: Math.round((Number(expected_cash) || 0) * 100) / 100 }).eq("id", shiftId);
+  return { ok: !error, error: error?.message };
 }

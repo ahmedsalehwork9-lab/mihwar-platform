@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Search, Barcode, Trash2, Plus, Minus, ShoppingCart, X, Printer, Wallet, Clock, RotateCcw, LayoutGrid, List, PauseCircle, User, Store, Tag, Percent } from "lucide-react";
+import { Search, Barcode, Trash2, Plus, Minus, ShoppingCart, X, Printer, Wallet, Clock, RotateCcw, LayoutGrid, List, PauseCircle, User, Store, Tag, Percent, PlayCircle, Power, Banknote } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import * as DB from "../lib/accountingDb";
 import type { GLAccount, GLParty, GLTreasury, POSProduct, SalesItem, ShopInfo } from "../lib/accountingDb";
@@ -45,6 +45,16 @@ export default function POSPage() {
   const [held, setHeld] = useState<Held[]>([]);
   const [showHeld, setShowHeld] = useState(false);
 
+  // الورديات
+  const [shift, setShift] = useState<DB.GLShift | null>(null);
+  const [shiftModal, setShiftModal] = useState<null | "open" | "expense" | "close">(null);
+  const [openCash, setOpenCash] = useState("");
+  const [expAmount, setExpAmount] = useState("");
+  const [expReason, setExpReason] = useState("");
+  const [expAcc, setExpAcc] = useState<number | "">("");
+  const [closeCash, setCloseCash] = useState("");
+  const [summary, setSummary] = useState<DB.ShiftSummary | null>(null);
+
   const searchRef = useRef<HTMLInputElement>(null);
   const custRef = useRef<HTMLSelectElement>(null);
   const discRef = useRef<HTMLInputElement>(null);
@@ -86,6 +96,10 @@ export default function POSPage() {
     })();
     return () => { alive = false; };
   }, [ownedShopId]);
+
+  useEffect(() => { if (org && ownedShopId) DB.fetchOpenShift(org.id, Number(ownedShopId)).then(setShift); else setShift(null); }, [org, ownedShopId]);
+
+  const expenseAccounts = useMemo(() => accounts.filter((a) => a.type === "expense" && !a.is_group), [accounts]);
 
   const reloadProducts = useCallback(async () => { if (ownedShopId) setProducts(await DB.fetchProducts(Number(ownedShopId))); }, [ownedShopId]);
   const loadToday = useCallback(async () => { if (org) setTodayList(await DB.fetchSalesInvoices(org.id, today(), today(), ownedShopId ? Number(ownedShopId) : null)); }, [org, ownedShopId]);
@@ -197,7 +211,7 @@ export default function POSPage() {
         branch_id: ownedShopId ? Number(ownedShopId) : null, date: today(),
         party_id: custId === "" ? null : Number(custId), customer_name: custParty?.name ?? null,
         revenue_account_id: Number(revAcc), tax_account_id: vatAcc === "" ? null : Number(vatAcc),
-        tax_rate: 15, tax_inclusive: false, items, notes: null,
+        tax_rate: 15, tax_inclusive: false, items, notes: null, shift_id: shift?.id ?? null,
       }, tenders));
       return;
     }
@@ -213,8 +227,60 @@ export default function POSPage() {
       party_id: custId === "" ? null : Number(custId), customer_name: custParty?.name ?? null,
       payment_type: payType, treasury_account_id: collectAcc,
       customer_account_id: custAcc, revenue_account_id: Number(revAcc), tax_account_id: vatAcc === "" ? null : Number(vatAcc),
-      tax_rate: 15, tax_inclusive: false, items, paid_amount: payType === "credit" ? 0 : t.total, notes: null,
+      tax_rate: 15, tax_inclusive: false, items, paid_amount: payType === "credit" ? 0 : t.total, notes: null, shift_id: shift?.id ?? null,
     }));
+  };
+
+  // ── إجراءات الوردية ──
+  const doOpenShift = async () => {
+    if (!org) return;
+    const res = await DB.openShift(org.id, { branch_id: ownedShopId ? Number(ownedShopId) : null, cashier: user?.email ?? null, opening_cash: Number(openCash) || 0 });
+    if (!res.ok) { alert(res.error || ""); return; }
+    setShift(res.shift ?? null); setShiftModal(null); setOpenCash("");
+  };
+  const doExpense = async () => {
+    if (!org || !shift) return;
+    const cashAcc = treasAccOf(cashTreas);
+    if (!cashAcc) { alert("حساب الصندوق غير محدد لهذا الفرع."); return; }
+    if (expAcc === "") { alert("اختر حساب المصروف."); return; }
+    const res = await DB.addShiftExpense(org.id, { shift_id: shift.id, branch_id: ownedShopId ? Number(ownedShopId) : null, date: today(), amount: Number(expAmount) || 0, reason: expReason || null, expense_account_id: Number(expAcc), cash_account_id: cashAcc });
+    if (!res.ok) { alert(res.error || ""); return; }
+    alert("تم تسجيل المصروف وخصمه من الصندوق."); setShiftModal(null); setExpAmount(""); setExpReason("");
+  };
+  const openClose = async () => { if (!org || !shift) return; setSummary(await DB.shiftSummary(org.id, shift)); setCloseCash(""); setShiftModal("close"); };
+  const doClose = async () => {
+    if (!org || !shift || !summary) return;
+    const actual = Number(closeCash) || 0;
+    const res = await DB.closeShift(org.id, shift.id, actual, summary.expected);
+    if (!res.ok) { alert(res.error || ""); return; }
+    printZ(shift, summary, actual);
+    setShift(null); setShiftModal(null); setSummary(null);
+  };
+  const printZ = (sh: DB.GLShift, sm: DB.ShiftSummary, actual: number) => {
+    const diff = r2(actual - sm.expected);
+    const line = (k: string, v: string, b = false) => `<tr><td style="text-align:right;padding:3px 6px;${b ? "font-weight:800" : ""}">${k}</td><td style="text-align:left;padding:3px 6px;direction:ltr;${b ? "font-weight:800" : ""}">${v}</td></tr>`;
+    const html = `<html dir="rtl"><head><meta charset="UTF-8"><title>تقرير وردية</title></head><body style="font-family:'Segoe UI',Tahoma,sans-serif;width:300px;margin:0 auto;color:#111">
+      <h3 style="text-align:center;margin:6px 0 2px">${shop?.shop_name || org?.name || ""}</h3>
+      <div style="text-align:center;font-size:12px;font-weight:700">تقرير إغلاق وردية (Z)</div>
+      <div style="text-align:center;font-size:11px">${branchName} · الكاشير: ${sh.cashier || "—"}</div>
+      <div style="text-align:center;font-size:11px;color:#555">فتح: ${new Date(sh.opened_at).toLocaleString("ar-SA")}<br/>إغلاق: ${new Date().toLocaleString("ar-SA")}</div>
+      <hr/><table style="width:100%;font-size:12px">
+        ${line("عدد الفواتير", String(sm.count))}
+        ${line("إجمالي المبيعات", fmt(sm.salesTotal))}
+        ${line("نقدي", fmt(sm.cashCollected))}
+        ${line("شبكة", fmt(sm.cardCollected))}
+        ${line("آجل", fmt(sm.creditTotal))}
+      </table><hr/><table style="width:100%;font-size:12px">
+        ${line("رصيد افتتاحي", fmt(sh.opening_cash))}
+        ${line("+ مبيعات نقدية", fmt(sm.cashCollected))}
+        ${line("− مصروفات نقدية", fmt(sm.expenses))}
+        ${line("النقد المتوقّع", fmt(sm.expected), true)}
+        ${line("النقد الفعلي (الجرد)", fmt(actual), true)}
+        ${line(diff === 0 ? "مطابق" : diff > 0 ? "زيادة" : "عجز", fmt(Math.abs(diff)), true)}
+      </table><hr/>
+      <div style="text-align:center;font-size:11px">إعداد: المحاسب أحمد صالح</div>
+      </body></html>`;
+    printHTML(html);
   };
 
   // فاتورة ضريبية مبسّطة (إيصال حراري ~ 280px)
@@ -332,6 +398,15 @@ export default function POSPage() {
           <span className="text-slate-500">المستودع: {branchName}</span>
           {user?.email && <span className="flex items-center gap-1 text-slate-400"><User size={12} /> {user.email}</span>}
           <span className="flex items-center gap-1 text-slate-400"><Tag size={12} /> قائمة الأسعار: قطاعي</span>
+          {shift ? (
+            <span className="flex items-center gap-2">
+              <span className="flex items-center gap-1 text-emerald-300"><PlayCircle size={13} /> وردية مفتوحة · افتتاحي {fmt(shift.opening_cash)}</span>
+              <button onClick={() => { setExpAcc(expenseAccounts[0]?.id ?? ""); setShiftModal("expense"); }} className="px-2 py-1 rounded-lg bg-slate-800 text-slate-300 text-[11px] font-bold hover:bg-slate-700 flex items-center gap-1"><Banknote size={12} /> مصروف</button>
+              <button onClick={openClose} className="px-2 py-1 rounded-lg bg-red-500/10 text-red-300 text-[11px] font-bold hover:bg-red-500/20 flex items-center gap-1"><Power size={12} /> إغلاق الوردية</button>
+            </span>
+          ) : (
+            <button onClick={() => setShiftModal("open")} className="px-3 py-1.5 rounded-lg bg-emerald-600 text-[#fff] text-[11px] font-bold flex items-center gap-1"><PlayCircle size={13} /> فتح وردية</button>
+          )}
           <select ref={custRef} value={custId} onChange={(e) => setCustId(e.target.value ? Number(e.target.value) : "")} className="mr-auto bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs outline-none focus:border-blue-500 max-w-[220px]">
             <option value="">عميل نقدي/عابر (F3)</option>
             {parties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -490,6 +565,64 @@ export default function POSPage() {
               ))}
             </div>
             <div className="p-2 text-[10px] text-slate-500 text-center border-t border-slate-800">التعليق مؤقت في الجلسة — الحفظ الدائم في مرحلة لاحقة.</div>
+          </div>
+        </div>
+      )}
+
+      {/* فتح وردية */}
+      {shiftModal === "open" && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" dir="rtl" onClick={() => setShiftModal(null)}>
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-white font-bold text-sm mb-3 flex items-center gap-2"><PlayCircle size={16} className="text-emerald-400" /> فتح وردية — {branchName}</h3>
+            <label className="text-[11px] text-slate-500">الرصيد الافتتاحي للصندوق</label>
+            <input type="number" step="0.01" value={openCash} onChange={(e) => setOpenCash(e.target.value)} placeholder="0.00" autoFocus className="w-full mt-1 bg-slate-950 border border-slate-700 rounded-lg text-white px-3 py-2 text-sm text-center [direction:ltr] outline-none focus:border-blue-500" />
+            <div className="flex gap-2 justify-end mt-4">
+              <button onClick={() => setShiftModal(null)} className="px-3 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-bold">إلغاء</button>
+              <button onClick={doOpenShift} className="px-4 py-2 rounded-lg bg-emerald-600 text-[#fff] text-xs font-bold">فتح الوردية</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* مصروف نقدي */}
+      {shiftModal === "expense" && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" dir="rtl" onClick={() => setShiftModal(null)}>
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-white font-bold text-sm flex items-center gap-2"><Banknote size={16} className="text-amber-400" /> مصروف نقدي من الصندوق</h3>
+            <div><label className="text-[11px] text-slate-500">المبلغ</label><input type="number" step="0.01" value={expAmount} onChange={(e) => setExpAmount(e.target.value)} placeholder="0.00" autoFocus className="w-full mt-1 bg-slate-950 border border-slate-700 rounded-lg text-white px-3 py-2 text-sm text-center [direction:ltr] outline-none focus:border-blue-500" /></div>
+            <div><label className="text-[11px] text-slate-500">حساب المصروف</label>
+              <select value={expAcc} onChange={(e) => setExpAcc(e.target.value ? Number(e.target.value) : "")} className="w-full mt-1 bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-2 text-xs outline-none focus:border-blue-500">
+                <option value="">— اختر حساب المصروف</option>
+                {expenseAccounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </div>
+            <div><label className="text-[11px] text-slate-500">البيان</label><input value={expReason} onChange={(e) => setExpReason(e.target.value)} placeholder="سبب المصروف" className="w-full mt-1 bg-slate-950 border border-slate-700 rounded-lg text-white px-3 py-2 text-xs outline-none focus:border-blue-500" /></div>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setShiftModal(null)} className="px-3 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-bold">إلغاء</button>
+              <button onClick={doExpense} className="px-4 py-2 rounded-lg bg-amber-600 text-[#fff] text-xs font-bold">تسجيل وخصم</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* إغلاق الوردية */}
+      {shiftModal === "close" && summary && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" dir="rtl" onClick={() => setShiftModal(null)}>
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm p-5 space-y-2" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-white font-bold text-sm flex items-center gap-2"><Power size={16} className="text-red-400" /> إغلاق الوردية</h3>
+            {[["عدد الفواتير", String(summary.count)], ["إجمالي المبيعات", fmt(summary.salesTotal)], ["نقدي", fmt(summary.cashCollected)], ["شبكة", fmt(summary.cardCollected)], ["آجل", fmt(summary.creditTotal)]].map(([k, v]) => (
+              <div key={k} className="flex items-center justify-between text-xs text-slate-400"><span>{k}</span><span className="font-mono text-slate-200 [direction:ltr]">{v}</span></div>
+            ))}
+            <div className="border-t border-slate-800 pt-2 space-y-1">
+              <div className="flex items-center justify-between text-xs text-slate-400"><span>رصيد افتتاحي + نقدي − مصروفات</span><span className="font-mono text-slate-300 [direction:ltr]">{fmt(summary.expenses)} −</span></div>
+              <div className="flex items-center justify-between text-sm font-bold text-white"><span>النقد المتوقّع</span><span className="font-mono text-emerald-400 [direction:ltr]">{fmt(summary.expected)}</span></div>
+            </div>
+            <div><label className="text-[11px] text-slate-500">النقد الفعلي (الجرد)</label><input type="number" step="0.01" value={closeCash} onChange={(e) => setCloseCash(e.target.value)} placeholder="0.00" autoFocus className="w-full mt-1 bg-slate-950 border border-slate-700 rounded-lg text-white px-3 py-2 text-sm text-center [direction:ltr] outline-none focus:border-blue-500" /></div>
+            {closeCash !== "" && (() => { const d = r2((Number(closeCash) || 0) - summary.expected); return <div className={`text-center text-xs font-bold ${d === 0 ? "text-emerald-400" : d > 0 ? "text-sky-400" : "text-red-400"}`}>{d === 0 ? "مطابق ✓" : d > 0 ? `زيادة: ${fmt(d)}` : `عجز: ${fmt(Math.abs(d))}`}</div>; })()}
+            <div className="flex gap-2 justify-end pt-1">
+              <button onClick={() => setShiftModal(null)} className="px-3 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-bold">إلغاء</button>
+              <button onClick={doClose} className="px-4 py-2 rounded-lg bg-red-600 text-[#fff] text-xs font-bold">إغلاق وطباعة Z</button>
+            </div>
           </div>
         </div>
       )}

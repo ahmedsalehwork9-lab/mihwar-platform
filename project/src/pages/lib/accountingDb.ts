@@ -2581,3 +2581,20 @@ export async function addPartyQuick(p: {
   if (error) { console.error("addPartyQuick", error); return { ok: false, error: error.message }; }
   return { ok: true, id: Number((data as any).id) };
 }
+
+
+// إنشاء حساب فرعي وإرجاع معرّفه — لإنشاء حساب مورد تحت «الموردون».
+export async function addAccountReturningId(a: {
+  organization_id: number; code: string; name: string; type: string;
+  parent_id: number | null; is_group?: boolean; is_active?: boolean;
+}): Promise<{ ok: boolean; error?: string; id?: number }> {
+  const code = (a.code || "").trim();
+  const name = (a.name || "").trim();
+  if (!code || !name) return { ok: false, error: "رمز/اسم الحساب مطلوب." };
+  const { data, error } = await supabase.from("gl_accounts").insert({
+    organization_id: a.organization_id, code, name, type: a.type,
+    parent_id: a.parent_id, is_group: a.is_group ?? false, is_active: a.is_active ?? true,
+  }).select("id").single();
+  if (error) { console.error("addAccountReturningId", error); return { ok: false, error: error.message }; }
+  return { ok: true, id: Number((data as any).id) };
+}

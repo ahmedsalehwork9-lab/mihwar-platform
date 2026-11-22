@@ -48,7 +48,6 @@ export default function PurchaseInvoicesPage() {
 
   // ── form state ──
   const [fDate, setFDate] = useState(today());
-  const [fSupplierId, setFSupplierId] = useState<number | "">("");
   const [fSupplierName, setFSupplierName] = useState("");
   const [fSupplierInvNo, setFSupplierInvNo] = useState("");
   const [fKind, setFKind] = useState<PurchaseKind>("inventory");
@@ -112,7 +111,30 @@ export default function PurchaseInvoicesPage() {
   const inventoryAcc = useMemo(() => byCode("1104") ?? accounts.find((a) => a.type === "asset" && !a.is_group && /مخزون/.test(a.name)), [accounts, byCode]);
   const purchaseExpAcc = useMemo(() => byCode("5101") ?? accounts.find((a) => a.type === "expense" && !a.is_group), [accounts, byCode]);
   const inputVatAcc = useMemo(() => byCode("1106") ?? accounts.find((a) => !a.is_group && /مدخلات/.test(a.name)), [accounts, byCode]);
-  const defaultSupplierAcc = useMemo(() => byCode("2101") ?? accounts.find((a) => a.type === "liability" && !a.is_group && /مورد/.test(a.name)), [accounts, byCode]);
+  const defaultSupplierAcc = useMemo(() => byCode("2101") ?? accounts.find((a) => a.type === "liability" && /مورد/.test(a.name)), [accounts, byCode]);
+
+  // الموردون = الحسابات الفرعية (أوراق) تحت حساب «الموردون 2101»
+  const supplierAccounts = useMemo(() => {
+    if (!defaultSupplierAcc) return [];
+    const pc = defaultSupplierAcc.code;
+    return accounts.filter((a) => !a.is_group && a.id !== defaultSupplierAcc.id
+      && (a.parent_id === defaultSupplierAcc.id || (a.code.length > pc.length && a.code.startsWith(pc))));
+  }, [accounts, defaultSupplierAcc]);
+
+  // رمز الحساب الفرعي التالي تحت أب معيّن (نفس منطق دليل الحسابات)
+  const nextChildCode = useCallback((parentId: number): string => {
+    const parent = accounts.find((a) => a.id === parentId);
+    if (!parent) return "";
+    const pc = parent.code;
+    const kids = accounts.filter((a) => a.code.length > pc.length && a.code.startsWith(pc));
+    if (kids.length) {
+      const sfx = kids.map((k) => k.code.slice(pc.length));
+      const width = sfx[0].length;
+      const maxN = Math.max(...sfx.map((s) => parseInt(s, 10) || 0));
+      return pc + String(maxN + 1).padStart(width, "0");
+    }
+    return pc + "01";
+  }, [accounts]);
 
   const debitOptions = useMemo(() => {
     if (fKind === "inventory") return accounts.filter((a) => a.type === "asset" && !a.is_group);
@@ -130,10 +152,6 @@ export default function PurchaseInvoicesPage() {
     setFDebitAcc(def ?? "");
   }, [fKind, inventoryAcc, purchaseExpAcc, debitOptions]);
   useEffect(() => { setFTaxAcc(inputVatAcc?.id ?? ""); }, [inputVatAcc]);
-  useEffect(() => {
-    const sup = suppliers.find((s) => s.id === fSupplierId);
-    setFSupplierAcc((sup?.account_id ?? defaultSupplierAcc?.id) ?? "");
-  }, [fSupplierId, suppliers, defaultSupplierAcc]);
   useEffect(() => {
     if (fPay === "card") setFTreasury(bankTreasuries[0]?.id ?? "");
     else if (fPay === "cash" || fPay === "partial") setFTreasury(cashTreasuries[0]?.id ?? bankTreasuries[0]?.id ?? "");
@@ -163,7 +181,7 @@ export default function PurchaseInvoicesPage() {
   const pickProduct = (i: number, p: POSProduct) => setLine(i, { product_id: p.id, description: p.product_name, unit_cost: String(p.price || "") });
 
   const resetForm = () => {
-    setFDate(today()); setFSupplierId(""); setFSupplierName(""); setFSupplierInvNo("");
+    setFDate(today()); setFSupplierAcc(""); setFSupplierName(""); setFSupplierInvNo("");
     setFKind("inventory"); setFRate("15"); setFInclusive(false); setFPay("credit");
     setFPaid(""); setFDue(""); setFNotes(""); setLines([emptyLine()]); setErr(null);
   };
@@ -183,20 +201,32 @@ export default function PurchaseInvoicesPage() {
     { label: "نهاية الشهر", calc: (d) => endOfMonth(d) },
   ];
 
+  // إضافة مورد = إنشاء حساب فرعي تحت «الموردون 2101» (أو إعادة استخدام حساب بنفس الاسم)
   const addSupplier = async () => {
     if (!org) return;
-    if (!nsName.trim()) { setErr("اكتب اسم المورد."); return; }
+    if (!defaultSupplierAcc) { setErr("لا يوجد حساب «الموردون (2101)» في دليل الحسابات."); return; }
+    const nm = nsName.trim();
+    if (!nm) { setErr("اكتب اسم المورد."); return; }
     setAddingSup(true);
-    const res = await DB.addPartyQuick({
-      organization_id: org.id, type: "supplier", name: nsName,
-      phone: nsPhone.trim() || null, tax_number: nsTax.trim() || null,
-      branch_id: ownedShopId ? Number(ownedShopId) : null,
-      account_id: defaultSupplierAcc?.id ?? null,   // ربط المورد بحساب «الموردون 2101» (مثل محرّر الأطراف) ليظهر في كشف الحساب والأعمار
-    });
+    const parent = defaultSupplierAcc;
+    const existing = supplierAccounts.find((a) => a.name.trim() === nm);
+    let accId: number | null = existing?.id ?? null;
+    if (!accId) {
+      const code = nextChildCode(parent.id);
+      const ra = await DB.addAccountReturningId({
+        organization_id: org.id, code, name: nm, type: parent.type,
+        parent_id: parent.id, is_group: false, is_active: true,
+      });
+      if (!ra.ok || !ra.id) { setAddingSup(false); setErr(ra.error || "تعذّر إنشاء حساب المورد."); return; }
+      accId = ra.id;
+      // سجل بيانات الاتصال كطرف مرتبط بنفس الحساب (اختياري — للهاتف/الرقم الضريبي والأعمار)
+      if (nsPhone.trim() || nsTax.trim()) {
+        await DB.addPartyQuick({ organization_id: org.id, type: "supplier", name: nm, phone: nsPhone.trim() || null, tax_number: nsTax.trim() || null, branch_id: ownedShopId ? Number(ownedShopId) : null, account_id: accId });
+      }
+    }
+    setAccounts(await DB.fetchAccounts(org.id));
     setAddingSup(false);
-    if (!res.ok || !res.id) { setErr(res.error || "تعذّر إضافة المورد."); return; }
-    setSuppliers(await DB.fetchParties(org.id, "supplier"));
-    setFSupplierId(res.id);
+    setFSupplierAcc(accId);
     setShowAddSup(false); setNsName(""); setNsPhone(""); setNsTax(""); setErr(null);
   };
 
@@ -213,16 +243,16 @@ export default function PurchaseInvoicesPage() {
     if (fKind === "inventory" && items.some((it) => !it.product_id)) {
       setErr("مشتريات المخزون: اربط كل سطر بصنف من المخزون (لزيادة الكمية)."); return;
     }
-    if ((fPay === "credit" || fPay === "partial") && !fSupplierId) {
-      setErr("الشراء الآجل يتطلب اختيار مورد مسجّل (لتتبع ذمم الموردين). اختر موردًا أو أضف جديدًا بزر «+»."); return;
+    if ((fPay === "credit" || fPay === "partial") && !fSupplierAcc) {
+      setErr("الشراء الآجل يتطلب اختيار مورد من «الموردون» (ليترحّل على حسابه ويظهر في كشفه). اختر موردًا أو أضف جديدًا بزر «+»."); return;
     }
-    const supName = fSupplierId ? (suppliers.find((s) => s.id === fSupplierId)?.name ?? null) : (fSupplierName.trim() || null);
+    const supName = fSupplierAcc ? (supplierAccounts.find((a) => a.id === fSupplierAcc)?.name ?? null) : (fSupplierName.trim() || null);
     setSaving(true);
     const res = await DB.createPurchaseInvoice(org.id, {
       branch_id: ownedShopId ? Number(ownedShopId) : null,
       date: fDate,
       due_date: (fPay === "credit" || fPay === "partial") ? (fDue || null) : null,
-      party_id: fSupplierId || null,
+      party_id: null,
       supplier_name: supName,
       supplier_invoice_no: fSupplierInvNo.trim() || null,
       purchase_kind: fKind,
@@ -285,14 +315,12 @@ export default function PurchaseInvoicesPage() {
               <Field label="التاريخ"><input type="date" value={fDate} onChange={(e) => setFDate(e.target.value)} className={inp} /></Field>
               <Field label={supplierRequired ? "المورد (مطلوب للآجل)" : "المورد"}>
                 <div className="flex gap-1.5">
-                  <select value={fSupplierId} onChange={(e) => setFSupplierId(e.target.value ? Number(e.target.value) : "")} className={`${inp} ${supplierRequired && !fSupplierId ? "border-amber-500/60" : ""}`}>
+                  <select value={fSupplierAcc} onChange={(e) => setFSupplierAcc(e.target.value ? Number(e.target.value) : "")} className={`${inp} ${supplierRequired && !fSupplierAcc ? "border-amber-500/60" : ""}`}>
                     <option value="">{supplierRequired ? "— اختر موردًا —" : "— مورد نقدي / بدون —"}</option>
-                    {defaultSupplierAcc ? (
+                    {defaultSupplierAcc && (
                       <optgroup label={`${defaultSupplierAcc.code} · ${defaultSupplierAcc.name}`}>
-                        {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        {supplierAccounts.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}
                       </optgroup>
-                    ) : (
-                      suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)
                     )}
                   </select>
                   <button type="button" onClick={() => setShowAddSup((v) => !v)} title="إضافة مورد جديد" className="shrink-0 px-2.5 rounded-lg bg-slate-800 border border-slate-700 text-blue-400 hover:text-blue-300"><UserPlus size={16} /></button>
@@ -314,7 +342,7 @@ export default function PurchaseInvoicesPage() {
                 </div>
               </div>
             )}
-            {!supplierRequired && !fSupplierId && (
+            {!supplierRequired && !fSupplierAcc && (
               <div className="mt-3"><Field label="اسم المورد (نصي)"><input value={fSupplierName} onChange={(e) => setFSupplierName(e.target.value)} placeholder="اتركه فارغًا = مورد نقدي" className={inp} /></Field></div>
             )}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
@@ -390,13 +418,7 @@ export default function PurchaseInvoicesPage() {
                 <div className="mt-3"><Field label="المبلغ المدفوع الآن"><input value={fPaid} onChange={(e) => setFPaid(e.target.value)} inputMode="decimal" placeholder="0.00" className={inp} /></Field></div>
               )}
               {(fPay === "credit" || fPay === "partial") && (
-                <div className="grid grid-cols-2 gap-2 mt-3">
-                  <Field label="حساب المورد (ذمة)">
-                    <select value={fSupplierAcc} onChange={(e) => setFSupplierAcc(e.target.value ? Number(e.target.value) : "")} className={inp}>
-                      <option value="">— اختر —</option>
-                      {accounts.filter((a) => a.type === "liability" && !a.is_group).map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}
-                    </select>
-                  </Field>
+                <div className="mt-3">
                   <Field label="تاريخ الاستحقاق">
                     <input type="date" value={fDue} onChange={(e) => setFDue(e.target.value)} className={inp} />
                     <div className="flex flex-wrap gap-1 mt-1.5">
@@ -405,6 +427,7 @@ export default function PurchaseInvoicesPage() {
                       ))}
                     </div>
                   </Field>
+                  <p className="text-[11px] text-slate-500 mt-2">يُرحَّل الآجل على حساب المورد المختار: <span className="text-slate-300">{supplierAccounts.find((a) => a.id === fSupplierAcc)?.name ?? "—"}</span></p>
                 </div>
               )}
             </Section>

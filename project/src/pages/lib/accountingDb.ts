@@ -1694,9 +1694,9 @@ export async function markQuotationConverted(id: number, invoiceId: number): Pro
 
 export type SalesItem = { description: string; qty: number; unit_price: number; line_total: number };
 
-export type SalesPayType = "cash" | "credit" | "partial";
+export type SalesPayType = "cash" | "credit" | "partial" | "card";
 
-export const PAYTYPE_LABEL: Record<SalesPayType, string> = { cash: "نقدي", credit: "آجل", partial: "جزئي" };
+export const PAYTYPE_LABEL: Record<SalesPayType, string> = { cash: "نقدي", credit: "آجل", partial: "جزئي", card: "شبكة" };
 
 
 
@@ -1893,7 +1893,7 @@ export async function createSalesInvoice(orgId: number, inv: {
 
   if (t.total <= 0) return { ok: false, error: "إجمالي الفاتورة صفر — أضف أصنافًا بقيمة." };
 
-  const paid = inv.payment_type === "cash" ? t.total : inv.payment_type === "credit" ? 0 : Math.min(Math.max(Number(inv.paid_amount) || 0, 0), t.total);
+  const paid = (inv.payment_type === "cash" || inv.payment_type === "card") ? t.total : inv.payment_type === "credit" ? 0 : Math.min(Math.max(Number(inv.paid_amount) || 0, 0), t.total);
 
   const due = Math.round((t.total - paid) * 100) / 100;
 

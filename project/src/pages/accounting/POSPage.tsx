@@ -22,11 +22,12 @@ export default function POSPage() {
   const [brand, setBrand] = useState<string>("");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [discount, setDiscount] = useState("0");
-  const [payType, setPayType] = useState<"cash" | "credit">("cash");
+  const [payType, setPayType] = useState<"cash" | "card" | "credit">("cash");
   const [custId, setCustId] = useState<number | "">("");
   const [revAcc, setRevAcc] = useState<number | "">("");
   const [vatAcc, setVatAcc] = useState<number | "">("");
-  const [treasuryAcc, setTreasuryAcc] = useState<number | "">("");
+  const [cashTreas, setCashTreas] = useState<number | "">("");  // خزنة النقد
+  const [cardTreas, setCardTreas] = useState<number | "">("");  // حساب الشبكة/البنك
   const [saving, setSaving] = useState(false);
   const [showToday, setShowToday] = useState(false);
   const [todayList, setTodayList] = useState<DB.GLSalesInvoice[]>([]);
@@ -54,10 +55,13 @@ export default function POSPage() {
         // حسابات افتراضية
         const rev = accs.find((a) => a.type === "revenue" && !a.is_group);
         const vat = accs.find((a) => a.type === "liability" && !a.is_group && /ضريبة|مخرجات|vat|tax/i.test(a.name));
-        const tre = treas.find((t) => t.account_id) || null;
+        const withAcc = treas.filter((t) => t.account_id);
+        const cashT = withAcc.filter((t) => t.kind === "cash");
+        const bankT = withAcc.filter((t) => t.kind === "bank" || /شبكة|مدى|mada|visa|بنك|card/i.test(t.name));
         setRevAcc(rev?.id ?? "");
         setVatAcc(vat?.id ?? "");
-        setTreasuryAcc(tre?.account_id ?? "");
+        setCashTreas((cashT[0] ?? withAcc[0])?.id ?? "");
+        setCardTreas((bankT[0] ?? withAcc[0])?.id ?? "");
       } else {
         setProducts([]); setAccounts([]); setTreasuries([]); setParties([]);
       }
@@ -121,11 +125,19 @@ export default function POSPage() {
 
   const custAccountOf = (p: GLParty | undefined) => (!p ? null : (p.account_id ?? (p.parent_id ? parties.find((x) => x.id === p.parent_id)?.account_id ?? null : null)));
 
+  const withAccT = useMemo(() => treasuries.filter((t) => t.account_id), [treasuries]);
+  const cashOptions = useMemo(() => { const c = withAccT.filter((t) => t.kind === "cash"); return c.length ? c : withAccT; }, [withAccT]);
+  const cardOptions = useMemo(() => { const b = withAccT.filter((t) => t.kind === "bank" || /شبكة|مدى|mada|visa|بنك|card/i.test(t.name)); return b.length ? b : withAccT; }, [withAccT]);
+
+  const treasAccOf = (id: number | "") => (id === "" ? null : treasuries.find((t) => t.id === Number(id))?.account_id ?? null);
+
   const checkout = async () => {
     if (!org || !cart.length) return;
     if (revAcc === "") { alert("حساب إيراد المبيعات غير محدد — اضبطه من دليل الحسابات."); return; }
     if (vat > 0 && vatAcc === "") { alert("حساب الضريبة المستحقة (المخرجات) غير محدد."); return; }
-    if (payType === "cash" && treasuryAcc === "") { alert("خزنة التحصيل غير محددة لهذا الفرع."); return; }
+    let collectAcc: number | null = null;
+    if (payType === "cash") { collectAcc = treasAccOf(cashTreas); if (!collectAcc) { alert("خزنة النقد غير محددة لهذا الفرع."); return; } }
+    if (payType === "card") { collectAcc = treasAccOf(cardTreas); if (!collectAcc) { alert("حساب الشبكة/البنك غير محدد — أنشئ خزنة بنك في «الخزن والبنوك»."); return; } }
     let custAcc: number | null = null; let custName: string | null = null;
     if (payType === "credit") {
       const p = custId === "" ? undefined : parties.find((x) => x.id === Number(custId));
@@ -143,9 +155,9 @@ export default function POSPage() {
     const res = await DB.createSalesInvoice(org.id, {
       branch_id: ownedShopId ? Number(ownedShopId) : null, date: today(),
       party_id: payType === "credit" ? Number(custId) : null, customer_name: custName,
-      payment_type: payType, treasury_account_id: payType === "cash" ? Number(treasuryAcc) : null,
+      payment_type: payType, treasury_account_id: collectAcc,
       customer_account_id: custAcc, revenue_account_id: Number(revAcc), tax_account_id: vatAcc === "" ? null : Number(vatAcc),
-      tax_rate: 15, tax_inclusive: false, items, paid_amount: payType === "cash" ? total : 0, notes: null,
+      tax_rate: 15, tax_inclusive: false, items, paid_amount: payType === "credit" ? 0 : total, notes: null,
     });
     if (!res.ok) { setSaving(false); alert("تعذّر إصدار الفاتورة: " + (res.error || "")); return; }
     // خصم المخزون
@@ -176,7 +188,7 @@ export default function POSPage() {
         <tr style="font-weight:800;font-size:14px"><td style="text-align:right">الإجمالي</td><td style="text-align:left;direction:ltr">${fmt(total)}</td></tr>
       </table>
       <hr/>
-      <div style="text-align:center;font-size:11px">${payType === "cash" ? "دفع نقدي" : "بيع آجل"} — شكرًا لزيارتكم</div>
+      <div style="text-align:center;font-size:11px">طريقة الدفع: ${DB.PAYTYPE_LABEL[payType]} — شكرًا لزيارتكم</div>
       </body></html>`;
     const w = window.open("", "_blank", "width=320,height=600"); if (!w) return;
     w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 250);
@@ -238,10 +250,22 @@ export default function POSPage() {
           <div className="flex items-center justify-between text-base font-black text-white border-t border-slate-800 pt-2"><span>الإجمالي</span><span className="font-mono text-emerald-400 [direction:ltr]">{fmt(total)}</span></div>
 
           <div className="inline-flex gap-1 bg-slate-950 border border-slate-800 rounded-xl p-1 w-full">
-            {(["cash", "credit"] as const).map((pt) => (
-              <button key={pt} onClick={() => setPayType(pt)} className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-bold ${payType === pt ? "bg-blue-600 text-[#fff]" : "text-slate-400"}`}>{pt === "cash" ? "نقدي" : "آجل"}</button>
+            {([["cash", "نقدي"], ["card", "شبكة"], ["credit", "آجل"]] as const).map(([pt, label]) => (
+              <button key={pt} onClick={() => setPayType(pt)} className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-bold ${payType === pt ? "bg-blue-600 text-[#fff]" : "text-slate-400"}`}>{label}</button>
             ))}
           </div>
+          {payType === "cash" && cashOptions.length > 1 && (
+            <select value={cashTreas} onChange={(e) => setCashTreas(e.target.value ? Number(e.target.value) : "")} className="w-full bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-2 text-xs outline-none focus:border-blue-500">
+              {cashOptions.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          )}
+          {payType === "card" && (
+            cardOptions.length ? (
+              <select value={cardTreas} onChange={(e) => setCardTreas(e.target.value ? Number(e.target.value) : "")} className="w-full bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-2 text-xs outline-none focus:border-blue-500">
+                {cardOptions.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            ) : <div className="text-[11px] text-amber-400 text-center">لا يوجد حساب بنك/شبكة — أنشئ خزنة نوعها «بنك» في «الخزن والبنوك».</div>
+          )}
           {payType === "credit" && (
             <select value={custId} onChange={(e) => setCustId(e.target.value ? Number(e.target.value) : "")} className="w-full bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-2 text-xs outline-none focus:border-blue-500">
               <option value="">— اختر العميل الآجل</option>

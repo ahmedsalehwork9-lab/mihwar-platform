@@ -126,6 +126,7 @@ export const ENTRY_TYPE_LABEL: Record<string, string> = {
 
   purchases: "مشتريات",
   purchase_return: "مرتجع مشتريات",
+  adjustment: "تسوية مخزون",
 
   sales: "مبيعات",
 
@@ -2730,7 +2731,12 @@ export async function createStockAdjustment(orgId: number, args: {
   new_qty: number;            // الرصيد الفعلي بعد الجرد
   reason: string;             // سبب التسوية (مطلوب)
   user_id: string | null;     // منفّذ التسوية
-}): Promise<{ ok: boolean; error?: string; delta?: number; newQty?: number }> {
+  date?: string;              // تاريخ القيد (افتراضي اليوم)
+  product_name?: string | null;
+  post_gl?: boolean;          // ترحيل محاسبي للعجز/الفائض
+  inventory_account_id?: number | null;  // حساب المخزون (مدين للفائض/دائن للعجز)
+  counter_account_id?: number | null;    // حساب التسوية (عجز/فائض)
+}): Promise<{ ok: boolean; error?: string; delta?: number; newQty?: number; entryId?: number }> {
   const reason = (args.reason || "").trim();
   if (!reason) return { ok: false, error: "اكتب سبب التسوية." };
   if (!args.product_id) return { ok: false, error: "اختر الصنف." };
@@ -2751,7 +2757,25 @@ export async function createStockAdjustment(orgId: number, args: {
 
   const { error: upErr } = await supabase.from("products").update({ quantity: newQty }).eq("id", args.product_id);
   if (upErr) { console.error("createStockAdjustment.update", upErr); return { ok: false, error: upErr.message }; }
-  return { ok: true, delta, newQty };
+
+  // ترحيل محاسبي اختياري: عجز/فائض مخزون
+  let entryId: number | undefined;
+  const amount = Math.round(Math.abs(delta) * cost * 100) / 100;
+  if (args.post_gl && args.inventory_account_id && args.counter_account_id && amount > 0) {
+    const inv = args.inventory_account_id as number;
+    const ctr = args.counter_account_id as number;
+    const lines: GLLine[] = delta > 0
+      ? [ { account_id: inv, debit: amount, credit: 0, branch_id: args.branch_id }, { account_id: ctr, debit: 0, credit: amount, branch_id: args.branch_id } ]
+      : [ { account_id: ctr, debit: amount, credit: 0, branch_id: args.branch_id }, { account_id: inv, debit: 0, credit: amount, branch_id: args.branch_id } ];
+    const res = await createEntry(orgId, {
+      date: args.date || new Date().toISOString().slice(0, 10),
+      description: `تسوية مخزون — ${args.product_name || "صنف"} (${delta > 0 ? "فائض" : "عجز"}) — ${reason}`,
+      branch_id: args.branch_id, entry_type: "adjustment", notes: null, status: "posted",
+    }, lines);
+    if (res.ok && res.id) entryId = res.id;
+    else console.error("createStockAdjustment.gl", res.error);
+  }
+  return { ok: true, delta, newQty, entryId };
 }
 
 

@@ -4,7 +4,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import * as DB from "../lib/accountingDb";
-import type { POSProduct, GLStockMove } from "../lib/accountingDb";
+import type { POSProduct, GLStockMove, GLAccount } from "../lib/accountingDb";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const daysAgo = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
@@ -29,6 +29,9 @@ export default function StockAdjustmentsPage() {
   const [sel, setSel] = useState<POSProduct | null>(null);
   const [newQty, setNewQty] = useState("");
   const [reason, setReason] = useState("");
+  const [accounts, setAccounts] = useState<GLAccount[]>([]);
+  const [postGl, setPostGl] = useState(false);
+  const [counterAcc, setCounterAcc] = useState<number | "">("");
 
   useEffect(() => {
     let alive = true;
@@ -37,11 +40,21 @@ export default function StockAdjustmentsPage() {
       const o = await DB.getOrgForBranch(ownedShopId ?? null);
       if (!alive) return;
       setOrg(o);
+      if (o) setAccounts(await DB.fetchAccounts(o.id));
       if (ownedShopId) setProducts(await DB.fetchProducts(Number(ownedShopId)));
       setLoading(false);
     })();
     return () => { alive = false; };
   }, [ownedShopId]);
+
+  const inventoryAcc = useMemo(() => accounts.find((a) => a.code === "1104" && !a.is_group) ?? accounts.find((a) => a.type === "asset" && !a.is_group && /مخزون/.test(a.name)), [accounts]);
+  const counterOptions = useMemo(() => accounts.filter((a) => !a.is_group && (a.type === "expense" || a.type === "income" || /تسوي|عجز|فائض|تالف/.test(a.name))), [accounts]);
+  useEffect(() => {
+    if (postGl && !counterAcc) {
+      const def = accounts.find((a) => !a.is_group && /تسوي(ة|ات) المخزون|تسوية مخزون/.test(a.name)) ?? counterOptions[0];
+      if (def) setCounterAcc(def.id);
+    }
+  }, [postGl, accounts, counterOptions, counterAcc]);
 
   const loadList = useCallback(async () => {
     if (!org) return;
@@ -59,7 +72,7 @@ export default function StockAdjustmentsPage() {
 
   const delta = sel ? r3((Number(newQty) || 0) - (Number(sel.quantity) || 0)) : 0;
 
-  const openNew = () => { setSel(null); setQ(""); setNewQty(""); setReason(""); setErr(null); setMode("new"); window.scrollTo(0, 0); };
+  const openNew = () => { setSel(null); setQ(""); setNewQty(""); setReason(""); setPostGl(false); setCounterAcc(""); setErr(null); setMode("new"); window.scrollTo(0, 0); };
   const closeNew = () => { if (!saving) { setMode("list"); setErr(null); } };
   const pick = (p: POSProduct) => { setSel(p); setQ(""); setNewQty(String(p.quantity)); };
 
@@ -67,10 +80,15 @@ export default function StockAdjustmentsPage() {
     if (!org || !sel) { setErr("اختر الصنف."); return; }
     if (reason.trim() === "") { setErr("اكتب سبب التسوية."); return; }
     if (newQty === "" || Number.isNaN(Number(newQty))) { setErr("أدخل الرصيد الجديد."); return; }
+    if (postGl && (!inventoryAcc || !counterAcc)) { setErr("للترحيل المحاسبي اختر حساب التسوية (وتأكّد من وجود حساب المخزون 1104)."); return; }
     setErr(null); setSaving(true);
     const res = await DB.createStockAdjustment(org.id, {
       product_id: sel.id, branch_id: ownedShopId ? Number(ownedShopId) : null,
       new_qty: Number(newQty), reason: reason.trim(), user_id: user?.id ?? null,
+      product_name: sel.product_name,
+      post_gl: postGl,
+      inventory_account_id: postGl ? (inventoryAcc?.id ?? null) : null,
+      counter_account_id: postGl ? (counterAcc ? Number(counterAcc) : null) : null,
     });
     setSaving(false);
     if (!res.ok) { setErr(res.error || "تعذّر حفظ التسوية."); return; }
@@ -167,6 +185,29 @@ export default function StockAdjustmentsPage() {
                     <button key={r} type="button" onClick={() => setReason(r)} className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:border-indigo-500">{r}</button>
                   ))}
                 </div>
+              </Section>
+
+              <Section title="الترحيل المحاسبي (اختياري)">
+                <label className="flex items-center gap-2 cursor-pointer mb-1">
+                  <input type="checkbox" className="accent-indigo-500" checked={postGl} onChange={(e) => setPostGl(e.target.checked)} />
+                  <span className="text-sm text-slate-300">ترحيل قيد عجز/فائض مخزون إلى القوائم المالية</span>
+                </label>
+                {postGl && (
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <Field label="حساب المخزون">
+                      <input value={inventoryAcc ? `${inventoryAcc.code} · ${inventoryAcc.name}` : "— غير موجود (1104) —"} disabled className={`${inp} opacity-70`} />
+                    </Field>
+                    <Field label="حساب التسوية (عجز/فائض)">
+                      <select value={counterAcc} onChange={(e) => setCounterAcc(e.target.value ? Number(e.target.value) : "")} className={inp}>
+                        <option value="">— اختر —</option>
+                        {counterOptions.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}
+                      </select>
+                    </Field>
+                    <p className="md:col-span-2 text-[11px] text-slate-500">
+                      {delta > 0 ? "فائض: مدين المخزون / دائن حساب التسوية" : "عجز: مدين حساب التسوية / دائن المخزون"} · القيمة = {Math.abs(delta)} × التكلفة.
+                    </p>
+                  </div>
+                )}
               </Section>
 
               <div className="flex items-center justify-end gap-2 pb-6">

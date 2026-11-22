@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import {
   ShoppingBag, Plus, X, Trash2, Search, Wallet, Package,
   FileText, Calendar, TrendingUp, Building2, RotateCcw, ArrowRight, Save,
+  UserPlus, Check,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import * as DB from "../lib/accountingDb";
@@ -61,6 +62,12 @@ export default function PurchaseInvoicesPage() {
   const [fDue, setFDue] = useState("");
   const [fNotes, setFNotes] = useState("");
   const [lines, setLines] = useState<FormLine[]>([emptyLine()]);
+  // add-supplier inline
+  const [showAddSup, setShowAddSup] = useState(false);
+  const [addingSup, setAddingSup] = useState(false);
+  const [nsName, setNsName] = useState("");
+  const [nsPhone, setNsPhone] = useState("");
+  const [nsTax, setNsTax] = useState("");
 
   // ── load reference data ──
   useEffect(() => {
@@ -151,8 +158,37 @@ export default function PurchaseInvoicesPage() {
     setFKind("inventory"); setFRate("15"); setFInclusive(false); setFPay("credit");
     setFPaid(""); setFDue(""); setFNotes(""); setLines([emptyLine()]); setErr(null);
   };
-  const openNew = () => { resetForm(); setMode("new"); window.scrollTo(0, 0); };
+  const openNew = () => { resetForm(); setShowAddSup(false); setNsName(""); setNsPhone(""); setNsTax(""); setMode("new"); window.scrollTo(0, 0); };
   const closeNew = () => { if (!saving) { setMode("list"); setErr(null); } };
+
+  const supplierRequired = fPay === "credit" || fPay === "partial";
+
+  // استحقاق سريع مثل أودو (آمن زمنيًا — بدون انزياح UTC)
+  const ymd = (x: Date) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
+  const addDays = (d: string, n: number) => { const x = new Date(d + "T00:00:00"); x.setDate(x.getDate() + n); return ymd(x); };
+  const endOfMonth = (d: string) => { const x = new Date(d + "T00:00:00"); return ymd(new Date(x.getFullYear(), x.getMonth() + 1, 0)); };
+  const DUE_TERMS: { label: string; calc: (d: string) => string }[] = [
+    { label: "15 يوم", calc: (d) => addDays(d, 15) },
+    { label: "30 يوم", calc: (d) => addDays(d, 30) },
+    { label: "45 يوم", calc: (d) => addDays(d, 45) },
+    { label: "نهاية الشهر", calc: (d) => endOfMonth(d) },
+  ];
+
+  const addSupplier = async () => {
+    if (!org) return;
+    if (!nsName.trim()) { setErr("اكتب اسم المورد."); return; }
+    setAddingSup(true);
+    const res = await DB.addPartyQuick({
+      organization_id: org.id, type: "supplier", name: nsName,
+      phone: nsPhone.trim() || null, tax_number: nsTax.trim() || null,
+      branch_id: ownedShopId ? Number(ownedShopId) : null,
+    });
+    setAddingSup(false);
+    if (!res.ok || !res.id) { setErr(res.error || "تعذّر إضافة المورد."); return; }
+    setSuppliers(await DB.fetchParties(org.id, "supplier"));
+    setFSupplierId(res.id);
+    setShowAddSup(false); setNsName(""); setNsPhone(""); setNsTax(""); setErr(null);
+  };
 
   const save = async () => {
     if (!org) return;
@@ -166,6 +202,9 @@ export default function PurchaseInvoicesPage() {
     if (!items.length) { setErr("أضف صنفًا واحدًا على الأقل بكمية وتكلفة صحيحة."); return; }
     if (fKind === "inventory" && items.some((it) => !it.product_id)) {
       setErr("مشتريات المخزون: اربط كل سطر بصنف من المخزون (لزيادة الكمية)."); return;
+    }
+    if ((fPay === "credit" || fPay === "partial") && !fSupplierId) {
+      setErr("الشراء الآجل يتطلب اختيار مورد مسجّل (لتتبع ذمم الموردين). اختر موردًا أو أضف جديدًا بزر «+»."); return;
     }
     const supName = fSupplierId ? (suppliers.find((s) => s.id === fSupplierId)?.name ?? null) : (fSupplierName.trim() || null);
     setSaving(true);
@@ -234,15 +273,32 @@ export default function PurchaseInvoicesPage() {
           <Section title="بيانات الفاتورة">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <Field label="التاريخ"><input type="date" value={fDate} onChange={(e) => setFDate(e.target.value)} className={inp} /></Field>
-              <Field label="المورد">
-                <select value={fSupplierId} onChange={(e) => setFSupplierId(e.target.value ? Number(e.target.value) : "")} className={inp}>
-                  <option value="">— مورد نقدي / بدون —</option>
-                  {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
+              <Field label={supplierRequired ? "المورد (مطلوب للآجل)" : "المورد"}>
+                <div className="flex gap-1.5">
+                  <select value={fSupplierId} onChange={(e) => setFSupplierId(e.target.value ? Number(e.target.value) : "")} className={`${inp} ${supplierRequired && !fSupplierId ? "border-amber-500/60" : ""}`}>
+                    <option value="">{supplierRequired ? "— اختر موردًا —" : "— مورد نقدي / بدون —"}</option>
+                    {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                  <button type="button" onClick={() => setShowAddSup((v) => !v)} title="إضافة مورد جديد" className="shrink-0 px-2.5 rounded-lg bg-slate-800 border border-slate-700 text-blue-400 hover:text-blue-300"><UserPlus size={16} /></button>
+                </div>
               </Field>
               <Field label="رقم فاتورة المورد"><input value={fSupplierInvNo} onChange={(e) => setFSupplierInvNo(e.target.value)} placeholder="اختياري" className={inp} /></Field>
             </div>
-            {!fSupplierId && (
+            {showAddSup && (
+              <div className="mt-3 bg-slate-800/50 border border-slate-700 rounded-xl p-3">
+                <div className="flex items-center gap-1.5 mb-2 text-xs font-bold text-blue-300"><UserPlus size={13} /> مورد جديد</div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                  <input value={nsName} onChange={(e) => setNsName(e.target.value)} placeholder="اسم المورد *" className={inp} />
+                  <input value={nsPhone} onChange={(e) => setNsPhone(e.target.value)} placeholder="الجوال (اختياري)" className={inp} />
+                  <input value={nsTax} onChange={(e) => setNsTax(e.target.value)} placeholder="الرقم الضريبي (اختياري)" className={inp} />
+                </div>
+                <div className="flex items-center justify-end gap-2 mt-2">
+                  <button type="button" onClick={() => { setShowAddSup(false); setNsName(""); setNsPhone(""); setNsTax(""); }} className="text-xs text-slate-400 hover:text-white px-2 py-1">إلغاء</button>
+                  <button type="button" onClick={addSupplier} disabled={addingSup || !nsName.trim()} className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-[#fff] text-xs font-bold px-3 py-1.5 rounded-lg"><Check size={14} /> {addingSup ? "جارٍ…" : "حفظ المورد"}</button>
+                </div>
+              </div>
+            )}
+            {!supplierRequired && !fSupplierId && (
               <div className="mt-3"><Field label="اسم المورد (نصي)"><input value={fSupplierName} onChange={(e) => setFSupplierName(e.target.value)} placeholder="اتركه فارغًا = مورد نقدي" className={inp} /></Field></div>
             )}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
@@ -325,7 +381,14 @@ export default function PurchaseInvoicesPage() {
                       {accounts.filter((a) => a.type === "liability" && !a.is_group).map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}
                     </select>
                   </Field>
-                  <Field label="تاريخ الاستحقاق"><input type="date" value={fDue} onChange={(e) => setFDue(e.target.value)} className={inp} /></Field>
+                  <Field label="تاريخ الاستحقاق">
+                    <input type="date" value={fDue} onChange={(e) => setFDue(e.target.value)} className={inp} />
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {DUE_TERMS.map((t) => (
+                        <button key={t.label} type="button" onClick={() => setFDue(t.calc(fDate))} className="text-[11px] px-2 py-1 rounded-md bg-slate-800 border border-slate-700 text-slate-300 hover:border-blue-500 hover:text-blue-300">{t.label}</button>
+                      ))}
+                    </div>
+                  </Field>
                 </div>
               )}
             </Section>

@@ -2563,3 +2563,21 @@ export async function createPurchaseReturn(orgId: number, args: {
   }
   return { ok: true, id: newId, returnNo, returnYear: year, returnLabel: label };
 }
+
+
+// إضافة طرف (مورد/عميل) سريعًا مع إرجاع المعرّف الجديد — لاستخدامه فورًا في الفواتير.
+export async function addPartyQuick(p: {
+  organization_id: number; type: string; name: string;
+  phone?: string | null; tax_number?: string | null; credit_days?: number;
+  branch_id?: number | null; account_id?: number | null;
+}): Promise<{ ok: boolean; error?: string; id?: number }> {
+  const name = (p.name || "").trim();
+  if (!name) return { ok: false, error: "اكتب اسم المورد." };
+  const { data, error } = await supabase.from("gl_parties").insert({
+    organization_id: p.organization_id, type: p.type, name,
+    phone: p.phone ?? null, tax_number: p.tax_number ?? null,
+    credit_days: p.credit_days ?? 0, branch_id: p.branch_id ?? null, account_id: p.account_id ?? null,
+  }).select("id").single();
+  if (error) { console.error("addPartyQuick", error); return { ok: false, error: error.message }; }
+  return { ok: true, id: Number((data as any).id) };
+}

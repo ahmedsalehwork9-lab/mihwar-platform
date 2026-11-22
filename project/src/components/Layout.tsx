@@ -53,6 +53,7 @@ export type Page =
   | 'sales-reconciliation'
   | 'quotation'
   | 'purchases'
+  | 'purchase-invoices'
   | 'purchase-orders'
   | 'purchase-reconciliation'
   | 'purchase-returns'
@@ -87,6 +88,7 @@ const pageTitles: Record<Page, { en: string; ar: string }> = {
   'sales-reconciliation': { en: 'Sales Reconciliation', ar: 'تسوية المبيعات' },
   'quotation':       { en: 'Quotation',        ar: 'عرض سعر'         },
   purchases: { en: 'Purchases', ar: 'المشتريات' },
+  'purchase-invoices': { en: 'Purchase Invoices', ar: 'فواتير المشتريات' },
   'purchase-orders': { en: 'Purchase Orders',  ar: 'أوامر الشراء'    },
   'purchase-reconciliation': { en: 'Purchase Reconciliation', ar: 'تسوية المشتريات' },
   'purchase-returns':{ en: 'Purchase Returns',  ar: 'مرتجعات المشتريات' },
@@ -208,8 +210,9 @@ const OPERATIONS: OpEntry[] = [
     { labelEn: 'Quotation',            labelAr: 'عرض سعر',        page: 'quotation' },
   ] },
 
-  { type: 'group', key: 'purchases', icon: <ShoppingBag size={17} />, labelEn: 'Purchases', labelAr: 'المشتريات', homePage: 'purchases', children: [
-    { labelEn: 'Purchases',               labelAr: 'المشتريات',       page: 'purchases' },
+  { type: 'group', key: 'purchases', icon: <ShoppingBag size={17} />, labelEn: 'Purchases', labelAr: 'المشتريات', homePage: 'purchase-invoices', children: [
+    { labelEn: 'Purchase Invoices',       labelAr: 'فواتير المشتريات', page: 'purchase-invoices' },
+    { labelEn: 'Marketplace',             labelAr: 'سوق التوريد',      page: 'purchases' },
     { labelEn: 'Purchase Orders',         labelAr: 'أوامر الشراء',    page: 'purchase-orders',         placeholder: true },
     { labelEn: 'Purchase Reconciliation', labelAr: 'تسوية المشتريات', page: 'purchase-reconciliation', placeholder: true },
     { labelEn: 'Purchase Returns',        labelAr: 'مرتجعات',         page: 'purchase-returns',        placeholder: true },

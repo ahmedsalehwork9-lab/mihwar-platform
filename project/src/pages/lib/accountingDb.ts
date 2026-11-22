@@ -2250,3 +2250,175 @@ export async function parkInvoice(orgId: number, a: { branch_id: number | null; 
 export async function deleteParked(id: number): Promise<void> {
   await supabase.from("gl_pos_parked").delete().eq("id", id);
 }
+
+
+// ══════════════════════════════════════════════════════════════════════════
+//  وحدة المشتريات (المرحلة 1): فاتورة مشتريات محاسبية + إدخال مخزون
+//  صورة معكوسة لوحدة المبيعات. الترحيل:
+//    مدين (مخزون/مصروف/أصل) + مدين (ضريبة مدخلات) = دائن (خزنة + مورد)
+//  تقييم المخزون: المتوسط المرجّح. تكلفة التقييم = صافي الضريبة (تتطابق مع مدين المخزون).
+// ══════════════════════════════════════════════════════════════════════════
+
+export type PurchaseItem = {
+  product_id: number | null;   // صنف مخزون مرتبط (يزيد الكمية) أو null لسطر مصروف/خدمة
+  description: string;
+  qty: number;
+  unit_cost: number;           // تكلفة الوحدة كما أدخلها المستخدم (شاملة الضريبة إن كانت الفاتورة «شاملة»)
+  line_total: number;
+};
+
+export type PurchaseKind = "inventory" | "expense" | "asset";
+export type PurchasePayType = "cash" | "credit" | "partial" | "card";
+
+export const PURCHASE_KIND_LABEL: Record<PurchaseKind, string> = {
+  inventory: "مخزون", expense: "مصروف", asset: "أصل ثابت",
+};
+export const PURCHASE_PAYTYPE_LABEL: Record<PurchasePayType, string> = {
+  cash: "نقدي", credit: "آجل", partial: "جزئي", card: "شبكة",
+};
+
+export type GLPurchaseInvoice = {
+  id: number;
+  organization_id: number;
+  branch_id: number | null;
+  invoice_no: number;
+  invoice_year: number;
+  supplier_invoice_no: string | null;
+  date: string;
+  due_date: string | null;
+  party_id: number | null;
+  supplier_name: string | null;
+  purchase_kind: PurchaseKind;
+  debit_account_id: number;
+  tax_account_id: number | null;
+  payment_type: PurchasePayType;
+  treasury_account_id: number | null;
+  supplier_account_id: number | null;
+  paid_amount: number;
+  subtotal: number;
+  tax_rate: number;
+  tax_amount: number;
+  tax_inclusive: boolean;
+  total: number;
+  items: PurchaseItem[];
+  notes: string | null;
+  entry_id: number | null;
+  status: string;
+  created_at?: string;
+};
+
+// ترقيم داخلي مستقل لكل مؤسسة/سنة (نظير nextInvoiceNo)
+export async function nextPurchaseNo(orgId: number, year: number): Promise<number> {
+  const { data } = await supabase
+    .from("gl_purchase_invoices").select("invoice_no")
+    .eq("organization_id", orgId).eq("invoice_year", year)
+    .order("invoice_no", { ascending: false }).limit(1);
+  return (((data as any[])?.[0]?.invoice_no as number) || 0) + 1;
+}
+
+export async function fetchPurchaseInvoices(orgId: number, from: string, to: string, branchId?: number | null): Promise<GLPurchaseInvoice[]> {
+  let q = supabase.from("gl_purchase_invoices").select("*")
+    .eq("organization_id", orgId).gte("date", from).lte("date", to)
+    .order("date", { ascending: false }).order("invoice_no", { ascending: false });
+  if (branchId != null) q = q.eq("branch_id", branchId);
+  const { data, error } = await q;
+  if (error) { console.error("fetchPurchaseInvoices", error); return []; }
+  return (data as GLPurchaseInvoice[]) || [];
+}
+
+// إدخال مخزون لصنف واحد بالمتوسط المرجّح + تسجيل حركة رقابية.
+// costFactor يحوّل التكلفة المُدخلة إلى صافي الضريبة (= subtotal/gross) لتتطابق مع مدين المخزون.
+async function receivePurchaseStock(
+  orgId: number, branchId: number | null, item: PurchaseItem, refId: number, costFactor: number,
+): Promise<void> {
+  const qtyIn = Number(item.qty) || 0;
+  if (!item.product_id || qtyIn <= 0) return;
+  const unitNet = Math.round(((Number(item.unit_cost) || 0) * costFactor) * 10000) / 10000;
+  const { data } = await supabase.from("products").select("quantity, price").eq("id", item.product_id).single();
+  const curQty = Number((data as any)?.quantity) || 0;
+  const curCost = Number((data as any)?.price) || 0;
+  const newQty = curQty + qtyIn;
+  // متوسط مرجّح — لا نغيّر التكلفة إن كانت الكمية الناتجة صفرًا/سالبة
+  const newCost = newQty > 0
+    ? Math.round(((curQty * curCost + qtyIn * unitNet) / newQty) * 100) / 100
+    : curCost;
+  const { error: upErr } = await supabase.from("products")
+    .update({ quantity: newQty, price: newCost }).eq("id", item.product_id);
+  if (upErr) { console.error("receivePurchaseStock.update", upErr); return; }
+  const { error: mvErr } = await supabase.from("gl_stock_moves").insert({
+    organization_id: orgId, branch_id: branchId, product_id: item.product_id,
+    move_type: "purchase_in", qty: qtyIn, unit_cost: unitNet,
+    ref_type: "gl_purchase_invoices", ref_id: refId, notes: item.description || null,
+  });
+  if (mvErr) console.error("receivePurchaseStock.move", mvErr);
+}
+
+export async function createPurchaseInvoice(orgId: number, inv: {
+  branch_id: number | null; date: string; due_date?: string | null;
+  party_id: number | null; supplier_name: string | null; supplier_invoice_no?: string | null;
+  purchase_kind: PurchaseKind; debit_account_id: number; tax_account_id: number | null;
+  payment_type: PurchasePayType; treasury_account_id: number | null; supplier_account_id: number | null;
+  tax_rate: number; tax_inclusive: boolean;
+  items: PurchaseItem[]; paid_amount: number; notes: string | null;
+}): Promise<{ ok: boolean; error?: string; id?: number; entryId?: number; invoiceNo?: number }> {
+  const t = invoiceTotals(
+    inv.items.map((it) => ({ qty: it.qty, unit_price: it.unit_cost })),
+    inv.tax_rate, inv.tax_inclusive,
+  );
+  if (t.total <= 0) return { ok: false, error: "إجمالي الفاتورة صفر — أضف أصنافًا بقيمة." };
+  if (!inv.debit_account_id) return { ok: false, error: "اختر حساب المدين (مخزون/مصروف/أصل)." };
+
+  const paid = (inv.payment_type === "cash" || inv.payment_type === "card") ? t.total
+    : inv.payment_type === "credit" ? 0
+    : Math.min(Math.max(Number(inv.paid_amount) || 0, 0), t.total);
+  const due = Math.round((t.total - paid) * 100) / 100;
+
+  if (paid > 0 && !inv.treasury_account_id) return { ok: false, error: "اختر خزنة/بنك الدفع للجزء النقدي." };
+  if (due > 0 && !inv.supplier_account_id) return { ok: false, error: "اختر المورد (حساب ذمة) للجزء الآجل." };
+  if (t.tax > 0 && !inv.tax_account_id) return { ok: false, error: "اختر حساب «ضريبة القيمة المضافة - المدخلات»." };
+
+  // قيد الشراء: مدين (مخزون/مصروف + ضريبة مدخلات) = دائن (خزنة + مورد)
+  const lines: GLLine[] = [];
+  lines.push({ account_id: inv.debit_account_id, debit: t.subtotal, credit: 0, branch_id: inv.branch_id });
+  if (t.tax > 0) lines.push({ account_id: inv.tax_account_id as number, debit: t.tax, credit: 0, branch_id: inv.branch_id });
+  if (paid > 0) lines.push({ account_id: inv.treasury_account_id as number, debit: 0, credit: paid, branch_id: inv.branch_id });
+  if (due > 0) lines.push({ account_id: inv.supplier_account_id as number, debit: 0, credit: due, branch_id: inv.branch_id, party_id: inv.party_id ?? null, due_date: inv.due_date ?? null });
+
+  const supp = inv.supplier_name || "مورد نقدي";
+  const res = await createEntry(orgId, {
+    date: inv.date, description: `فاتورة مشتريات — ${supp}`,
+    branch_id: inv.branch_id, entry_type: "purchases", notes: inv.notes || null, status: "posted",
+  }, lines);
+  if (!res.ok) return { ok: false, error: res.error };
+
+  const year = Number(inv.date.slice(0, 4));
+  const invoice_no = await nextPurchaseNo(orgId, year);
+  const { data, error } = await supabase.from("gl_purchase_invoices").insert({
+    organization_id: orgId, branch_id: inv.branch_id, invoice_no, invoice_year: year, date: inv.date,
+    due_date: inv.due_date ?? null, supplier_invoice_no: inv.supplier_invoice_no ?? null,
+    party_id: inv.party_id ?? null, supplier_name: inv.supplier_name || null,
+    purchase_kind: inv.purchase_kind, debit_account_id: inv.debit_account_id, tax_account_id: inv.tax_account_id ?? null,
+    payment_type: inv.payment_type, treasury_account_id: inv.treasury_account_id ?? null, supplier_account_id: inv.supplier_account_id ?? null,
+    paid_amount: paid, subtotal: t.subtotal, tax_rate: inv.tax_rate, tax_amount: t.tax,
+    tax_inclusive: inv.tax_inclusive, total: t.total, items: inv.items, notes: inv.notes || null,
+    entry_id: res.id, status: "posted",
+  }).select("id").single();
+  if (error) { // تراجع عن القيد إن فشل حفظ الفاتورة
+    if (res.id) await deleteEntry(res.id);
+    console.error("createPurchaseInvoice", error);
+    return { ok: false, error: error.message };
+  }
+  const newId = Number((data as any).id);
+
+  // إدخال المخزون للأصناف المرتبطة — فقط لمشتريات المخزون، بعد نجاح حفظ الفاتورة
+  if (inv.purchase_kind === "inventory") {
+    const costFactor = t.gross > 0 ? t.subtotal / t.gross : 1;
+    for (const it of inv.items) {
+      if (it.product_id && (Number(it.qty) || 0) > 0) {
+        try { await receivePurchaseStock(orgId, inv.branch_id, it, newId, costFactor); }
+        catch (e) { console.error("receivePurchaseStock", e); }
+      }
+    }
+  }
+  return { ok: true, id: newId, entryId: res.id, invoiceNo: invoice_no };
+}

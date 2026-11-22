@@ -132,7 +132,7 @@ function AppContent() {
           {page === 'fixed-expenses' && <FixedExpensesPage />}
           {page === 'financial-report' && <FinancialReportPage />}
           {page === 'reports-center' && <ReportsHubPage setPage={setPage} />}
-          {page === 'accounting' && <AccountingPage section={accSection} onSection={setAccSection} />}
+          {page === 'accounting' && <AccountingPage section={accSection} onSection={setAccSection} onNavigate={setPage} />}
 
           {/* صفحات قيد التطوير (مجموعات المبيعات/المشتريات) */}
           {page === 'sales' && <ComingSoon title="المبيعات" />}

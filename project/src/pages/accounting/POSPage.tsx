@@ -220,7 +220,7 @@ export default function POSPage() {
         branch_id: ownedShopId ? Number(ownedShopId) : null, date: today(),
         party_id: custId === "" ? null : Number(custId), customer_name: custParty?.name ?? null,
         revenue_account_id: Number(revAcc), tax_account_id: vatAcc === "" ? null : Number(vatAcc),
-        tax_rate: 15, tax_inclusive: false, items, notes: null, shift_id: shift?.id ?? null,
+        tax_rate: 15, tax_inclusive: false, items, notes: null, shift_id: shift?.id ?? null, source: "pos",
       }, tenders));
       return;
     }
@@ -236,7 +236,7 @@ export default function POSPage() {
       party_id: custId === "" ? null : Number(custId), customer_name: custParty?.name ?? null,
       payment_type: payType, treasury_account_id: collectAcc,
       customer_account_id: custAcc, revenue_account_id: Number(revAcc), tax_account_id: vatAcc === "" ? null : Number(vatAcc),
-      tax_rate: 15, tax_inclusive: false, items, paid_amount: payType === "credit" ? 0 : t.total, notes: null, shift_id: shift?.id ?? null,
+      tax_rate: 15, tax_inclusive: false, items, paid_amount: payType === "credit" ? 0 : t.total, notes: null, shift_id: shift?.id ?? null, source: "pos",
     }));
   };
 

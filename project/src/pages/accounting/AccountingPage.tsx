@@ -288,7 +288,7 @@ function PartyPicker({ parties, onPick, value, placeholder = "— اختر طر�
   );
 }
 
-export default function AccountingPage({ section, onSection }: { section?: string; onSection?: (s: string) => void } = {}) {
+export default function AccountingPage({ section, onSection, onNavigate }: { section?: string; onSection?: (s: string) => void; onNavigate?: (p: string) => void } = {}) {
   const { ownedShopId, branches } = (useAuth() as any) ?? {};
   const [org, setOrg] = useState<{ id: number; name: string } | null>(null);
   const [orgLoading, setOrgLoading] = useState(true);
@@ -375,7 +375,7 @@ export default function AccountingPage({ section, onSection }: { section?: strin
       {tab === "chart" && <ChartTab org={org} accounts={accounts} reload={reloadAccounts} busy={busy} setBusy={setBusy} />}
       {tab === "opening" && <OpeningTab org={org} accounts={accounts} postable={postable} branches={branches} />}
       {tab === "journal" && <JournalTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} parties={parties} />}
-      {tab === "sales" && <SalesTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} parties={parties} onPartiesChange={refreshParties} shop={shopInfo} />}
+      {tab === "sales" && <SalesTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} parties={parties} onPartiesChange={refreshParties} shop={shopInfo} onNavigate={onNavigate} />}
       {tab === "ledger" && <LedgerTab org={org} postable={postable} accounts={accounts} accById={accById} branches={branches} branchName={branchName} shop={shopInfo} />}
       {tab === "trial" && <TrialTab org={org} accById={accById} postable={postable} branches={branches} />}
       {tab === "statements" && <StatementsTab org={org} accounts={accounts} branches={branches} shop={shopInfo} />}
@@ -1430,7 +1430,7 @@ function LineChart({ data, height = 190 }: { data: { label: string; value: numbe
 }
 
 // ══════════════ فواتير المبيعات (نقدي/آجل/جزئي + ضريبة) ══════════════
-function SalesTab({ org, postable, accById, branches, branchName, parties, onPartiesChange, shop }: any) {
+function SalesTab({ org, postable, accById, branches, branchName, parties, onPartiesChange, shop, onNavigate }: any) {
   const multiBranch = branches && branches.length > 1;
   const [from, setFrom] = useState(monthStart());
   const [to, setTo] = useState(today());
@@ -1554,6 +1554,22 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, onPar
   const tDue = tTotal - tPaid;
   const tTax = invoices.reduce((s, i) => s + (Number(i.tax_amount) || 0), 0);
 
+  // المرتجعات (لحساب الحالة ومؤشّر المرتجعات)
+  const [returns, setReturns] = useState<DB.GLSalesReturn[]>([]);
+  useEffect(() => { DB.fetchSalesReturns(org.id).then(setReturns); }, [org.id, invoices.length]);
+  const tReturns = useMemo(() => returns.filter((r) => r.date >= from && r.date <= to && (!fBranch || r.branch_id === Number(fBranch))).reduce((s, r) => s + (Number(r.total) || 0), 0), [returns, from, to, fBranch]);
+  const returnedByInvoice = useMemo(() => { const m = new Map<number, number>(); returns.forEach((r) => { if (r.original_invoice_id) m.set(r.original_invoice_id, (m.get(r.original_invoice_id) || 0) + (Number(r.total) || 0)); }); return m; }, [returns]);
+  const invStatus = (inv: DB.GLSalesInvoice): { label: string; cls: string } => {
+    const ret = returnedByInvoice.get(inv.id) || 0; const tot = Number(inv.total) || 0;
+    if (ret > 0 && ret >= tot - 0.009) return { label: "مرتجعة بالكامل", cls: "bg-red-500/15 text-red-300" };
+    if (ret > 0) return { label: "مرتجعة جزئيًا", cls: "bg-orange-500/15 text-orange-300" };
+    const due = tot - (Number(inv.paid_amount) || 0);
+    if ((inv.payment_type === "credit" || inv.payment_type === "partial") && due > 0.009) return { label: "آجلة", cls: "bg-amber-500/15 text-amber-300" };
+    if (due > 0.009) return { label: "مدفوعة جزئيًا", cls: "bg-blue-500/15 text-blue-300" };
+    return { label: "مدفوعة", cls: "bg-emerald-500/15 text-emerald-300" };
+  };
+  const srcLabel = (inv: DB.GLSalesInvoice) => ((inv as any).source === "pos" ? "POS" : "يدوي");
+
   // تجميعات اللوحة
   const byBranchData = useMemo(() => {
     const m = new Map<string, number>();
@@ -1575,20 +1591,23 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, onPar
           {multiBranch && <div><label className={LABEL}>الفرع</label><select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className={SELECT}><option value="">كل الفروع</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
           <button onClick={() => { resetForm(); setShowForm((v) => !v); }} className={BTN_GHOST_EM}><Plus size={14} /> {showForm ? "إخفاء النموذج" : "فاتورة جديدة"}</button>
           <button onClick={() => setShowReturnForm(true)} disabled={invoices.length === 0} className={BTN_GHOST_BL} title={invoices.length === 0 ? "لا توجد فواتير ضمن الفترة المحددة" : "إنشاء مرتجع مبيعات"}><ArrowDownCircle size={14} /> إنشاء مرتجع</button>
+          <button onClick={() => onNavigate?.("pos")} className={BTN_GHOST_BL}><ShoppingCart size={14} /> نقاط البيع</button>
+          <button onClick={() => onNavigate?.("reports")} className={BTN_SOFT}><BarChart3 size={14} /> تقارير المبيعات</button>
           <span className="text-[11px] text-slate-500 mr-auto">{invoices.length} فاتورة · متبقٍّ على العملاء: <span className="font-mono text-amber-300 font-bold">{fmt(tDue)}</span></span>
         </div>
       </div>
 
-      {/* لوحة المبيعات */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+      {/* مؤشّرات تشغيلية مختصرة */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
         {[
-          { label: "إجمالي المبيعات", value: fmt(tTotal), icon: TrendingUp, tone: "emerald" },
           { label: "عدد الفواتير", value: String(invoices.length), icon: ShoppingCart, tone: "blue" },
-          { label: "المحصّل نقدًا", value: fmt(tPaid), icon: Wallet, tone: "violet" },
-          { label: "المتبقّي على العملاء", value: fmt(tDue), icon: ArrowDownCircle, tone: "amber" },
+          { label: "إجمالي الفواتير", value: fmt(tTotal), icon: TrendingUp, tone: "emerald" },
+          { label: "المحصّل", value: fmt(tPaid), icon: Wallet, tone: "violet" },
+          { label: "المستحق على العملاء", value: fmt(tDue), icon: ArrowDownCircle, tone: "amber" },
+          { label: "إجمالي المرتجعات", value: fmt(tReturns), icon: TrendingDown, tone: "red" },
         ].map((k, i) => {
           const KIcon = k.icon;
-          const tones: any = { emerald: "text-emerald-400 bg-emerald-500/10", blue: "text-blue-400 bg-blue-500/10", violet: "text-violet-400 bg-violet-500/10", amber: "text-amber-400 bg-amber-500/10" };
+          const tones: any = { emerald: "text-emerald-400 bg-emerald-500/10", blue: "text-blue-400 bg-blue-500/10", violet: "text-violet-400 bg-violet-500/10", amber: "text-amber-400 bg-amber-500/10", red: "text-red-400 bg-red-500/10" };
           return (
             <div key={i} className={`${CARD} p-4 flex items-center justify-between`}>
               <div>
@@ -1601,32 +1620,7 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, onPar
         })}
       </div>
 
-      {invoices.length > 0 && (
-        <div className={`grid gap-3 mb-4 ${byBranchData.length > 1 ? "lg:grid-cols-3" : "grid-cols-1"}`}>
-          {byBranchData.length > 1 && (
-            <div className={`${CARD} p-4`}>
-              <div className="text-sm font-bold text-slate-200 mb-3">المبيعات حسب الفرع</div>
-              <div className="flex items-center gap-4">
-                <DonutChart data={byBranchData} />
-                <div className="flex-1 space-y-1.5">
-                  {byBranchData.map((d) => (
-                    <div key={d.label} className="flex items-center gap-2 text-xs">
-                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: d.color }} />
-                      <span className="text-slate-300 flex-1 truncate">{d.label}</span>
-                      <span className="font-mono text-slate-200 [direction:ltr]">{fmt(d.value)}</span>
-                      <span className="text-slate-500 text-[10px]">{Math.round((d.value / (tTotal || 1)) * 100)}%</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-          <div className={`${CARD} p-4 ${byBranchData.length > 1 ? "lg:col-span-2" : ""}`}>
-            <div className="text-sm font-bold text-slate-200 mb-3">تطور المبيعات</div>
-            <LineChart data={byDayData} />
-          </div>
-        </div>
-      )}
+      {/* التحليلات والرسوم البيانية في «تقارير المبيعات» — هذه الصفحة تشغيلية */}
 
       {showForm && (
         <div className={`${CARD} p-4 mb-4`}>
@@ -1704,31 +1698,33 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, onPar
       <div className={`${CARD} overflow-hidden`}>
         <SectionHead icon={ShoppingCart} title="فواتير المبيعات" extra={<span className="text-[11px] text-slate-500">الإجمالي: <span className="font-mono text-emerald-400 font-bold">{fmt(tTotal)}</span></span>} />
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse" style={{ minWidth: 820 }}>
-            <thead><tr>{["رقم", "التاريخ", "العميل", "النوع", "الإجمالي", "مدفوع", "متبقٍّ", ...(multiBranch ? ["الفرع"] : []), ""].map((h, i) => <th key={i} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
+          <table className="w-full border-collapse" style={{ minWidth: 980 }}>
+            <thead><tr>{["رقم", "التاريخ", "العميل", "المصدر", "النوع", "الإجمالي", "مدفوع", "متبقٍّ", "الحالة", ...(multiBranch ? ["الفرع"] : []), ""].map((h, i) => <th key={i} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
             <tbody>
               {invoices.map((inv) => { const d = (Number(inv.total) || 0) - (Number(inv.paid_amount) || 0); return (
                 <tr key={inv.id} className="hover:bg-white/[0.02]">
                   <td className="px-2 py-2 text-xs text-center font-mono text-slate-300 [direction:ltr] border-b border-slate-800">{inv.invoice_no}</td>
                   <td className="px-2 py-2 text-xs text-center font-mono text-slate-400 [direction:ltr] border-b border-slate-800">{inv.date}</td>
                   <td className="px-2 py-2 text-xs text-right text-slate-200 border-b border-slate-800">{invCustomer(inv)}</td>
+                  <td className="px-2 py-2 text-center border-b border-slate-800"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${(inv as any).source === "pos" ? "bg-sky-500/15 text-sky-300" : "bg-slate-600/30 text-slate-300"}`}>{srcLabel(inv)}</span></td>
                   <td className="px-2 py-2 text-xs text-center border-b border-slate-800"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${inv.payment_type === "cash" ? "bg-emerald-500/15 text-emerald-300" : inv.payment_type === "credit" ? "bg-amber-500/15 text-amber-300" : "bg-blue-500/15 text-blue-300"}`}>{DB.PAYTYPE_LABEL[inv.payment_type]}</span></td>
                   <td className="px-2 py-2 text-xs text-center font-mono text-slate-100 [direction:ltr] border-b border-slate-800">{fmt(inv.total)}</td>
                   <td className="px-2 py-2 text-xs text-center font-mono text-emerald-400 [direction:ltr] border-b border-slate-800">{fmt(inv.paid_amount)}</td>
                   <td className={`px-2 py-2 text-xs text-center font-mono [direction:ltr] border-b border-slate-800 ${d > 0.009 ? "text-red-300 font-bold" : "text-slate-600"}`}>{fmt(d)}</td>
+                  <td className="px-2 py-2 text-center border-b border-slate-800">{(() => { const st = invStatus(inv); return <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${st.cls}`}>{st.label}</span>; })()}</td>
                   {multiBranch && <td className="px-2 py-2 text-xs text-center text-slate-400 border-b border-slate-800">{inv.branch_id != null ? branchName(inv.branch_id) : "—"}</td>}
                   <td className="px-2 py-2 border-b border-slate-800"><div className="flex items-center gap-1 justify-center"><button onClick={() => printInv(inv)} title="طباعة" className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-300 flex items-center justify-center hover:bg-blue-500/20"><Printer size={13} /></button><button onClick={() => del(inv)} title="حذف" className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400 flex items-center justify-center hover:bg-red-500/20"><Trash2 size={13} /></button></div></td>
                 </tr>
               ); })}
-              {invoices.length === 0 && <tr><td colSpan={multiBranch ? 9 : 8} className="p-8 text-center text-slate-500 text-sm">{loading ? "جارٍ…" : "لا فواتير في الفترة. اضغط «فاتورة جديدة»."}</td></tr>}
+              {invoices.length === 0 && <tr><td colSpan={multiBranch ? 11 : 10} className="p-8 text-center text-slate-500 text-sm">{loading ? "جارٍ…" : "لا فواتير في الفترة. اضغط «فاتورة جديدة»."}</td></tr>}
             </tbody>
             {invoices.length > 0 && (
               <tfoot><tr className="bg-slate-950 font-bold">
-                <td colSpan={4} className="px-2 py-2.5 text-xs text-right text-slate-200 border-t border-slate-600">الإجمالي</td>
+                <td colSpan={5} className="px-2 py-2.5 text-xs text-right text-slate-200 border-t border-slate-600">الإجمالي</td>
                 <td className="px-2 py-2.5 text-center font-mono text-xs text-slate-100 [direction:ltr] border-t border-slate-600">{fmt(tTotal)}</td>
                 <td className="px-2 py-2.5 text-center font-mono text-xs text-emerald-400 [direction:ltr] border-t border-slate-600">{fmt(tPaid)}</td>
                 <td className="px-2 py-2.5 text-center font-mono text-xs text-red-300 [direction:ltr] border-t border-slate-600">{fmt(tDue)}</td>
-                <td className="border-t border-slate-600" colSpan={multiBranch ? 2 : 1} />
+                <td className="border-t border-slate-600" colSpan={multiBranch ? 3 : 2} />
               </tr></tfoot>
             )}
           </table>

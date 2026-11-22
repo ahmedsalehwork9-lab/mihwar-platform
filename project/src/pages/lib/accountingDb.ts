@@ -1741,6 +1741,7 @@ export type GLSalesInvoice = {
   entry_id: number | null;
 
   status: string;
+  source?: string | null;
 
   created_at?: string;
 
@@ -1885,7 +1886,7 @@ export async function createSalesInvoice(orgId: number, inv: {
 
   tax_rate: number; tax_inclusive: boolean;
 
-  items: SalesItem[]; paid_amount: number; notes: string | null; shift_id?: number | null;
+  items: SalesItem[]; paid_amount: number; notes: string | null; shift_id?: number | null; source?: string | null;
 
 }): Promise<{ ok: boolean; error?: string; id?: number; entryId?: number; invoiceNo?: number }> {
 
@@ -1951,7 +1952,7 @@ export async function createSalesInvoice(orgId: number, inv: {
 
     tax_inclusive: inv.tax_inclusive, total: t.total, items: inv.items, notes: inv.notes || null,
 
-    entry_id: res.id, status: "posted", shift_id: inv.shift_id ?? null,
+    entry_id: res.id, status: "posted", shift_id: inv.shift_id ?? null, source: inv.source ?? "manual",
 
   }).select("id").single();
 
@@ -2112,7 +2113,7 @@ export async function createSalesInvoiceMulti(orgId: number, inv: {
   party_id: number | null; customer_name: string | null;
   revenue_account_id: number; tax_account_id: number | null;
   tax_rate: number; tax_inclusive: boolean;
-  items: SalesItem[]; notes: string | null; shift_id?: number | null;
+  items: SalesItem[]; notes: string | null; shift_id?: number | null; source?: string | null;
 }, tenders: SalesTender[]): Promise<{ ok: boolean; error?: string; id?: number; entryId?: number; invoiceNo?: number }> {
   const t = invoiceTotals(inv.items, inv.tax_rate, inv.tax_inclusive);
   if (t.total <= 0) return { ok: false, error: "إجمالي الفاتورة صفر — أضف أصنافًا بقيمة." };
@@ -2147,7 +2148,7 @@ export async function createSalesInvoiceMulti(orgId: number, inv: {
     payment_type: ptype, treasury_account_id: firstCollect?.account_id ?? null,
     paid_amount: paidNonCredit, subtotal: t.subtotal, tax_rate: inv.tax_rate, tax_amount: t.tax,
     tax_inclusive: inv.tax_inclusive, total: t.total, items: inv.items, notes: inv.notes || null,
-    entry_id: res.id, status: "posted", shift_id: inv.shift_id ?? null,
+    entry_id: res.id, status: "posted", shift_id: inv.shift_id ?? null, source: inv.source ?? "manual",
   }).select("id").single();
   if (error) { if (res.id) await deleteEntry(res.id); console.error("createSalesInvoiceMulti", error); return { ok: false, error: error.message }; }
   const invId = (data as any).id;

@@ -126,7 +126,7 @@ function AppContent() {
           {/* USER PAGES */}
           {page === 'dashboard' && <DashboardPage />}
           {page === 'search' && <SearchPage />}
-          {page === 'inventory' && <InventoryPage />}
+          {page === 'inventory' && <InventoryPage onNavigate={setPage} />}
           {page === 'stock-adjustments' && <StockAdjustmentsPage />}
           {page === 'orders' && <OrdersPage />}
           {page === 'reports' && <ReportsPage />}

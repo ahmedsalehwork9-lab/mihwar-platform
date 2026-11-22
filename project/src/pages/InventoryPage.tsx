@@ -11,6 +11,7 @@ import {
   PackageX, PackageCheck, Filter, Globe, Users, Lock,
   ImagePlus, ImageOff, ScanLine, Percent,
   ChevronUp, ChevronDown, ArrowUpDown, SlidersHorizontal,
+  Printer, ClipboardCheck, ArrowRightLeft, LineChart, Eye,
 } from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -574,8 +575,9 @@ function MobileProductCard({ p, selected, onToggle, onEdit, onDelete, t }: Mobil
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function InventoryPage() {
+export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) => void } = {}) {
   const { ownedShopId, user } = (useAuth() as any) ?? {};
+  const [showMovesReport, setShowMovesReport] = useState(false);
   const { t, isRTL }   = useLang();
   const [orgId, setOrgId] = useState<number | null>(null);
   useEffect(() => {
@@ -1922,6 +1924,27 @@ export default function InventoryPage() {
         </button>
       </header>
 
+      <div className="flex gap-4 items-start">
+        {/* ── Actions Rail (desktop) ── */}
+        <aside className="hidden lg:flex flex-col gap-1.5 w-56 shrink-0 sticky top-4 self-start">
+          <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-2 mb-1 flex items-center gap-1.5"><Boxes size={13} /> {t('Inventory Actions', 'إجراءات المخزون')}</div>
+          <button onClick={openAdd} className="flex items-center gap-2 px-4 py-3 rounded-xl bg-emerald-600 text-white text-sm font-black hover:bg-emerald-500 shadow-lg active:scale-95 transition-all">
+            <Plus size={17} /> {t('Add Product', 'إضافة صنف')}
+          </button>
+          <RailBtn icon={<Upload size={15} />} label={t('Import Excel', 'استيراد Excel')} onClick={() => importRef.current?.click()} />
+          <RailBtn icon={<Download size={15} />} label={t('Export Excel', 'تصدير Excel')} onClick={handleExportXLSX} />
+          <RailBtn icon={<Printer size={15} />} label={t('Print List', 'طباعة قائمة الأصناف')} onClick={handleExportPDF} />
+          <div className="h-px bg-slate-800 my-1" />
+          <RailBtn icon={<ClipboardCheck size={15} />} label={t('Stock Count', 'الجرد المخزني')} onClick={() => onNavigate?.('stock-adjustments')} />
+          <RailBtn icon={<SlidersHorizontal size={15} />} label={t('Adjustments', 'تسويات المخزون')} onClick={() => onNavigate?.('stock-adjustments')} />
+          <RailBtn icon={<ArrowRightLeft size={15} />} label={t('Transfers', 'تحويل بين المستودعات')} onClick={() => showSuccess(t('Coming soon', 'قريبًا بإذن الله'))} />
+          <RailBtn icon={<LineChart size={15} />} label={t('Movement Report', 'تقرير حركة المخزون')} onClick={() => setShowMovesReport(true)} />
+          <div className="h-px bg-slate-800 my-1" />
+          <RailBtn icon={<Percent size={15} />} label={t('Profit Margin', 'هامش الربح')} onClick={openMarginModal} tone="amber" />
+        </aside>
+
+        <div className="flex-1 min-w-0">
+
       {/* ── Search ── */}
       <section className="relative mb-3">
         <div className={`absolute inset-y-0 ${isRTL ? 'right-0 pr-4' : 'left-0 pl-4'} flex items-center pointer-events-none text-slate-500`}>
@@ -2045,7 +2068,7 @@ export default function InventoryPage() {
       {/* ── Table Actions ── */}
       <input ref={importRef} type="file" accept=".csv" onChange={handleImport} className="hidden" aria-hidden="true" />
       <section
-        className={`flex flex-col sm:flex-row items-center justify-between gap-3 mb-4 ${isSearching ? 'hidden md:flex' : 'flex'}`}
+        className={`lg:hidden flex-col sm:flex-row items-center justify-between gap-3 mb-4 ${isSearching ? 'hidden md:flex' : 'flex'}`}
       >
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <button
@@ -2316,6 +2339,14 @@ export default function InventoryPage() {
                     <td className="p-4">
                       <div className="flex items-center justify-center gap-2">
                         <button
+                          onClick={() => setDetailItem(p)}
+                          className="p-2 text-slate-400 hover:text-sky-400 hover:bg-sky-500/10 rounded-lg transition-all"
+                          title={t('View item card', 'بطاقة الصنف / الحركة')}
+                          aria-label={t(`View ${p.product_name}`, `عرض ${p.product_name}`)}
+                        >
+                          <Eye size={16} />
+                        </button>
+                        <button
                           onClick={() => openEdit(p)}
                           className="p-2 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-all"
                           title={t('Edit', 'تعديل')}
@@ -2341,6 +2372,9 @@ export default function InventoryPage() {
         </div>
         <PaginationControls />
       </div>
+
+        </div>{/* /flex-1 content */}
+      </div>{/* /flex rail+content */}
 
       {/* ── Add / Edit Modal ── */}
       {showModal && (
@@ -2810,6 +2844,84 @@ export default function InventoryPage() {
           onEdit={() => { const it = detailItem; setDetailItem(null); openEdit(it); }}
         />
       )}
+
+      {/* ── Stock Movement Report ── */}
+      {showMovesReport && (
+        <MovesReportModal orgId={orgId} branchId={ownedShopId ? Number(ownedShopId) : null} products={products} t={t} isRTL={isRTL} onClose={() => setShowMovesReport(false)} />
+      )}
+    </div>
+  );
+}
+
+// ─── Actions Rail Button ─────────────────────────────────────────────────────
+function RailBtn({ icon, label, onClick, tone }: { icon: React.ReactNode; label: string; onClick: () => void; tone?: 'amber' }) {
+  const cls = tone === 'amber'
+    ? 'border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20'
+    : 'border-slate-800 bg-slate-900 text-slate-300 hover:bg-slate-800 hover:border-slate-700';
+  return (
+    <button onClick={onClick} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-bold transition-colors ${cls}`}>
+      {icon} <span className="truncate text-right flex-1">{label}</span>
+    </button>
+  );
+}
+
+// ─── Stock Movement Report Modal ─────────────────────────────────────────────
+type AnyMove = { id: number; created_at: string; move_type: string; qty: number; unit_cost: number | null; product_id: number; notes: string | null };
+function MovesReportModal({ orgId, branchId, products, t, isRTL, onClose }: {
+  orgId: number | null; branchId: number | null; products: Product[]; t: (en: string, ar: string) => string; isRTL: boolean; onClose: () => void;
+}) {
+  const [rows, setRows] = useState<AnyMove[]>([]);
+  const [loading, setLoading] = useState(true);
+  const nameOf = useCallback((id: number) => products.find(p => p.id === id)?.product_name ?? `#${id}`, [products]);
+  const label = (m: string) => m === 'purchase_in' ? t('Purchase In', 'وارد شراء') : m === 'purchase_return' ? t('Purchase Return', 'مرتجع شراء') : m === 'adjust' ? t('Adjustment', 'تسوية') : m === 'sale_out' ? t('Sale Out', 'صادر بيع') : m;
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setLoading(true);
+      if (!orgId) { setRows([]); setLoading(false); return; }
+      let q = supabase.from('gl_stock_moves').select('id, created_at, move_type, qty, unit_cost, product_id, notes').eq('organization_id', orgId).order('created_at', { ascending: false }).limit(300);
+      if (branchId != null) q = q.eq('branch_id', branchId);
+      const { data } = await q;
+      if (!alive) return;
+      setRows((data as AnyMove[]) || []);
+      setLoading(false);
+    })();
+    return () => { alive = false; };
+  }, [orgId, branchId]);
+  return (
+    <div className="fixed inset-0 z-[95] bg-black/60 flex items-center justify-center p-3" dir={isRTL ? 'rtl' : 'ltr'} onClick={onClose}>
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-3xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-800">
+          <h2 className="text-white font-black flex items-center gap-2"><LineChart size={18} className="text-emerald-500" /> {t('Stock Movement Report', 'تقرير حركة المخزون')}</h2>
+          <button onClick={onClose} className="text-slate-500 hover:text-white"><X size={20} /></button>
+        </div>
+        <div className="overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-slate-900">
+              <tr className="text-slate-400 text-xs border-b border-slate-800">
+                <th className="text-right font-semibold px-3 py-2.5">{t('Date', 'التاريخ')}</th>
+                <th className="text-right font-semibold px-3 py-2.5">{t('Item', 'الصنف')}</th>
+                <th className="text-right font-semibold px-3 py-2.5">{t('Type', 'النوع')}</th>
+                <th className="text-center font-semibold px-3 py-2.5">{t('Qty', 'الكمية')}</th>
+                <th className="text-left font-semibold px-3 py-2.5">{t('Cost', 'التكلفة')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading && <tr><td colSpan={5} className="text-center text-slate-500 py-10">{t('Loading…', 'جارٍ التحميل…')}</td></tr>}
+              {!loading && rows.length === 0 && <tr><td colSpan={5} className="text-center text-slate-600 py-10">{t('No movements recorded (purchases/returns/adjustments log here).', 'لا توجد حركات مسجّلة (الشراء/المرتجعات/التسويات تُسجَّل هنا).')}</td></tr>}
+              {rows.map(m => (
+                <tr key={m.id} className="border-b border-slate-800/60 hover:bg-slate-800/30">
+                  <td className="px-3 py-2 text-slate-400">{(m.created_at || '').slice(0, 10)}</td>
+                  <td className="px-3 py-2 text-white truncate max-w-[220px]">{nameOf(m.product_id)}</td>
+                  <td className="px-3 py-2 text-slate-400">{label(m.move_type)}</td>
+                  <td className={`px-3 py-2 text-center font-bold font-mono ${m.qty >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{m.qty >= 0 ? '+' : ''}{m.qty}</td>
+                  <td className="px-3 py-2 text-left text-slate-300">{m.unit_cost != null ? Number(m.unit_cost).toLocaleString(undefined, { minimumFractionDigits: 2 }) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }

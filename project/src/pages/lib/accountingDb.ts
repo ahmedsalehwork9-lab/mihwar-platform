@@ -2089,3 +2089,10 @@ export async function adjustProductStock(productId: number, delta: number): Prom
   const { error } = await supabase.from("products").update({ quantity: cur + delta }).eq("id", productId);
   if (error) console.error("adjustProductStock", error);
 }
+
+// بيانات المؤسسة/الفرع لترويسة الطباعة (فاتورة ضريبية)
+export type ShopInfo = { shop_name: string | null; logo_url: string | null; tax_number: string | null; commercial_registration: string | null; phone: string | null; address: string | null };
+export async function fetchShopInfo(shopId: number): Promise<ShopInfo | null> {
+  const { data } = await supabase.from("shops").select("shop_name, logo_url, tax_number, commercial_registration, phone, address").eq("id", shopId).maybeSingle();
+  return (data as ShopInfo) ?? null;
+}

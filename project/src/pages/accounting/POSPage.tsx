@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Search, Barcode, Trash2, Plus, Minus, ShoppingCart, X, Printer, Wallet, Clock, RotateCcw } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import * as DB from "../lib/accountingDb";
-import type { GLAccount, GLParty, GLTreasury, POSProduct, SalesItem } from "../lib/accountingDb";
+import type { GLAccount, GLParty, GLTreasury, POSProduct, SalesItem, ShopInfo } from "../lib/accountingDb";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const fmt = (n: number) => (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -16,6 +16,7 @@ export default function POSPage() {
   const [accounts, setAccounts] = useState<GLAccount[]>([]);
   const [treasuries, setTreasuries] = useState<GLTreasury[]>([]);
   const [parties, setParties] = useState<GLParty[]>([]);
+  const [shop, setShop] = useState<ShopInfo | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [search, setSearch] = useState("");
@@ -44,14 +45,15 @@ export default function POSPage() {
       if (!alive) return;
       setOrg(o);
       if (o && ownedShopId) {
-        const [prods, accs, treas, pps] = await Promise.all([
+        const [prods, accs, treas, pps, sh] = await Promise.all([
           DB.fetchProducts(Number(ownedShopId)),
           DB.fetchAccounts(o.id),
           DB.fetchTreasuries(o.id, Number(ownedShopId)),
           DB.fetchParties(o.id, "customer"),
+          DB.fetchShopInfo(Number(ownedShopId)),
         ]);
         if (!alive) return;
-        setProducts(prods); setAccounts(accs); setTreasuries(treas); setParties(pps);
+        setProducts(prods); setAccounts(accs); setTreasuries(treas); setParties(pps); setShop(sh);
         // حسابات افتراضية
         const rev = accs.find((a) => a.type === "revenue" && !a.is_group);
         const vat = accs.find((a) => a.type === "liability" && !a.is_group && /ضريبة|مخرجات|vat|tax/i.test(a.name));
@@ -169,13 +171,21 @@ export default function POSPage() {
     if (showToday) await loadToday();
   };
 
-  const printReceipt = (no: number, items: SalesItem[]) => {
-    const rows = items.map((it) => `<tr><td style="text-align:right;padding:2px 4px">${it.description}</td><td style="text-align:center;padding:2px 4px">${it.qty}</td><td style="text-align:left;padding:2px 4px;direction:ltr">${fmt(it.line_total)}</td></tr>`).join("");
-    const html = `<html dir="rtl"><head><meta charset="UTF-8"><title>فاتورة ${no}</title></head>
+  // فاتورة ضريبية مبسّطة (إيصال حراري ~ 280px)
+  const receiptHTML = (no: number, when: string, items: SalesItem[], sub: number, tax: number, tot: number, method: string) => {
+    const rows = items.map((it) => `<tr><td style="text-align:right;padding:2px 4px">${it.description}</td><td style="text-align:center;padding:2px 4px;direction:ltr">${it.qty}</td><td style="text-align:left;padding:2px 4px;direction:ltr">${fmt(it.line_total)}</td></tr>`).join("");
+    const when2 = (() => { try { return new Date(when.length <= 10 ? when + "T00:00:00" : when).toLocaleString("ar-SA"); } catch { return when; } })();
+    const logo = shop?.logo_url ? `<div style="text-align:center"><img src="${shop.logo_url}" style="max-height:46px;object-fit:contain"/></div>` : "";
+    const vatNo = shop?.tax_number ? `<div style="text-align:center;font-size:11px">الرقم الضريبي: ${shop.tax_number}</div>` : "";
+    const cr = shop?.commercial_registration ? `<div style="text-align:center;font-size:10px;color:#555">س.ت: ${shop.commercial_registration}</div>` : "";
+    return `<html dir="rtl"><head><meta charset="UTF-8"><title>فاتورة ${no}</title></head>
       <body style="font-family:'Segoe UI',Tahoma,sans-serif;width:280px;margin:0 auto;color:#111">
-      <h3 style="text-align:center;margin:6px 0">${org?.name || ""}</h3>
-      <div style="text-align:center;font-size:12px">${branchName} · فاتورة #${no}</div>
-      <div style="text-align:center;font-size:11px;color:#555">${new Date().toLocaleString("ar-SA")}</div>
+      ${logo}
+      <h3 style="text-align:center;margin:6px 0 2px">${shop?.shop_name || org?.name || ""}</h3>
+      ${vatNo}${cr}
+      <div style="text-align:center;font-size:12px;font-weight:700;margin-top:4px">فاتورة ضريبية مبسّطة</div>
+      <div style="text-align:center;font-size:11px">${branchName} · رقم #${no}</div>
+      <div style="text-align:center;font-size:11px;color:#555">${when2}</div>
       <hr/>
       <table style="width:100%;font-size:12px;border-collapse:collapse">
         <tr style="border-bottom:1px solid #ccc"><td style="text-align:right">الصنف</td><td style="text-align:center">كمية</td><td style="text-align:left">إجمالي</td></tr>
@@ -183,16 +193,18 @@ export default function POSPage() {
       </table>
       <hr/>
       <table style="width:100%;font-size:12px">
-        <tr><td style="text-align:right">الإجمالي قبل الضريبة</td><td style="text-align:left;direction:ltr">${fmt(net)}</td></tr>
-        <tr><td style="text-align:right">الضريبة 15%</td><td style="text-align:left;direction:ltr">${fmt(vat)}</td></tr>
-        <tr style="font-weight:800;font-size:14px"><td style="text-align:right">الإجمالي</td><td style="text-align:left;direction:ltr">${fmt(total)}</td></tr>
+        <tr><td style="text-align:right">الإجمالي قبل الضريبة</td><td style="text-align:left;direction:ltr">${fmt(sub)}</td></tr>
+        <tr><td style="text-align:right">ضريبة القيمة المضافة 15%</td><td style="text-align:left;direction:ltr">${fmt(tax)}</td></tr>
+        <tr style="font-weight:800;font-size:14px"><td style="text-align:right">الإجمالي شامل الضريبة</td><td style="text-align:left;direction:ltr">${fmt(tot)}</td></tr>
       </table>
       <hr/>
-      <div style="text-align:center;font-size:11px">طريقة الدفع: ${DB.PAYTYPE_LABEL[payType]} — شكرًا لزيارتكم</div>
+      <div style="text-align:center;font-size:11px">طريقة الدفع: ${method}</div>
+      <div style="text-align:center;font-size:11px;margin-top:4px">شكرًا لزيارتكم</div>
       </body></html>`;
-    const w = window.open("", "_blank", "width=320,height=600"); if (!w) return;
-    w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 250);
   };
+  const printHTML = (html: string) => { const w = window.open("", "_blank", "width=320,height=640"); if (!w) { alert("فعّل النوافذ المنبثقة للطباعة."); return; } w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 250); };
+  const printReceipt = (no: number, items: SalesItem[]) => printHTML(receiptHTML(no, new Date().toISOString(), items, net, vat, total, DB.PAYTYPE_LABEL[payType]));
+  const reprint = (inv: DB.GLSalesInvoice) => printHTML(receiptHTML(inv.invoice_no, inv.date, inv.items || [], inv.subtotal, inv.tax_amount, inv.total, DB.PAYTYPE_LABEL[inv.payment_type]));
 
   // اختصارات: F9 تحصيل · F2 بحث
   useEffect(() => {
@@ -329,11 +341,12 @@ export default function POSPage() {
             </div>
             <div className="overflow-y-auto">
               {todayList.length === 0 ? <div className="p-6 text-center text-slate-500 text-sm">لا فواتير اليوم.</div> : todayList.map((inv) => (
-                <div key={inv.id} className="flex items-center justify-between px-4 py-2.5 border-b border-slate-800/60 text-xs">
-                  <span className="font-mono text-slate-300 [direction:ltr]">#{inv.invoice_no}</span>
-                  <span className="text-slate-400">{inv.customer_name || "نقدي"}</span>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] ${inv.payment_type === "cash" ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-300"}`}>{DB.PAYTYPE_LABEL[inv.payment_type]}</span>
-                  <span className="font-mono text-emerald-300 font-bold [direction:ltr]">{fmt(inv.total)}</span>
+                <div key={inv.id} className="flex items-center gap-2 px-4 py-2.5 border-b border-slate-800/60 text-xs">
+                  <span className="font-mono text-slate-300 [direction:ltr] w-10">#{inv.invoice_no}</span>
+                  <span className="text-slate-400 flex-1 truncate">{inv.customer_name || "نقدي"}</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] ${inv.payment_type === "cash" ? "bg-emerald-500/15 text-emerald-300" : inv.payment_type === "card" ? "bg-sky-500/15 text-sky-300" : "bg-amber-500/15 text-amber-300"}`}>{DB.PAYTYPE_LABEL[inv.payment_type]}</span>
+                  <span className="font-mono text-emerald-300 font-bold [direction:ltr] w-16 text-left">{fmt(inv.total)}</span>
+                  <button onClick={() => reprint(inv)} title="إعادة طباعة" className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-300 flex items-center justify-center hover:bg-blue-500/20 shrink-0"><Printer size={13} /></button>
                 </div>
               ))}
             </div>

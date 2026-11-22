@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { supabase } from "./lib/supabase";
+import * as DB from "./lib/accountingDb";
 import { useAuth } from "../context/AuthContext";
 import { useLang } from "../context/LanguageContext";
 import {
@@ -573,8 +574,18 @@ function MobileProductCard({ p, selected, onToggle, onEdit, onDelete, t }: Mobil
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function InventoryPage() {
-  const { ownedShopId } = useAuth();
+  const { ownedShopId, user } = (useAuth() as any) ?? {};
   const { t, isRTL }   = useLang();
+  const [orgId, setOrgId] = useState<number | null>(null);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!ownedShopId) { setOrgId(null); return; }
+      const o = await DB.getOrgForBranch(Number(ownedShopId));
+      if (alive) setOrgId(o?.id ?? null);
+    })();
+    return () => { alive = false; };
+  }, [ownedShopId]);
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [products, setProducts]         = useState<Product[]>([]);
@@ -977,6 +988,13 @@ export default function InventoryPage() {
         const { error: updateErr } = await supabase.from('products').update(basePayload).eq('id', editItem.id);
         if (updateErr) throw updateErr;
         productId = editItem.id;
+        // سجل تغيّر الأسعار اليدوي
+        if (orgId) {
+          const oldCost = Number(editItem.price) || 0;
+          const newCost = Number(form.price) || 0;
+          const oldSell = editItem.selling_price != null ? Number(editItem.selling_price) : null;
+          try { await DB.logPriceChange(orgId, { product_id: productId, old_cost: oldCost, new_cost: newCost, old_selling: oldSell, new_selling: parsedSellingPrice, source: 'manual', user_id: user?.id ?? null }); } catch (e) { console.error(e); }
+        }
       } else {
         const { data: inserted, error: insertErr } = await supabase
           .from('products')
@@ -2747,6 +2765,7 @@ export default function InventoryPage() {
       {detailItem && (
         <ProductDetailDrawer
           p={detailItem}
+          orgId={orgId}
           defMargin={defaultMarginPercent}
           t={t}
           isRTL={isRTL}
@@ -2761,12 +2780,14 @@ export default function InventoryPage() {
 // ─── Product Details Drawer ──────────────────────────────────────────────────
 type StockMove = { id: number; created_at: string; move_type: string; qty: number; unit_cost: number | null; ref_type: string | null; ref_id: number | null; notes: string | null };
 
-function ProductDetailDrawer({ p, defMargin, t, isRTL, onClose, onEdit }: {
-  p: Product; defMargin: number; t: (en: string, ar: string) => string; isRTL: boolean;
+function ProductDetailDrawer({ p, orgId, defMargin, t, isRTL, onClose, onEdit }: {
+  p: Product; orgId: number | null; defMargin: number; t: (en: string, ar: string) => string; isRTL: boolean;
   onClose: () => void; onEdit: () => void;
 }) {
   const [moves, setMoves] = useState<StockMove[]>([]);
   const [loadingMoves, setLoadingMoves] = useState(true);
+  const [purchases, setPurchases] = useState<DB.ProductPurchaseLink[]>([]);
+  const [priceHist, setPriceHist] = useState<DB.GLPriceChange[]>([]);
   const money = (n: number) => (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   useEffect(() => {
@@ -2782,9 +2803,15 @@ function ProductDetailDrawer({ p, defMargin, t, isRTL, onClose, onEdit }: {
       if (!alive) return;
       setMoves((data as StockMove[]) || []);
       setLoadingMoves(false);
+      const [ph, pur] = await Promise.all([
+        DB.fetchPriceHistory(p.id),
+        orgId ? DB.fetchProductPurchases(orgId, p.id) : Promise.resolve([] as DB.ProductPurchaseLink[]),
+      ]);
+      if (!alive) return;
+      setPriceHist(ph); setPurchases(pur);
     })();
     return () => { alive = false; };
-  }, [p.id]);
+  }, [p.id, orgId]);
 
   const sell = effectiveSelling(p, defMargin);
   const margin = p.price > 0 ? ((sell - p.price) / p.price) * 100 : 0;
@@ -2847,6 +2874,51 @@ function ProductDetailDrawer({ p, defMargin, t, isRTL, onClose, onEdit }: {
                       <div className="text-slate-600">{(m.created_at || '').slice(0, 10)}{m.unit_cost != null ? ` · ${money(m.unit_cost)}` : ''}</div>
                     </div>
                     <div className={`font-bold font-mono ${m.qty >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{m.qty >= 0 ? '+' : ''}{m.qty}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* linked purchases */}
+          <div>
+            <div className="text-xs font-bold text-slate-400 mb-2">{t('Linked Purchases', 'المشتريات المرتبطة')}</div>
+            {purchases.length === 0 ? (
+              <div className="text-slate-600 text-xs py-3 bg-slate-800/40 rounded-lg px-3">{t('No purchases recorded for this item.', 'لا توجد مشتريات مسجّلة لهذا الصنف.')}</div>
+            ) : (
+              <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                {purchases.map((pu, i) => (
+                  <div key={i} className="flex items-center justify-between bg-slate-800/40 rounded-lg px-3 py-2 text-xs">
+                    <div className="min-w-0">
+                      <div className="text-slate-300 truncate">{pu.supplier_name || '—'} <span className="font-mono text-slate-600">#{pu.invoice_no}/{pu.invoice_year}</span></div>
+                      <div className="text-slate-600">{pu.date} · {t('cost', 'تكلفة')} {money(pu.unit_cost)}</div>
+                    </div>
+                    <div className="font-bold font-mono text-emerald-400">+{pu.qty}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* price history */}
+          <div>
+            <div className="text-xs font-bold text-slate-400 mb-2">{t('Price Change Log', 'سجل تغيّر الأسعار')}</div>
+            {priceHist.length === 0 ? (
+              <div className="text-slate-600 text-xs py-3 bg-slate-800/40 rounded-lg px-3">{t('No price changes recorded yet.', 'لا توجد تغييرات أسعار مسجّلة بعد.')}</div>
+            ) : (
+              <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                {priceHist.map((h) => (
+                  <div key={h.id} className="bg-slate-800/40 rounded-lg px-3 py-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">{(h.created_at || '').slice(0, 10)}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${h.source === 'purchase' ? 'bg-blue-500/15 text-blue-400' : 'bg-slate-700 text-slate-300'}`}>{h.source === 'purchase' ? t('Purchase', 'شراء') : t('Manual', 'يدوي')}</span>
+                    </div>
+                    {h.new_cost != null && (h.old_cost ?? null) !== h.new_cost && (
+                      <div className="text-slate-400 mt-0.5">{t('Cost', 'التكلفة')}: <span className="text-slate-500">{money(h.old_cost ?? 0)}</span> ← <span className="text-white font-bold">{money(h.new_cost)}</span></div>
+                    )}
+                    {h.new_selling != null && (h.old_selling ?? null) !== h.new_selling && (
+                      <div className="text-slate-400 mt-0.5">{t('Selling', 'البيع')}: <span className="text-slate-500">{money(h.old_selling ?? 0)}</span> ← <span className="text-white font-bold">{money(h.new_selling)}</span></div>
+                    )}
                   </div>
                 ))}
               </div>

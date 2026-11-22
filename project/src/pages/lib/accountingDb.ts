@@ -2346,6 +2346,7 @@ async function receivePurchaseStock(
   const { error: upErr } = await supabase.from("products")
     .update({ quantity: newQty, price: newCost }).eq("id", item.product_id);
   if (upErr) { console.error("receivePurchaseStock.update", upErr); return; }
+  if (newCost !== curCost) { try { await logPriceChange(orgId, { product_id: item.product_id, old_cost: curCost, new_cost: newCost, source: "purchase" }); } catch (e) { console.error(e); } }
   const { error: mvErr } = await supabase.from("gl_stock_moves").insert({
     organization_id: orgId, branch_id: branchId, product_id: item.product_id,
     move_type: "purchase_in", qty: qtyIn, unit_cost: unitNet,
@@ -2751,4 +2752,62 @@ export async function createStockAdjustment(orgId: number, args: {
   const { error: upErr } = await supabase.from("products").update({ quantity: newQty }).eq("id", args.product_id);
   if (upErr) { console.error("createStockAdjustment.update", upErr); return { ok: false, error: upErr.message }; }
   return { ok: true, delta, newQty };
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════
+//  سجل تغيّر الأسعار + مشتريات الصنف (بطاقة الصنف — المرحلة 4)
+// ══════════════════════════════════════════════════════════════════════════
+
+export type GLPriceChange = {
+  id: number; organization_id: number; product_id: number;
+  old_cost: number | null; new_cost: number | null;
+  old_selling: number | null; new_selling: number | null;
+  source: string; changed_by: string | null; created_at: string;
+};
+
+// تسجيل تغيّر سعر (يدوي أو من الشراء). لا يُسجَّل إن لم يتغيّر شيء.
+export async function logPriceChange(orgId: number, a: {
+  product_id: number; old_cost: number | null; new_cost: number | null;
+  old_selling?: number | null; new_selling?: number | null;
+  source: string; user_id?: string | null;
+}): Promise<void> {
+  const costChanged = (a.old_cost ?? null) !== (a.new_cost ?? null);
+  const sellChanged = (a.old_selling ?? null) !== (a.new_selling ?? null);
+  if (!costChanged && !sellChanged) return;
+  const { error } = await supabase.from("gl_price_history").insert({
+    organization_id: orgId, product_id: a.product_id,
+    old_cost: a.old_cost ?? null, new_cost: a.new_cost ?? null,
+    old_selling: a.old_selling ?? null, new_selling: a.new_selling ?? null,
+    source: a.source, changed_by: a.user_id ?? null,
+  });
+  if (error) console.error("logPriceChange", error);
+}
+
+export async function fetchPriceHistory(productId: number): Promise<GLPriceChange[]> {
+  const { data, error } = await supabase.from("gl_price_history")
+    .select("*").eq("product_id", productId).order("created_at", { ascending: false }).limit(50);
+  if (error) { console.error("fetchPriceHistory", error); return []; }
+  return (data as GLPriceChange[]) || [];
+}
+
+// فواتير المشتريات المرتبطة بصنف (عبر product_id داخل items)
+export type ProductPurchaseLink = { invoice_id: number; invoice_no: number; invoice_year: number; date: string; supplier_name: string | null; qty: number; unit_cost: number };
+
+export async function fetchProductPurchases(orgId: number, productId: number): Promise<ProductPurchaseLink[]> {
+  const { data, error } = await supabase.from("gl_purchase_invoices")
+    .select("id, invoice_no, invoice_year, date, supplier_name, items")
+    .eq("organization_id", orgId)
+    .contains("items", [{ product_id: productId }])
+    .order("date", { ascending: false }).limit(50);
+  if (error) { console.error("fetchProductPurchases", error); return []; }
+  const out: ProductPurchaseLink[] = [];
+  for (const inv of (data as any[]) || []) {
+    for (const it of (inv.items || []) as any[]) {
+      if (Number(it.product_id) === productId) {
+        out.push({ invoice_id: inv.id, invoice_no: inv.invoice_no, invoice_year: inv.invoice_year, date: inv.date, supplier_name: inv.supplier_name, qty: Number(it.qty) || 0, unit_cost: Number(it.unit_cost) || 0 });
+      }
+    }
+  }
+  return out;
 }

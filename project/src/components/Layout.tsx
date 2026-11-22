@@ -57,6 +57,7 @@ export type Page =
   | 'purchase-orders'
   | 'purchase-reconciliation'
   | 'purchase-returns'
+  | 'supplier-payments'
   | 'fixed-expenses'
   | 'financial-report'
   | 'reports-center'
@@ -92,6 +93,7 @@ const pageTitles: Record<Page, { en: string; ar: string }> = {
   'purchase-orders': { en: 'Purchase Orders',  ar: 'أوامر الشراء'    },
   'purchase-reconciliation': { en: 'Purchase Reconciliation', ar: 'تسوية المشتريات' },
   'purchase-returns':{ en: 'Purchase Returns',  ar: 'مرتجعات المشتريات' },
+  'supplier-payments': { en: 'Supplier Payments', ar: 'سداد الموردين' },
   'fixed-expenses': { en: 'Fixed Expenses', ar: 'المصروفات الثابتة' },
   'financial-report': { en: 'Financial Report', ar: 'التقرير المالي' },
   'reports-center':  { en: 'Reports Center',   ar: 'مركز التقارير'   },
@@ -216,6 +218,7 @@ const OPERATIONS: OpEntry[] = [
     { labelEn: 'Purchase Orders',         labelAr: 'أوامر الشراء',    page: 'purchase-orders',         placeholder: true },
     { labelEn: 'Purchase Reconciliation', labelAr: 'تسوية المشتريات', page: 'purchase-reconciliation', placeholder: true },
     { labelEn: 'Purchase Returns',        labelAr: 'مرتجعات المشتريات', page: 'purchase-returns' },
+    { labelEn: 'Supplier Payments',       labelAr: 'سداد الموردين',     page: 'supplier-payments' },
   ] },
 
   { type: 'group', key: 'reports', icon: <FileBarChart size={17} />, labelEn: 'Reports', labelAr: 'التقارير', homePage: 'reports', children: [

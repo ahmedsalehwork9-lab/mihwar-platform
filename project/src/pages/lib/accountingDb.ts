@@ -2598,3 +2598,102 @@ export async function addAccountReturningId(a: {
   if (error) { console.error("addAccountReturningId", error); return { ok: false, error: error.message }; }
   return { ok: true, id: Number((data as any).id) };
 }
+
+
+// ══════════════════════════════════════════════════════════════════════════
+//  سداد الموردين + تخصيص الدفعات على الفواتير (المرحلة 3)
+//    قيد السداد: مدين (حساب المورد الفرعي) = دائن (الخزنة/البنك)
+//    + تحديث paid_amount لكل فاتورة مخصّص لها جزء من الدفعة.
+// ══════════════════════════════════════════════════════════════════════════
+
+export type SupplierPaymentAlloc = { invoice_id: number; invoice_no: number; invoice_year: number; amount: number };
+
+export type GLSupplierPayment = {
+  id: number; organization_id: number; branch_id: number | null;
+  payment_no: number; payment_year: number; date: string;
+  supplier_account_id: number; supplier_name: string | null;
+  treasury_account_id: number; amount: number;
+  allocations: SupplierPaymentAlloc[]; notes: string | null;
+  entry_id: number | null; status: string; created_at?: string;
+};
+
+export async function nextSupplierPaymentNo(orgId: number, year: number): Promise<number> {
+  const { data } = await supabase
+    .from("gl_supplier_payments").select("payment_no")
+    .eq("organization_id", orgId).eq("payment_year", year)
+    .order("payment_no", { ascending: false }).limit(1);
+  return (((data as any[])?.[0]?.payment_no as number) || 0) + 1;
+}
+
+export async function fetchSupplierPayments(orgId: number, from?: string, to?: string, branchId?: number | null): Promise<GLSupplierPayment[]> {
+  let q = supabase.from("gl_supplier_payments").select("*").eq("organization_id", orgId);
+  if (from) q = q.gte("date", from);
+  if (to) q = q.lte("date", to);
+  if (branchId != null) q = q.eq("branch_id", branchId);
+  q = q.order("date", { ascending: false }).order("payment_no", { ascending: false });
+  const { data, error } = await q;
+  if (error) { console.error("fetchSupplierPayments", error); return []; }
+  return (data as GLSupplierPayment[]) || [];
+}
+
+// فواتير المورد المفتوحة (آجل/جزئي وبها مستحق) مرتّبة بالأقدم (للتخصيص FIFO)
+export async function fetchSupplierOpenInvoices(orgId: number, supplierAccountId: number, branchId?: number | null): Promise<GLPurchaseInvoice[]> {
+  let q = supabase.from("gl_purchase_invoices").select("*")
+    .eq("organization_id", orgId).eq("supplier_account_id", supplierAccountId)
+    .in("payment_type", ["credit", "partial"])
+    .order("date", { ascending: true }).order("invoice_no", { ascending: true });
+  if (branchId != null) q = q.eq("branch_id", branchId);
+  const { data, error } = await q;
+  if (error) { console.error("fetchSupplierOpenInvoices", error); return []; }
+  return ((data as GLPurchaseInvoice[]) || []).filter((i) => (Number(i.total) || 0) - (Number(i.paid_amount) || 0) > 0.005);
+}
+
+export async function createSupplierPayment(orgId: number, args: {
+  branch_id: number | null; date: string;
+  supplier_account_id: number; supplier_name: string | null;
+  treasury_account_id: number; amount: number;
+  allocations: SupplierPaymentAlloc[]; notes: string | null;
+}): Promise<{ ok: boolean; error?: string; id?: number; paymentNo?: number; paymentYear?: number }> {
+  const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
+  const amt = round2(args.amount);
+  if (amt <= 0) return { ok: false, error: "مبلغ الدفعة يجب أن يكون أكبر من صفر." };
+  if (!args.supplier_account_id) return { ok: false, error: "اختر المورد." };
+  if (!args.treasury_account_id) return { ok: false, error: "اختر الخزنة/البنك." };
+  if (args.supplier_account_id === args.treasury_account_id) return { ok: false, error: "حساب المورد والخزنة لا يمكن أن يكونا نفس الحساب." };
+  const allocs = (args.allocations || []).filter((a) => a.invoice_id && (Number(a.amount) || 0) > 0);
+  const allocTotal = round2(allocs.reduce((s, a) => s + (Number(a.amount) || 0), 0));
+  if (allocTotal > amt + 0.005) return { ok: false, error: "إجمالي المخصّص للفواتير أكبر من مبلغ الدفعة." };
+
+  // قيد السداد: مدين المورد / دائن الخزنة
+  const lines: GLLine[] = [
+    { account_id: args.supplier_account_id, debit: amt, credit: 0, branch_id: args.branch_id },
+    { account_id: args.treasury_account_id, debit: 0, credit: amt, branch_id: args.branch_id },
+  ];
+  const res = await createEntry(orgId, {
+    date: args.date, description: `سداد مورد — ${args.supplier_name || ""}`.trim(),
+    branch_id: args.branch_id, entry_type: "payment", notes: args.notes || null, status: "posted",
+  }, lines);
+  if (!res.ok || !res.id) return { ok: false, error: res.error || "تعذّر إنشاء قيد السداد." };
+
+  const year = Number(args.date.slice(0, 4));
+  const payment_no = await nextSupplierPaymentNo(orgId, year);
+  const { data, error } = await supabase.from("gl_supplier_payments").insert({
+    organization_id: orgId, branch_id: args.branch_id, payment_no, payment_year: year, date: args.date,
+    supplier_account_id: args.supplier_account_id, supplier_name: args.supplier_name || null,
+    treasury_account_id: args.treasury_account_id, amount: amt,
+    allocations: allocs, notes: args.notes || null, entry_id: res.id, status: "posted",
+  }).select("id").single();
+  if (error) { await deleteEntry(res.id); console.error("createSupplierPayment", error); return { ok: false, error: error.message }; }
+  const newId = Number((data as any).id);
+
+  // تحديث المدفوع لكل فاتورة مخصّصة (بحد أقصى الإجمالي)
+  for (const a of allocs) {
+    const add = round2(a.amount);
+    const { data: inv } = await supabase.from("gl_purchase_invoices").select("total, paid_amount").eq("id", a.invoice_id).single();
+    if (!inv) continue;
+    const newPaid = Math.min(round2((Number((inv as any).paid_amount) || 0) + add), Number((inv as any).total) || 0);
+    const { error: upErr } = await supabase.from("gl_purchase_invoices").update({ paid_amount: newPaid }).eq("id", a.invoice_id);
+    if (upErr) console.error("createSupplierPayment.updateInvoice", upErr);
+  }
+  return { ok: true, id: newId, paymentNo: payment_no, paymentYear: year };
+}

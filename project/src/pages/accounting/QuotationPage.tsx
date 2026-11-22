@@ -138,8 +138,9 @@ export default function QuotationPage() {
   return <div className="min-h-screen p-4 lg:p-6 text-white" dir="rtl">
     <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
       <div><h1 className="text-2xl font-black">عروض الأسعار</h1><p className="mt-1 text-xs text-slate-400">إنشاء ومتابعة عروض الأسعار وتحويل المقبول منها إلى فاتورة مبيعات</p></div>
-      <button className={`${btn} bg-blue-600 text-white`} onClick={()=>{reset();setShowForm(true);}}><FilePlus2 size={16}/> عرض سعر جديد</button>
+      {!showForm&&<button className={`${btn} bg-blue-600 text-white`} onClick={()=>{reset();setShowForm(true);}}><FilePlus2 size={16}/> عرض سعر جديد</button>}
     </div>
+    {!showForm&&<>
     <div className="mb-4 grid grid-cols-1 gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-4 md:grid-cols-5">
       <label className="text-xs text-slate-400">من تاريخ<input className={`${input} mt-1`} type="date" value={from} onChange={e=>setFrom(e.target.value)}/></label>
       <label className="text-xs text-slate-400">إلى تاريخ<input className={`${input} mt-1`} type="date" value={to} onChange={e=>setTo(e.target.value)}/></label>
@@ -153,9 +154,10 @@ export default function QuotationPage() {
         {!filtered.length&&<tr><td colSpan={7} className="p-10 text-center text-slate-500">{loading?"جارٍ التحميل…":"لا توجد عروض أسعار خلال الفترة المحددة."}</td></tr>}
       </tbody></table></div>
     </div>
+    </>}
 
-    {showForm&&<div className="fixed inset-0 z-[100] overflow-y-auto bg-black/70 p-3"><div className="mx-auto my-6 max-w-5xl rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
-      <div className="mb-5 flex items-center justify-between"><h2 className="text-lg font-black">إنشاء عرض سعر</h2><button onClick={()=>setShowForm(false)}><X/></button></div>
+    {showForm&&<section className="w-full rounded-2xl border border-slate-800 bg-slate-900 p-4 lg:p-6">
+      <div className="mb-5 flex items-center justify-between border-b border-slate-800 pb-4"><div><h2 className="text-xl font-black">إنشاء عرض سعر</h2><p className="mt-1 text-xs text-slate-400">أدخل بيانات العميل والأصناف والضريبة والملاحظات</p></div><button className={`${btn} bg-slate-800 text-slate-300`} onClick={()=>setShowForm(false)}><X size={16}/> رجوع</button></div>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
         <label className="text-xs text-slate-400">التاريخ<input className={`${input} mt-1`} type="date" value={date} onChange={e=>setDate(e.target.value)}/></label>
         <label className="text-xs text-slate-400">صالح حتى<input className={`${input} mt-1`} type="date" value={validUntil} min={date} onChange={e=>setValidUntil(e.target.value)}/></label>
@@ -172,7 +174,7 @@ export default function QuotationPage() {
       </div>
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 pt-4"><div className="text-sm leading-7"><div>قبل الضريبة: <b>{money(totals.subtotal)}</b></div><div>الضريبة: <b>{money(totals.tax)}</b></div><div className="text-lg font-black text-emerald-300">الإجمالي: {money(totals.total)} ر.س</div></div><button disabled={saving} className={`${btn} bg-blue-600 px-6 py-3 text-white disabled:opacity-50`} onClick={()=>void save()}>{saving?"جارٍ الحفظ…":"حفظ عرض السعر"}</button></div>
       <p className="mt-3 text-[11px] text-amber-300">حفظ العرض لا ينشئ قيدًا محاسبيًا ولا يخصم المخزون.</p>
-    </div></div>}
+    </section>}
 
     {convertRow&&<div className="fixed inset-0 z-[110] flex items-center justify-center overflow-y-auto bg-black/70 p-3"><div className="my-6 w-full max-w-xl rounded-2xl border border-slate-700 bg-slate-900 p-5">
       <div className="mb-4 flex justify-between"><h2 className="font-black">تحويل العرض إلى فاتورة</h2><button onClick={()=>setConvertRow(null)}><X/></button></div>

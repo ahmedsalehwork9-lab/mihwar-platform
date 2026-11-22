@@ -2044,3 +2044,48 @@ export async function deleteSalesInvoice(inv: GLSalesInvoice): Promise<{ ok: boo
   if (error) console.error("deleteSalesInvoice", error);
   return { ok: !error, error: error?.message };
 }
+
+// ══════════════ نقاط البيع — المنتجات والمخزون ══════════════
+export type POSProduct = {
+  id: number;
+  product_code: string | null;
+  product_name: string;
+  brand: string | null;
+  barcode: string | null;
+  price: number;              // سعر التكلفة
+  selling_price: number | null; // سعر البيع
+  quantity: number;           // المخزون المتاح
+  product_image_url: string | null;
+};
+
+// منتجات فرع (shop) معيّن لنقطة البيع
+export async function fetchProducts(shopId: number): Promise<POSProduct[]> {
+  const { data, error } = await supabase.from("products")
+    .select("id, product_code, product_name, brand, barcode, price, selling_price, quantity, product_image_url")
+    .eq("shop_id", shopId).order("product_name");
+  if (error) { console.error("fetchProducts", error); return []; }
+  return (data as any[] || []).map((r) => ({
+    id: Number(r.id),
+    product_code: r.product_code ?? null,
+    product_name: r.product_name || "—",
+    brand: r.brand ?? null,
+    barcode: r.barcode ?? null,
+    price: Number(r.price) || 0,
+    selling_price: r.selling_price != null ? Number(r.selling_price) : null,
+    quantity: Number(r.quantity) || 0,
+    product_image_url: r.product_image_url ?? null,
+  }));
+}
+
+// سعر البيع الفعّال (سعر البيع إن وُجد، وإلا التكلفة)
+export function posPrice(p: { selling_price: number | null; price: number }): number {
+  return (p.selling_price != null && p.selling_price > 0) ? p.selling_price : (Number(p.price) || 0);
+}
+
+// تعديل المخزون (سالب عند البيع، موجب عند الإرجاع)
+export async function adjustProductStock(productId: number, delta: number): Promise<void> {
+  const { data } = await supabase.from("products").select("quantity").eq("id", productId).single();
+  const cur = Number((data as any)?.quantity) || 0;
+  const { error } = await supabase.from("products").update({ quantity: cur + delta }).eq("id", productId);
+  if (error) console.error("adjustProductStock", error);
+}

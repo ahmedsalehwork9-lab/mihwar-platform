@@ -203,7 +203,7 @@ const OPERATIONS: OpEntry[] = [
 
   { type: 'group', key: 'sales', icon: <TrendingUp size={17} />, labelEn: 'Sales', labelAr: 'المبيعات', homePage: 'sales-reconciliation', children: [
     { labelEn: 'Sales',                labelAr: 'المبيعات',       section: 'sales' },
-    { labelEn: 'POS',                  labelAr: 'نقاط البيع',     page: 'pos',                  placeholder: true },
+    { labelEn: 'POS',                  labelAr: 'نقاط البيع',     page: 'pos' },
     { labelEn: 'Sales Reconciliation', labelAr: 'تسوية المبيعات', page: 'sales-reconciliation' },
     { labelEn: 'Quotation',            labelAr: 'عرض سعر',        page: 'quotation' },
   ] },
@@ -239,7 +239,7 @@ const OPERATIONS: OpEntry[] = [
 ];
 
 // صفحات «قريبًا» — مسموح بها للجميع دون صلاحية خاصة (حتى لا يعيد التوجيه طردها)
-const PLACEHOLDER_PAGES: Page[] = ['sales', 'pos', 'purchase-orders', 'purchase-reconciliation', 'purchase-returns'];
+const PLACEHOLDER_PAGES: Page[] = ['sales', 'purchase-orders', 'purchase-reconciliation', 'purchase-returns'];
 
 // ══════════════════════════════════════════════════════════════════════
 // BOTTOM NAV

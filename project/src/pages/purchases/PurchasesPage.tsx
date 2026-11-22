@@ -12,6 +12,9 @@
 import { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import * as XLSX from "xlsx";
 import { useAuth } from "../../context/AuthContext";
+import * as DB from "../lib/accountingDb";
+import PartyQuickEditor from "../lib/PartyQuickEditor";
+import type { GLAccount, GLParty } from "../lib/accountingDb";
 import { supabase } from "../lib/supabase";
 import { fetchPurchasesWithMigration, upsertPurchase, deletePurchase } from "../lib/cafeDb";
 import { logoBox, contactFooter, waQrDataUrl, SUPPORT_WA } from "../lib/reportChrome";
@@ -621,8 +624,11 @@ export default function PurchasesPage() {
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-[10px] text-slate-500 font-bold">المورّد</label>
-              <input list="supList" value={supplier} onChange={(e) => setSupplier(e.target.value)} placeholder="اسم المورّد" className="bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm" />
-              <datalist id="supList">{[...new Set([...supplierSuggest,...glParties.map(x=>x.name)])].map((s) => <option key={s} value={s} />)}</datalist>
+              <select value={supplier} onChange={(e) => { if(e.target.value === "__create_supplier__"){setSupplierEditorRow(null);setSupplierEditorOpen(true);return;} setSupplier(e.target.value); }} className="bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm">
+                <option value="">اختر المورد</option>
+                {[...new Set([...glParties.filter(x=>x.is_active).map(x=>x.name),...supplierSuggest])].sort((a,b)=>a.localeCompare(b,"ar")).map((name) => <option key={name} value={name}>{name}</option>)}
+                {accountingOrg&&<option value="__create_supplier__">+ إنشاء مورد جديد</option>}
+              </select>
               {accountingOrg&&<div className="mt-1 flex gap-2"><button type="button" onClick={()=>{setSupplierEditorRow(null);setSupplierEditorOpen(true);}} className="text-[11px] font-bold text-emerald-300">+ إنشاء مورد</button>{matchedSupplier&&<button type="button" onClick={()=>{setSupplierEditorRow(matchedSupplier);setSupplierEditorOpen(true);}} className="text-[11px] font-bold text-blue-300">تحرير المورد المحدد</button>}{matchedSupplier&&<span className="text-[10px] text-slate-500">مرتبط بحساب: {glAccounts.find(a=>a.id===matchedSupplier.account_id)?.code||"غير محدد"}</span>}</div>}
             </div>
             <div className="flex flex-col gap-1">

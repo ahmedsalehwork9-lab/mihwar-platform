@@ -215,7 +215,7 @@ const OPERATIONS: OpEntry[] = [
     { labelEn: 'Marketplace',             labelAr: 'سوق التوريد',      page: 'purchases' },
     { labelEn: 'Purchase Orders',         labelAr: 'أوامر الشراء',    page: 'purchase-orders',         placeholder: true },
     { labelEn: 'Purchase Reconciliation', labelAr: 'تسوية المشتريات', page: 'purchase-reconciliation', placeholder: true },
-    { labelEn: 'Purchase Returns',        labelAr: 'مرتجعات',         page: 'purchase-returns',        placeholder: true },
+    { labelEn: 'Purchase Returns',        labelAr: 'مرتجعات المشتريات', page: 'purchase-returns' },
   ] },
 
   { type: 'group', key: 'reports', icon: <FileBarChart size={17} />, labelEn: 'Reports', labelAr: 'التقارير', homePage: 'reports', children: [
@@ -242,7 +242,7 @@ const OPERATIONS: OpEntry[] = [
 ];
 
 // صفحات «قريبًا» — مسموح بها للجميع دون صلاحية خاصة (حتى لا يعيد التوجيه طردها)
-const PLACEHOLDER_PAGES: Page[] = ['sales', 'purchase-orders', 'purchase-reconciliation', 'purchase-returns'];
+const PLACEHOLDER_PAGES: Page[] = ['sales', 'purchase-orders', 'purchase-reconciliation'];
 
 // ══════════════════════════════════════════════════════════════════════
 // BOTTOM NAV

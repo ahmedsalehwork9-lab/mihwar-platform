@@ -125,6 +125,7 @@ export const ENTRY_TYPE_LABEL: Record<string, string> = {
   general: "عام",
 
   purchases: "مشتريات",
+  purchase_return: "مرتجع مشتريات",
 
   sales: "مبيعات",
 
@@ -2421,4 +2422,144 @@ export async function createPurchaseInvoice(orgId: number, inv: {
     }
   }
   return { ok: true, id: newId, entryId: res.id, invoiceNo: invoice_no };
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════
+//  مرتجعات المشتريات (المرحلة 2) — عكس قيد الشراء + إخراج المخزون
+//    مدين (مورد/خزنة) = دائن (مخزون/مصروف/أصل + ضريبة مدخلات)
+// ══════════════════════════════════════════════════════════════════════════
+
+export type PurchaseReturnItem = {
+  original_item_index: number;
+  product_id: number | null;
+  description: string;
+  qty: number;
+  unit_cost: number;
+  line_total: number;
+};
+
+export type GLPurchaseReturn = {
+  id: number; organization_id: number; branch_id: number | null;
+  return_no: number; return_year: number; date: string;
+  original_invoice_id: number; original_invoice_no: number; original_invoice_year: number;
+  party_id: number | null; supplier_name: string | null;
+  purchase_kind: PurchaseKind;
+  credit_account_id: number; tax_account_id: number | null;
+  refund_mode: "credit" | "cash"; refund_account_id: number | null;
+  subtotal: number; tax_amount: number; total: number;
+  items: PurchaseReturnItem[]; notes: string | null; entry_id: number | null; status: string;
+  created_at?: string;
+};
+
+export async function nextPurchaseReturnNo(orgId: number, year: number): Promise<number> {
+  const { data } = await supabase
+    .from("gl_purchase_returns").select("return_no")
+    .eq("organization_id", orgId).eq("return_year", year)
+    .order("return_no", { ascending: false }).limit(1);
+  return (((data as any[])?.[0]?.return_no as number) || 0) + 1;
+}
+
+export async function fetchPurchaseReturns(orgId: number, from?: string, to?: string, branchId?: number | null): Promise<GLPurchaseReturn[]> {
+  let q = supabase.from("gl_purchase_returns").select("*").eq("organization_id", orgId);
+  if (from) q = q.gte("date", from);
+  if (to) q = q.lte("date", to);
+  if (branchId != null) q = q.eq("branch_id", branchId);
+  q = q.order("date", { ascending: false }).order("return_no", { ascending: false });
+  const { data, error } = await q;
+  if (error) { console.error("fetchPurchaseReturns", error); return []; }
+  return (data as GLPurchaseReturn[]) || [];
+}
+
+// الكمية المرتجعة سابقًا لكل سطر من فاتورة (لمنع تجاوز الكمية الأصلية)
+export async function fetchReturnedQtyByInvoice(invoiceId: number): Promise<Record<number, number>> {
+  const { data, error } = await supabase.from("gl_purchase_returns").select("items").eq("original_invoice_id", invoiceId);
+  if (error) { console.error("fetchReturnedQtyByInvoice", error); return {}; }
+  const acc: Record<number, number> = {};
+  for (const r of (data as any[] || [])) {
+    for (const it of ((r.items || []) as PurchaseReturnItem[])) {
+      const k = Number(it.original_item_index);
+      acc[k] = (acc[k] || 0) + (Number(it.qty) || 0);
+    }
+  }
+  return acc;
+}
+
+// إخراج مخزون عند المرتجع (كمية سالبة) + حركة رقابية. لا يغيّر متوسط التكلفة.
+async function returnPurchaseStock(orgId: number, branchId: number | null, item: PurchaseReturnItem, refId: number, costFactor: number): Promise<void> {
+  const qtyOut = Number(item.qty) || 0;
+  if (!item.product_id || qtyOut <= 0) return;
+  const unitNet = Math.round(((Number(item.unit_cost) || 0) * costFactor) * 10000) / 10000;
+  const { data } = await supabase.from("products").select("quantity").eq("id", item.product_id).single();
+  const curQty = Number((data as any)?.quantity) || 0;
+  const newQty = curQty - qtyOut;
+  const { error: upErr } = await supabase.from("products").update({ quantity: newQty }).eq("id", item.product_id);
+  if (upErr) { console.error("returnPurchaseStock.update", upErr); return; }
+  const { error: mvErr } = await supabase.from("gl_stock_moves").insert({
+    organization_id: orgId, branch_id: branchId, product_id: item.product_id,
+    move_type: "purchase_return", qty: -qtyOut, unit_cost: unitNet,
+    ref_type: "gl_purchase_returns", ref_id: refId, notes: item.description || null,
+  });
+  if (mvErr) console.error("returnPurchaseStock.move", mvErr);
+}
+
+export async function createPurchaseReturn(orgId: number, args: {
+  original_invoice: GLPurchaseInvoice;
+  date: string;
+  items: PurchaseReturnItem[];
+  refund_mode: "credit" | "cash";
+  refund_account_id: number | null;   // خزنة الاسترداد (للنقدي)
+  notes: string | null;
+}): Promise<{ ok: boolean; error?: string; id?: number; returnNo?: number; returnYear?: number; returnLabel?: string }> {
+  const inv = args.original_invoice;
+  const items = args.items.filter((it) => (Number(it.qty) || 0) > 0 && (Number(it.unit_cost) || 0) > 0);
+  if (!items.length) return { ok: false, error: "حدّد صنفًا واحدًا على الأقل بكمية مرتجعة." };
+
+  const t = invoiceTotals(items.map((it) => ({ qty: it.qty, unit_price: it.unit_cost })), inv.tax_rate, inv.tax_inclusive);
+  if (t.total <= 0) return { ok: false, error: "قيمة المرتجع صفر." };
+
+  if (args.refund_mode === "cash" && !args.refund_account_id) return { ok: false, error: "اختر خزنة/بنك الاسترداد النقدي." };
+  if (args.refund_mode === "credit" && !inv.supplier_account_id) return { ok: false, error: "الفاتورة الأصلية بلا حساب مورد (كانت نقدية). استخدم استرداد نقدي." };
+  if (t.tax > 0 && !inv.tax_account_id) return { ok: false, error: "الفاتورة الأصلية بلا حساب ضريبة مدخلات." };
+
+  // قيد المرتجع (عكس الشراء)
+  const lines: GLLine[] = [];
+  if (args.refund_mode === "cash") lines.push({ account_id: args.refund_account_id as number, debit: t.total, credit: 0, branch_id: inv.branch_id });
+  else lines.push({ account_id: inv.supplier_account_id as number, debit: t.total, credit: 0, branch_id: inv.branch_id, party_id: inv.party_id ?? null });
+  lines.push({ account_id: inv.debit_account_id, debit: 0, credit: t.subtotal, branch_id: inv.branch_id });
+  if (t.tax > 0) lines.push({ account_id: inv.tax_account_id as number, debit: 0, credit: t.tax, branch_id: inv.branch_id });
+
+  const year = Number(args.date.slice(0, 4));
+  const returnNo = await nextPurchaseReturnNo(orgId, year);
+  const label = `PR-${year}-${String(returnNo).padStart(4, "0")}`;
+  const res = await createEntry(orgId, {
+    date: args.date, description: `مرتجع مشتريات ${label} — فاتورة ${inv.invoice_no}/${inv.invoice_year}`,
+    branch_id: inv.branch_id, entry_type: "purchase_return", notes: args.notes || null, status: "posted",
+  }, lines);
+  if (!res.ok || !res.id) return { ok: false, error: res.error || "تعذّر إنشاء القيد المحاسبي." };
+
+  const { data, error } = await supabase.from("gl_purchase_returns").insert({
+    organization_id: orgId, branch_id: inv.branch_id, return_no: returnNo, return_year: year, date: args.date,
+    original_invoice_id: inv.id, original_invoice_no: inv.invoice_no, original_invoice_year: inv.invoice_year,
+    party_id: inv.party_id ?? null, supplier_name: inv.supplier_name ?? null,
+    purchase_kind: inv.purchase_kind, credit_account_id: inv.debit_account_id, tax_account_id: inv.tax_account_id ?? null,
+    refund_mode: args.refund_mode,
+    refund_account_id: args.refund_mode === "cash" ? (args.refund_account_id ?? null) : (inv.supplier_account_id ?? null),
+    subtotal: t.subtotal, tax_amount: t.tax, total: t.total, items, notes: args.notes || null,
+    entry_id: res.id, status: "posted",
+  }).select("id").single();
+  if (error) { await deleteEntry(res.id); console.error("createPurchaseReturn", error); return { ok: false, error: error.message }; }
+  const newId = Number((data as any).id);
+
+  // إخراج المخزون (مشتريات مخزون فقط)
+  if (inv.purchase_kind === "inventory") {
+    const costFactor = t.gross > 0 ? t.subtotal / t.gross : 1;
+    for (const it of items) {
+      if (it.product_id && (Number(it.qty) || 0) > 0) {
+        try { await returnPurchaseStock(orgId, inv.branch_id, it, newId, costFactor); }
+        catch (e) { console.error("returnPurchaseStock", e); }
+      }
+    }
+  }
+  return { ok: true, id: newId, returnNo, returnYear: year, returnLabel: label };
 }

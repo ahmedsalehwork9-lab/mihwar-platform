@@ -31,6 +31,7 @@ const AccountingPage = lazy(() => import('./pages/accounting/AccountingPage'));
 const QuotationPage = lazy(() => import('./pages/accounting/QuotationPage'));
 const POSPage = lazy(() => import('./pages/accounting/POSPage'));
 const PurchaseInvoicesPage = lazy(() => import('./pages/purchases/PurchaseInvoicesPage'));
+const PurchaseReturnsPage = lazy(() => import('./pages/purchases/PurchaseReturnsPage'));
 
 // ── Admin pages ─────────────────────────────────────────────────────────────
 const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
@@ -142,7 +143,7 @@ function AppContent() {
           {page === 'purchase-invoices' && <PurchaseInvoicesPage />}
           {page === 'purchase-orders' && <ComingSoon title="أوامر الشراء" />}
           {page === 'purchase-reconciliation' && <ComingSoon title="تسوية المشتريات" />}
-          {page === 'purchase-returns' && <ComingSoon title="مرتجعات المشتريات" />}
+          {page === 'purchase-returns' && <PurchaseReturnsPage />}
 
           {/* ADMIN */}
           {page === 'admin' &&

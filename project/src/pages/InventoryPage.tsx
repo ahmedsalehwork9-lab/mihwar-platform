@@ -9,6 +9,7 @@ import {
   TrendingDown, Boxes, DollarSign,
   PackageX, PackageCheck, Filter, Globe, Users, Lock,
   ImagePlus, ImageOff, ScanLine, Percent,
+  ChevronUp, ChevronDown, ArrowUpDown, SlidersHorizontal,
 } from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -44,6 +45,13 @@ type Product = {
 };
 
 type FilterStatus = 'all' | 'in_stock' | 'low_stock' | 'out_of_stock' | 'reorder';
+type SortKey = 'default' | 'name' | 'quantity' | 'cost' | 'selling' | 'value';
+type ColVis = { image: boolean; category: boolean; cost: boolean; selling: boolean; value: boolean; visibility: boolean };
+const DEFAULT_COLS: ColVis = { image: true, category: true, cost: true, selling: true, value: true, visibility: true };
+function loadCols(): ColVis {
+  try { const s = localStorage.getItem('mihwar_inv_cols'); if (s) return { ...DEFAULT_COLS, ...JSON.parse(s) }; } catch { /* ignore */ }
+  return DEFAULT_COLS;
+}
 
 type FormState = {
   product_code: string;
@@ -580,6 +588,10 @@ export default function InventoryPage() {
 
   const [search, setSearch]             = useState('');
   const [filter, setFilter]             = useState<FilterStatus>('all');
+  const [sortKey, setSortKey]           = useState<SortKey>('default');
+  const [sortDir, setSortDir]           = useState<'asc' | 'desc'>('asc');
+  const [cols, setCols]                 = useState<ColVis>(loadCols);
+  const [colsOpen, setColsOpen]         = useState(false);
   const [page, setPage]                 = useState(1);
   const [selected, setSelected]         = useState<Set<number>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -1400,10 +1412,44 @@ export default function InventoryPage() {
     };
   }, [products, filter, search]);
 
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+  const toggleSort = useCallback((key: SortKey) => {
+    if (sortKey === key) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortKey(key); setSortDir('asc'); }
+    setPage(1);
+  }, [sortKey]);
+
+  const toggleCol = useCallback((key: keyof ColVis) => {
+    setCols(prev => {
+      const next = { ...prev, [key]: !prev[key] };
+      try { localStorage.setItem('mihwar_inv_cols', JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
+
+  const sorted = useMemo(() => {
+    if (sortKey === 'default') return filtered;
+    const dir = sortDir === 'asc' ? 1 : -1;
+    const val = (p: Product): number | string => {
+      switch (sortKey) {
+        case 'name':     return p.product_name?.toLowerCase() ?? '';
+        case 'quantity': return p.quantity;
+        case 'cost':     return p.price;
+        case 'selling':  return effectiveSelling(p, defaultMarginPercent);
+        case 'value':    return p.quantity * p.price;
+        default:         return 0;
+      }
+    };
+    return [...filtered].sort((a, b) => {
+      const va = val(a), vb = val(b);
+      if (typeof va === 'string' && typeof vb === 'string') return va.localeCompare(vb) * dir;
+      return ((va as number) - (vb as number)) * dir;
+    });
+  }, [filtered, sortKey, sortDir, defaultMarginPercent]);
+
+  const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
   const pageItems  = useMemo(
-    () => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-    [filtered, page]
+    () => sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [sorted, page]
   );
 
   // ── Helpers ────────────────────────────────────────────────────────────────
@@ -2005,6 +2051,35 @@ export default function InventoryPage() {
           >
             <Percent size={14} /> {t('Profit Margin', 'هامش الربح')}
           </button>
+          <div className="relative flex-1 sm:flex-none">
+            <button
+              onClick={() => setColsOpen(o => !o)}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-800 bg-slate-900 text-slate-300 text-xs font-bold hover:bg-slate-800 transition-colors"
+              title={t('Customize columns', 'تخصيص الأعمدة')}
+            >
+              <SlidersHorizontal size={14} /> {t('Columns', 'الأعمدة')}
+            </button>
+            {colsOpen && (
+              <>
+                <div className="fixed inset-0 z-20" onClick={() => setColsOpen(false)} />
+                <div className="absolute z-30 mt-2 left-0 w-48 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-2">
+                  {([
+                    { k: 'image' as keyof ColVis,      label: t('Image', 'الصورة') },
+                    { k: 'category' as keyof ColVis,   label: t('Category / Details', 'الصنف / التفاصيل') },
+                    { k: 'cost' as keyof ColVis,       label: t('Unit Cost', 'التكلفة') },
+                    { k: 'selling' as keyof ColVis,    label: t('Selling Price', 'سعر البيع') },
+                    { k: 'value' as keyof ColVis,      label: t('Stock Value', 'قيمة المخزون') },
+                    { k: 'visibility' as keyof ColVis, label: t('Visibility', 'نطاق الظهور') },
+                  ]).map(c => (
+                    <label key={c.k} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-800 cursor-pointer text-xs text-slate-300">
+                      <input type="checkbox" className="accent-emerald-500" checked={cols[c.k]} onChange={() => toggleCol(c.k)} />
+                      {c.label}
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         </div>
         <button
           onClick={openAdd}
@@ -2121,14 +2196,14 @@ export default function InventoryPage() {
                     aria-label={t('Select all', 'تحديد الكل')}
                   />
                 </th>
-                <th scope="col" className="p-4 w-[64px] text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Image', 'الصورة')}</th>
-                <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Product Details', 'تفاصيل المنتج')}</th>
-                <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Category / Details', 'الصنف / التفاصيل')}</th>
-                <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Stock Level', 'المخزون')}</th>
-                <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Unit Cost', 'التكلفة')}</th>
-                <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Selling Price', 'سعر البيع')}</th>
-                <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Stock Value', 'قيمة المخزون')}</th>
-                <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Visibility', 'نطاق الظهور')}</th>
+                {cols.image && <th scope="col" className="p-4 w-[64px] text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Image', 'الصورة')}</th>}
+                <SortHeader label={t('Product Details', 'تفاصيل المنتج')} k="name" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                {cols.category && <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Category / Details', 'الصنف / التفاصيل')}</th>}
+                <SortHeader label={t('Stock Level', 'المخزون')} k="quantity" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                {cols.cost && <SortHeader label={t('Unit Cost', 'التكلفة')} k="cost" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />}
+                {cols.selling && <SortHeader label={t('Selling Price', 'سعر البيع')} k="selling" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />}
+                {cols.value && <SortHeader label={t('Stock Value', 'قيمة المخزون')} k="value" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />}
+                {cols.visibility && <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Visibility', 'نطاق الظهور')}</th>}
                 <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest text-center">{t('Actions', 'إجراء')}</th>
               </tr>
             </thead>
@@ -2160,6 +2235,7 @@ export default function InventoryPage() {
                         aria-label={t(`Select ${p.product_name}`, `تحديد ${p.product_name}`)}
                       />
                     </td>
+                    {cols.image && (
                     <td className="p-4">
                       <ProductThumb
                         src={p.product_image_url}
@@ -2170,6 +2246,7 @@ export default function InventoryPage() {
                         t={t}
                       />
                     </td>
+                    )}
                     <td className="p-4">
                       <div className="flex flex-col">
                         <button type="button" onClick={() => setDetailItem(p)} className="text-white font-bold text-sm mb-1 text-right hover:text-emerald-400 transition-colors">{p.product_name}</button>
@@ -2179,30 +2256,40 @@ export default function InventoryPage() {
                         </div>
                       </div>
                     </td>
+                    {cols.category && (
                     <td className="p-4 text-slate-300">
                       <div className="flex flex-col">
-                        <span className="font-medium text-xs">{p.brand || '—'}</span>
-                        <span className="text-[10px] text-slate-500 uppercase">{p.model || '—'}</span>
+                        <span className="font-medium text-xs">{p.category || p.brand || '—'}</span>
+                        <span className="text-[10px] text-slate-500 uppercase">{p.model || p.brand || '—'}</span>
                       </div>
                     </td>
+                    )}
                     <td className="p-4">
                       <div className="flex items-center gap-3">
                         <span className={`text-base font-black w-8 ${qtyColor}`}>{p.quantity}</span>
                         <StockBadge quantity={p.quantity} t={t} />
                       </div>
                     </td>
+                    {cols.cost && (
                     <td className="p-4 font-bold text-slate-100">
                       {p.price.toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-[10px] text-slate-500 font-normal">ر.س</span>
                     </td>
+                    )}
+                    {cols.selling && (
                     <td className="p-4 text-slate-300">
                       {effectiveSelling(p, defaultMarginPercent).toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-[10px] text-slate-500 font-normal">ر.س</span>
                     </td>
+                    )}
+                    {cols.value && (
                     <td className="p-4 font-bold text-emerald-400">
                       {(p.quantity * p.price).toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-[10px] text-slate-500 font-normal">ر.س</span>
                     </td>
+                    )}
+                    {cols.visibility && (
                     <td className="p-4">
                       <VisibilityBadge scope={p.visibility_scope} t={t} />
                     </td>
+                    )}
                     <td className="p-4">
                       <div className="flex items-center justify-center gap-2">
                         <button
@@ -2778,5 +2865,20 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: 'em
       <div className="text-[10px] text-slate-500">{label}</div>
       <div className={`text-sm font-black ${c} mt-0.5`}>{value}</div>
     </div>
+  );
+}
+
+// رأس عمود قابل للفرز
+function SortHeader({ label, k, sortKey, sortDir, onSort }: {
+  label: string; k: SortKey; sortKey: SortKey; sortDir: 'asc' | 'desc'; onSort: (k: SortKey) => void;
+}) {
+  const active = sortKey === k;
+  return (
+    <th scope="col" onClick={() => onSort(k)} className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest cursor-pointer select-none hover:text-slate-300 transition-colors">
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {active ? (sortDir === 'asc' ? <ChevronUp size={11} className="text-emerald-400" /> : <ChevronDown size={11} className="text-emerald-400" />) : <ArrowUpDown size={10} className="opacity-30" />}
+      </span>
+    </th>
   );
 }

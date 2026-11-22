@@ -34,6 +34,7 @@ type Product = {
   min_quantity?: number | null;
   reorder_level?: number | null;
   max_quantity?: number | null;
+  attributes?: Record<string, any> | null;
   // Optional per-product margin override (%). When null/undefined, the
   // shop's default_margin_percent applies instead. Cost price (this
   // page) is never affected by margin — margin only changes the price
@@ -610,6 +611,7 @@ export default function InventoryPage() {
   const [showModal, setShowModal]       = useState(false);
   const [editItem, setEditItem]         = useState<Product | null>(null);
   const [detailItem, setDetailItem]     = useState<Product | null>(null);
+  const [attrRows, setAttrRows]         = useState<{ key: string; value: string }[]>([]);
   const [form, setForm]                 = useState<FormState>(EMPTY_FORM);
   const [formError, setFormError]       = useState<string | null>(null);
 
@@ -675,7 +677,7 @@ export default function InventoryPage() {
 
         const { data: chunk, error: fetchErr } = await supabase
           .from("products")
-          .select("id, product_code, product_name, brand, model, quantity, price, shop_id, visibility_scope, product_image_url, barcode, margin_percent, selling_price, category, min_quantity, reorder_level, max_quantity")
+          .select("id, product_code, product_name, brand, model, quantity, price, shop_id, visibility_scope, product_image_url, barcode, margin_percent, selling_price, category, min_quantity, reorder_level, max_quantity, attributes")
           .eq("shop_id", ownedShopId)
           .order("created_at", { ascending: false })
           .range(from, to);
@@ -980,6 +982,7 @@ export default function InventoryPage() {
         min_quantity:     form.min_quantity === '' ? null : Number(form.min_quantity),
         reorder_level:    form.reorder_level === '' ? null : Number(form.reorder_level),
         max_quantity:     form.max_quantity === '' ? null : Number(form.max_quantity),
+        attributes:       Object.fromEntries(attrRows.filter(r => r.key.trim() !== '').map(r => [r.key.trim(), r.value])),
       };
 
       let productId: number;
@@ -1479,6 +1482,7 @@ export default function InventoryPage() {
   const openAdd = useCallback(() => {
     setEditItem(null);
     setForm(EMPTY_FORM);
+    setAttrRows([]);
     setAllowedShopIds([]);
     setFormError(null);
     setImageError(null);
@@ -1489,6 +1493,7 @@ export default function InventoryPage() {
 
   const openEdit = useCallback(async (p: Product) => {
     setEditItem(p);
+    setAttrRows(p.attributes && typeof p.attributes === 'object' ? Object.entries(p.attributes).map(([k, v]) => ({ key: k, value: String(v ?? '') })) : []);
     setForm({
       product_code:        p.product_code,
       product_name:          p.product_name,
@@ -2459,6 +2464,38 @@ export default function InventoryPage() {
                   />
                 </div>
 
+                {/* ── خصائص إضافية حسب النشاط (توافق مركبات/مقاسات/ألوان/صلاحية…) ── */}
+                <div className="col-span-2">
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Extra Attributes', 'خصائص إضافية')}</label>
+                  <div className="space-y-2">
+                    {attrRows.map((row, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <input
+                          className="w-1/3 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:border-emerald-500 focus:outline-none"
+                          placeholder={t('Property', 'الخاصية')}
+                          value={row.key}
+                          onChange={e => setAttrRows(rs => rs.map((r, idx) => idx === i ? { ...r, key: e.target.value } : r))}
+                        />
+                        <input
+                          className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:border-emerald-500 focus:outline-none"
+                          placeholder={t('Value', 'القيمة')}
+                          value={row.value}
+                          onChange={e => setAttrRows(rs => rs.map((r, idx) => idx === i ? { ...r, value: e.target.value } : r))}
+                        />
+                        <button type="button" onClick={() => setAttrRows(rs => rs.filter((_, idx) => idx !== i))} className="p-2 text-slate-500 hover:text-red-400 shrink-0"><X size={16} /></button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    <button type="button" onClick={() => setAttrRows(rs => [...rs, { key: '', value: '' }])} className="text-xs px-3 py-1.5 rounded-lg bg-emerald-600/15 text-emerald-400 font-bold hover:bg-emerald-600/25">
+                      <Plus size={12} className="inline" /> {t('Add', 'إضافة')}
+                    </button>
+                    {['توافق المركبة', 'رقم القطعة', 'الصلاحية', 'الدفعة', 'المقاس', 'اللون', 'الوحدة'].map(k => (
+                      <button key={k} type="button" onClick={() => setAttrRows(rs => rs.some(r => r.key === k) ? rs : [...rs, { key: k, value: '' }])} className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-400 hover:border-emerald-500">{k}</button>
+                    ))}
+                  </div>
+                </div>
+
                 {/* ── Barcode (auto-generated when missing, read-only + copy) ── */}
                 <div className="col-span-2">
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
@@ -2857,6 +2894,21 @@ function ProductDetailDrawer({ p, orgId, defMargin, t, isRTL, onClose, onEdit }:
             <Stat label={t('Min / Max', 'الأدنى / الأقصى')} value={`${p.min_quantity ?? '—'} / ${p.max_quantity ?? '—'}`} />
           </div>
           <div className={`text-sm font-bold ${statusColor}`}>{t('Status', 'الحالة')}: {statusLabel}{needsReorder(p) ? ` · ${t('Needs reorder', 'يحتاج إعادة طلب')}` : ''}</div>
+
+          {/* extra attributes */}
+          {p.attributes && typeof p.attributes === 'object' && Object.keys(p.attributes).length > 0 && (
+            <div>
+              <div className="text-xs font-bold text-slate-400 mb-2">{t('Attributes', 'خصائص إضافية')}</div>
+              <div className="grid grid-cols-2 gap-2">
+                {Object.entries(p.attributes).map(([k, v]) => (
+                  <div key={k} className="bg-slate-800/40 rounded-lg px-3 py-2">
+                    <div className="text-[10px] text-slate-500">{k}</div>
+                    <div className="text-sm font-bold text-white mt-0.5 break-words">{String(v ?? '—') || '—'}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* movements */}
           <div>

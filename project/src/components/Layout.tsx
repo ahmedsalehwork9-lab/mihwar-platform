@@ -63,6 +63,7 @@ export type Page =
   | 'fixed-expenses'
   | 'financial-report'
   | 'reports-center'
+  | 'business-analytics'
   | 'accounting'
   | 'alerts'
   | 'shop-settings'       // ← إعدادات المحل + QR
@@ -100,6 +101,7 @@ const pageTitles: Record<Page, { en: string; ar: string }> = {
   'fixed-expenses': { en: 'Fixed Expenses', ar: 'المصروفات الثابتة' },
   'financial-report': { en: 'Financial Report', ar: 'التقرير المالي' },
   'reports-center':  { en: 'Reports Center',   ar: 'مركز التقارير'   },
+  'business-analytics': { en: 'Business Analytics', ar: 'تحليلات الأعمال' },
   'accounting':      { en: 'Accounting',       ar: 'الحسابات'        },
   'alerts':          { en: 'Alerts',           ar: 'التنبيهات'       },
   'shop-settings':   { en: 'Shop Settings',    ar: 'إعدادات المحل'   },
@@ -225,10 +227,11 @@ const OPERATIONS: OpEntry[] = [
     { labelEn: 'Supplier Payments',       labelAr: 'سداد الموردين',     page: 'supplier-payments' },
   ] },
 
-  { type: 'group', key: 'reports', icon: <FileBarChart size={17} />, labelEn: 'Reports', labelAr: 'التقارير', homePage: 'reports', children: [
+  { type: 'group', key: 'reports', icon: <FileBarChart size={17} />, labelEn: 'Reports', labelAr: 'التقارير', homePage: 'reports-center', children: [
+    { labelEn: 'Reports Center',   labelAr: 'مركز التقارير',  page: 'reports-center' },
+    { labelEn: 'Business Analytics', labelAr: 'تحليلات الأعمال', page: 'business-analytics' },
     { labelEn: 'Reports',          labelAr: 'التقارير',       page: 'reports' },
     { labelEn: 'Financial Report', labelAr: 'التقرير المالي', page: 'financial-report' },
-    { labelEn: 'Reports Center',   labelAr: 'مركز التقارير',  page: 'reports-center' },
   ] },
 
   { type: 'group', key: 'accounting', icon: <Calculator size={17} />, labelEn: 'Accounting', labelAr: 'الحسابات', homePage: 'accounting', homeSection: 'dashboard', children: [

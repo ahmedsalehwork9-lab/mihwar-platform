@@ -1475,6 +1475,17 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
     [sorted, page]
   );
 
+  // قيمة المخزون حسب التصنيف (أعلى 6)
+  const categoryStats = useMemo(() => {
+    const uncat = t('Uncategorized', 'غير مصنّف');
+    const map = new Map<string, number>();
+    for (const p of products) {
+      const key = (p.category || p.brand || uncat).trim() || uncat;
+      map.set(key, (map.get(key) || 0) + p.quantity * p.price);
+    }
+    return [...map.entries()].map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 6);
+  }, [products, t]);
+
   // ── Helpers ────────────────────────────────────────────────────────────────
   const showSuccess = useCallback((msg: string) => {
     setSuccessMsg(msg);
@@ -2064,6 +2075,12 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
           </div>
         </div>
       </section>
+
+      {/* ── Visual summary (desktop) ── */}
+      <div className="hidden lg:grid grid-cols-3 gap-4 mb-4">
+        <div className="col-span-2"><CategoryBars data={categoryStats} t={t} /></div>
+        <StatusDonut inStock={counts.in_stock} low={counts.low_stock} out={counts.out_of_stock} t={t} />
+      </div>
 
       {/* ── Table Actions ── */}
       <input ref={importRef} type="file" accept=".csv" onChange={handleImport} className="hidden" aria-hidden="true" />
@@ -2849,6 +2866,70 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
       {showMovesReport && (
         <MovesReportModal orgId={orgId} branchId={ownedShopId ? Number(ownedShopId) : null} products={products} t={t} isRTL={isRTL} onClose={() => setShowMovesReport(false)} />
       )}
+    </div>
+  );
+}
+
+// ─── Inventory visuals (inline SVG, no deps) ─────────────────────────────────
+function StatusDonut({ inStock, low, out, t }: { inStock: number; low: number; out: number; t: (en: string, ar: string) => string }) {
+  const total = inStock + low + out;
+  const segs = [
+    { v: inStock, c: '#10b981', label: t('In Stock', 'متوفر') },
+    { v: low, c: '#f59e0b', label: t('Low', 'منخفض') },
+    { v: out, c: '#ef4444', label: t('Out', 'نافد') },
+  ];
+  const R = 52, C = 2 * Math.PI * R;
+  let offset = 0;
+  return (
+    <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 h-full">
+      <h3 className="text-sm font-bold text-slate-200 mb-3">{t('Items by Status', 'توزيع الأصناف حسب الحالة')}</h3>
+      <div className="flex items-center gap-4">
+        <svg viewBox="0 0 140 140" className="w-32 h-32 shrink-0">
+          <g transform="rotate(-90 70 70)">
+            <circle cx="70" cy="70" r={R} fill="none" stroke="#1e293b" strokeWidth="16" />
+            {segs.map((s, i) => {
+              const len = total > 0 ? C * (s.v / total) : 0;
+              const el = <circle key={i} cx="70" cy="70" r={R} fill="none" stroke={s.c} strokeWidth="16" strokeDasharray={`${len} ${C - len}`} strokeDashoffset={-offset} strokeLinecap="butt" />;
+              offset += len;
+              return el;
+            })}
+          </g>
+          <text x="70" y="66" textAnchor="middle" fill="#fff" fontSize="20" fontWeight="800">{total}</text>
+          <text x="70" y="84" textAnchor="middle" fill="#64748b" fontSize="9">{t('items', 'صنف')}</text>
+        </svg>
+        <div className="space-y-1.5 text-xs flex-1">
+          {segs.map((s, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: s.c }} />
+              <span className="text-slate-400">{s.label}</span>
+              <span className="text-white font-bold mr-auto">{s.v} <span className="text-slate-500">({total > 0 ? ((s.v / total) * 100).toFixed(0) : 0}%)</span></span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CategoryBars({ data, t }: { data: { name: string; value: number }[]; t: (en: string, ar: string) => string }) {
+  const max = Math.max(...data.map(d => d.value), 1);
+  return (
+    <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 h-full">
+      <h3 className="text-sm font-bold text-slate-200 mb-3">{t('Stock Value by Category', 'قيمة المخزون حسب التصنيف')}</h3>
+      <div className="space-y-2.5">
+        {data.length === 0 && <div className="text-slate-600 text-xs py-6 text-center">—</div>}
+        {data.map((d, i) => (
+          <div key={i}>
+            <div className="flex justify-between text-xs mb-1 gap-2">
+              <span className="text-slate-300 truncate">{d.name}</span>
+              <span className="text-emerald-400 font-bold shrink-0">{d.value.toLocaleString(undefined, { maximumFractionDigits: 0 })} <span className="text-slate-500 font-normal">ر.س</span></span>
+            </div>
+            <div className="h-2.5 rounded-full bg-slate-800 overflow-hidden">
+              <div className="h-full rounded-full bg-gradient-to-l from-emerald-500 to-emerald-400" style={{ width: `${(d.value / max) * 100}%` }} />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

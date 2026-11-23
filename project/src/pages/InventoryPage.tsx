@@ -2853,6 +2853,31 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
   );
 }
 
+// ─── Print helper (shared) ───────────────────────────────────────────────────
+function printDoc(title: string, bodyHtml: string) {
+  const win = window.open('', '_blank');
+  if (!win) { alert('من فضلك اسمح بالنوافذ المنبثقة للطباعة.'); return; }
+  const now = new Date();
+  const html = `<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>${title}</title>
+  <style>
+    *{box-sizing:border-box} body{font-family:'Segoe UI',Tahoma,Arial,sans-serif;margin:0;padding:20px;color:#0f172a;background:#fff}
+    .print-bar{position:sticky;top:0;background:#0f172a;color:#fff;padding:10px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;border-radius:8px}
+    .print-bar button{background:#059669;color:#fff;border:none;padding:8px 22px;border-radius:7px;font:inherit;font-weight:800;cursor:pointer}
+    h1{font-size:18px;margin:0 0 4px} .sub{color:#64748b;font-size:12px;margin-bottom:14px}
+    table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px} th,td{border:1px solid #e2e8f0;padding:6px 8px;text-align:right} th{background:#f1f5f9}
+    td.num{text-align:left;font-variant-numeric:tabular-nums} .pos{color:#059669;font-weight:700}.neg{color:#dc2626;font-weight:700}
+    .kv{display:flex;gap:18px;flex-wrap:wrap;margin:8px 0 12px} .kv div{font-size:12px;color:#64748b} .kv b{color:#0f172a}
+    h3{font-size:13px;margin:16px 0 4px;color:#0f172a}
+    @media print{.no-print{display:none!important}}
+  </style></head><body>
+  <div class="print-bar no-print"><span>معاينة — اختر «حفظ كـ PDF» من نافذة الطباعة</span><button onclick="window.print()">🖨️ طباعة / حفظ PDF</button></div>
+  ${bodyHtml}
+  <div style="margin-top:16px;color:#94a3b8;font-size:10px">طُبع: ${now.toLocaleString('ar-SA')}</div>
+  </body></html>`;
+  win.document.write(html); win.document.close();
+}
+const pmoney = (n: number | null | undefined) => (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 // ─── Actions Rail Button ─────────────────────────────────────────────────────
 function RailBtn({ icon, label, onClick, tone }: { icon: React.ReactNode; label: string; onClick: () => void; tone?: 'amber' }) {
   const cls = tone === 'amber'
@@ -2893,7 +2918,22 @@ function MovesReportModal({ orgId, branchId, products, t, isRTL, onClose }: {
       <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-3xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-800">
           <h2 className="text-white font-black flex items-center gap-2"><LineChart size={18} className="text-emerald-500" /> {t('Stock Movement Report', 'تقرير حركة المخزون')}</h2>
-          <button onClick={onClose} className="text-slate-500 hover:text-white"><X size={20} /></button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                const body = `<h1>تقرير حركة المخزون</h1><div class="sub">عدد الحركات: ${rows.length}</div>
+                  <table><thead><tr><th>التاريخ</th><th>الصنف</th><th>النوع</th><th>الكمية</th><th>التكلفة</th></tr></thead><tbody>
+                  ${rows.map(m => `<tr><td>${(m.created_at || '').slice(0, 10)}</td><td>${nameOf(m.product_id)}</td><td>${label(m.move_type)}</td><td class="num ${m.qty >= 0 ? 'pos' : 'neg'}">${m.qty >= 0 ? '+' : ''}${m.qty}</td><td class="num">${m.unit_cost != null ? pmoney(m.unit_cost) : '—'}</td></tr>`).join('')}
+                  </tbody></table>`;
+                printDoc('تقرير حركة المخزون', body);
+              }}
+              disabled={rows.length === 0}
+              className="flex items-center gap-1.5 text-xs font-bold text-emerald-400 hover:text-emerald-300 disabled:opacity-40 px-2 py-1"
+            >
+              <Printer size={15} /> {t('Print', 'طباعة')}
+            </button>
+            <button onClick={onClose} className="text-slate-500 hover:text-white"><X size={20} /></button>
+          </div>
         </div>
         <div className="overflow-y-auto">
           <table className="w-full text-sm">
@@ -2975,6 +3015,16 @@ function ProductDetailDrawer({ p, orgId, defMargin, t, isRTL, onClose, onEdit }:
         <div className="sticky top-0 bg-slate-900 border-b border-slate-800 px-5 py-3.5 flex items-center justify-between z-10">
           <h2 className="text-white font-black text-base flex items-center gap-2"><Package size={18} className="text-emerald-500" /> {t('Product Details', 'بطاقة الصنف')}</h2>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                const head = `<h1>بطاقة الصنف — ${p.product_name}</h1><div class="sub">${p.product_code || ''}${p.barcode ? ' · ' + p.barcode : ''}</div>
+                  <div class="kv"><div>المجموعة: <b>${[p.brand, p.model, p.category].filter(Boolean).join(' · ') || '—'}</b></div><div>التكلفة: <b>${money(p.price)}</b></div><div>سعر البيع: <b>${money(sell)}</b></div><div>الرصيد: <b>${p.quantity}</b></div><div>قيمة المخزون: <b>${money(p.quantity * p.price)}</b></div></div>`;
+                const movesT = `<h3>حركات المخزون</h3><table><thead><tr><th>التاريخ</th><th>النوع</th><th>الكمية</th><th>التكلفة</th></tr></thead><tbody>${moves.length ? moves.map(m => `<tr><td>${(m.created_at || '').slice(0, 10)}</td><td>${moveLabel(m.move_type)}</td><td class="num ${m.qty >= 0 ? 'pos' : 'neg'}">${m.qty >= 0 ? '+' : ''}${m.qty}</td><td class="num">${m.unit_cost != null ? money(m.unit_cost) : '—'}</td></tr>`).join('') : '<tr><td colspan="4">لا توجد حركات</td></tr>'}</tbody></table>`;
+                const purT = purchases.length ? `<h3>المشتريات المرتبطة</h3><table><thead><tr><th>التاريخ</th><th>المورد</th><th>الفاتورة</th><th>الكمية</th><th>التكلفة</th></tr></thead><tbody>${purchases.map(pu => `<tr><td>${pu.date}</td><td>${pu.supplier_name || '—'}</td><td>${pu.invoice_no}/${pu.invoice_year}</td><td class="num pos">+${pu.qty}</td><td class="num">${money(pu.unit_cost)}</td></tr>`).join('')}</tbody></table>` : '';
+                printDoc(`بطاقة الصنف — ${p.product_name}`, head + movesT + purT);
+              }}
+              className="flex items-center gap-1.5 text-xs font-bold text-sky-400 hover:text-sky-300 px-2 py-1"
+            ><Printer size={14} /> {t('Print', 'طباعة')}</button>
             <button onClick={onEdit} className="flex items-center gap-1.5 text-xs font-bold text-emerald-400 hover:text-emerald-300 px-2 py-1"><Edit2 size={14} /> {t('Edit', 'تعديل')}</button>
             <button onClick={onClose} className="text-slate-500 hover:text-white"><X size={20} /></button>
           </div>

@@ -593,12 +593,6 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
     return () => { alive = false; };
   }, [ownedShopId]);
 
-  const reloadWarehouses = useCallback(async () => {
-    if (orgId) setWarehouses(await DB.fetchWarehouses(orgId));
-  }, [orgId]);
-  useEffect(() => { reloadWarehouses(); }, [reloadWarehouses]);
-  const warehouseName = useCallback((id: number | null | undefined) => id == null ? '' : (warehouses.find(w => w.id === id)?.name ?? ''), [warehouses]);
-
   // ── State ──────────────────────────────────────────────────────────────────
   const [products, setProducts]         = useState<Product[]>([]);
   const [loading, setLoading]           = useState(false);
@@ -616,6 +610,11 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
   const [filterWarehouse, setFilterWarehouse] = useState<string>('');
   const [warehouses, setWarehouses]     = useState<DB.GLWarehouse[]>([]);
   const [showWhModal, setShowWhModal]   = useState(false);
+  const reloadWarehouses = useCallback(async () => {
+    if (orgId) setWarehouses(await DB.fetchWarehouses(orgId));
+  }, [orgId]);
+  useEffect(() => { reloadWarehouses(); }, [reloadWarehouses]);
+  const warehouseName = useCallback((id: number | null | undefined) => id == null ? '' : (warehouses.find(w => w.id === id)?.name ?? ''), [warehouses]);
   const [pageSize, setPageSize]         = useState<number>(PAGE_SIZE);
   const [sortKey, setSortKey]           = useState<SortKey>('default');
   const [sortDir, setSortDir]           = useState<'asc' | 'desc'>('asc');

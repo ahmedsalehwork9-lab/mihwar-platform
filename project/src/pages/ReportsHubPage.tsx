@@ -43,13 +43,14 @@ const REPORTS: Rpt[] = [
   { id: "profitability", title: "تحليل الربحية", desc: "مجمل الربح وهامش الربح", cat: "analytics", icon: Activity, page: "business-analytics", permKey: "business-analytics" },
 
   // التقارير المالية
-  { id: "pnl", title: "قائمة الدخل (ربح/خسارة)", desc: "الإيرادات والمصروفات وصافي الربح", cat: "financial", icon: FileText, page: "accounting", section: "statements", permKey: "accounting" },
+  { id: "pnl", title: "قائمة الدخل (ربح/خسارة)", desc: "قائمة دخل محاسبية من القيود المُرحّلة مع مقارنة الفترات", cat: "financial", icon: FileText, page: "monthly-financial", permKey: "monthly-financial" },
   { id: "balance-sheet", title: "الميزانية العمومية", desc: "الأصول والخصوم وحقوق الملكية", cat: "financial", icon: Scale, page: "accounting", section: "statements", permKey: "accounting" },
   { id: "trial", title: "ميزان المراجعة", desc: "أرصدة كل الحسابات مدين/دائن", cat: "financial", icon: Scale, page: "accounting", section: "trial", permKey: "accounting" },
   { id: "ledger", title: "دفتر الأستاذ العام", desc: "حركة أي حساب خلال فترة", cat: "financial", icon: BookOpen, page: "accounting", section: "ledger", permKey: "accounting" },
   { id: "ar", title: "الذمم المدينة (العملاء)", desc: "أرصدة العملاء وأعمار الديون", cat: "financial", icon: Users, page: "accounting", section: "parties", permKey: "accounting" },
   { id: "ap", title: "الذمم الدائنة (الموردون)", desc: "أرصدة الموردين المستحقة", cat: "financial", icon: Users, page: "accounting", section: "parties", permKey: "accounting" },
-  { id: "monthly-fin", title: "التقرير المالي الشهري", desc: "قائمة ربح وخسارة + مقارنة شهرين", cat: "financial", icon: FileBarChart, page: "financial-report", exportId: "financial-report", permKey: "financial-report" },
+  { id: "monthly-fin", title: "التقرير المالي الشهري (محاسبي)", desc: "قائمة الدخل وهوامش الربح من القيود المُرحّلة + طباعة/PDF", cat: "financial", icon: FileBarChart, page: "monthly-financial", permKey: "monthly-financial" },
+  { id: "ops-fin", title: "التقرير التشغيلي (التوصيل)", desc: "ربح/خسارة تشغيلي + قنوات التوصيل والعمولات + تصدير", cat: "financial", icon: FileBarChart, page: "financial-report", exportId: "financial-report", permKey: "financial-report" },
   { id: "cashflow", title: "قائمة التدفقات النقدية", desc: "التدفقات التشغيلية/الاستثمارية/التمويلية", cat: "financial", icon: Wallet, soon: true },
 
   // المبيعات

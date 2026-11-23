@@ -64,6 +64,7 @@ export type Page =
   | 'financial-report'
   | 'reports-center'
   | 'business-analytics'
+  | 'monthly-financial'
   | 'accounting'
   | 'alerts'
   | 'shop-settings'       // ← إعدادات المحل + QR
@@ -102,6 +103,7 @@ const pageTitles: Record<Page, { en: string; ar: string }> = {
   'financial-report': { en: 'Financial Report', ar: 'التقرير المالي' },
   'reports-center':  { en: 'Reports Center',   ar: 'مركز التقارير'   },
   'business-analytics': { en: 'Business Analytics', ar: 'تحليلات الأعمال' },
+  'monthly-financial': { en: 'Monthly Financial', ar: 'التقرير المالي الشهري' },
   'accounting':      { en: 'Accounting',       ar: 'الحسابات'        },
   'alerts':          { en: 'Alerts',           ar: 'التنبيهات'       },
   'shop-settings':   { en: 'Shop Settings',    ar: 'إعدادات المحل'   },
@@ -230,8 +232,9 @@ const OPERATIONS: OpEntry[] = [
   { type: 'group', key: 'reports', icon: <FileBarChart size={17} />, labelEn: 'Reports', labelAr: 'التقارير', homePage: 'reports-center', children: [
     { labelEn: 'Reports Center',   labelAr: 'مركز التقارير',  page: 'reports-center' },
     { labelEn: 'Business Analytics', labelAr: 'تحليلات الأعمال', page: 'business-analytics' },
+    { labelEn: 'Monthly Financial', labelAr: 'التقرير المالي الشهري', page: 'monthly-financial' },
     { labelEn: 'Reports',          labelAr: 'التقارير',       page: 'reports' },
-    { labelEn: 'Financial Report', labelAr: 'التقرير المالي', page: 'financial-report' },
+    { labelEn: 'Financial Report (Ops)', labelAr: 'التقرير التشغيلي (التوصيل)', page: 'financial-report' },
   ] },
 
   { type: 'group', key: 'accounting', icon: <Calculator size={17} />, labelEn: 'Accounting', labelAr: 'الحسابات', homePage: 'accounting', homeSection: 'dashboard', children: [

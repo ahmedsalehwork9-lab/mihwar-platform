@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
+import { OrgConfigProvider } from './context/OrgConfigContext';
 import { NotificationProvider } from './context/NotificationContext';
 
 import LoginPage from './pages/LoginPage';
@@ -30,6 +31,7 @@ const ReportsHubPage = lazy(() => import('./pages/ReportsHubPage'));
 const BusinessAnalyticsPage = lazy(() => import('./pages/reports/BusinessAnalyticsPage'));
 const MonthlyFinancialPage = lazy(() => import('./pages/reports/MonthlyFinancialPage'));
 const ReportBuilderPage = lazy(() => import('./pages/reports/ReportBuilderPage'));
+const CompanySettingsPage = lazy(() => import('./pages/CompanySettingsPage'));
 const AccountingPage = lazy(() => import('./pages/accounting/AccountingPage'));
 const QuotationPage = lazy(() => import('./pages/accounting/QuotationPage'));
 const POSPage = lazy(() => import('./pages/accounting/POSPage'));
@@ -179,7 +181,7 @@ function AppContent() {
 
           {page === 'system-settings' &&
             (isAdmin
-              ? renderAdminPlaceholder('إعدادات النظام')
+              ? <CompanySettingsPage />
               : <AccessDenied />)}
 
           {page === 'organizations' &&
@@ -269,7 +271,9 @@ export default function App() {
           element={
             <LanguageProvider>
               <AuthProvider>
-                <AppContent />
+                <OrgConfigProvider>
+                  <AppContent />
+                </OrgConfigProvider>
               </AuthProvider>
             </LanguageProvider>
           }

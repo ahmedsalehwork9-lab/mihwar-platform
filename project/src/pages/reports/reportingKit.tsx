@@ -6,10 +6,12 @@
 // =============================================================
 import { ReactNode } from "react";
 import { TrendingUp, TrendingDown, AlertTriangle, Inbox, Loader2 } from "lucide-react";
+import { ACTIVE } from "../lib/orgConfig";
 
 // ── تنسيق ──────────────────────────────────────────────────────────────────
-export const money = (n: number, cur = "ر.س") =>
-  `${(Math.round((Number(n) || 0) * 100) / 100).toLocaleString("en-US", { maximumFractionDigits: 2 })} ${cur}`;
+// العملة تتبع إعداد الشركة النشطة (ACTIVE.symbol) — طبقة عرض فقط.
+export const money = (n: number, cur?: string) =>
+  `${(Math.round((Number(n) || 0) * 100) / 100).toLocaleString("en-US", { maximumFractionDigits: 2 })} ${cur ?? ACTIVE.symbol}`;
 export const fmtInt = (n: number) => (Number(n) || 0).toLocaleString("en-US");
 export const pctLabel = (n: number) => `${n >= 0 ? "+" : ""}${Math.round((Number(n) || 0) * 10) / 10}%`;
 export const growth = (cur: number, prev: number) => (prev === 0 ? (cur === 0 ? 0 : 100) : ((cur - prev) / Math.abs(prev)) * 100);

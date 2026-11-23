@@ -36,6 +36,7 @@ type Product = {
   reorder_level?: number | null;
   max_quantity?: number | null;
   attributes?: Record<string, any> | null;
+  warehouse_id?: number | null;
   // Optional per-product margin override (%). When null/undefined, the
   // shop's default_margin_percent applies instead. Cost price (this
   // page) is never affected by margin — margin only changes the price
@@ -49,8 +50,8 @@ type Product = {
 
 type FilterStatus = 'all' | 'in_stock' | 'low_stock' | 'out_of_stock' | 'reorder';
 type SortKey = 'default' | 'name' | 'quantity' | 'cost' | 'selling' | 'value';
-type ColVis = { image: boolean; category: boolean; cost: boolean; selling: boolean; value: boolean; visibility: boolean };
-const DEFAULT_COLS: ColVis = { image: true, category: true, cost: true, selling: true, value: true, visibility: true };
+type ColVis = { image: boolean; category: boolean; warehouse: boolean; cost: boolean; selling: boolean; value: boolean; visibility: boolean };
+const DEFAULT_COLS: ColVis = { image: true, category: true, warehouse: true, cost: true, selling: true, value: true, visibility: true };
 function loadCols(): ColVis {
   try { const s = localStorage.getItem('mihwar_inv_cols'); if (s) return { ...DEFAULT_COLS, ...JSON.parse(s) }; } catch { /* ignore */ }
   return DEFAULT_COLS;
@@ -73,6 +74,7 @@ type FormState = {
   min_quantity: string;
   reorder_level: string;
   max_quantity: string;
+  warehouse_id: string;
 };
 
 type ShopOption = {
@@ -100,6 +102,7 @@ const EMPTY_FORM: FormState = {
   min_quantity: '',
   reorder_level: '',
   max_quantity: '',
+  warehouse_id: '',
 };
 
 const PAGE_SIZE   = 12;
@@ -590,6 +593,12 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
     return () => { alive = false; };
   }, [ownedShopId]);
 
+  const reloadWarehouses = useCallback(async () => {
+    if (orgId) setWarehouses(await DB.fetchWarehouses(orgId));
+  }, [orgId]);
+  useEffect(() => { reloadWarehouses(); }, [reloadWarehouses]);
+  const warehouseName = useCallback((id: number | null | undefined) => id == null ? '' : (warehouses.find(w => w.id === id)?.name ?? ''), [warehouses]);
+
   // ── State ──────────────────────────────────────────────────────────────────
   const [products, setProducts]         = useState<Product[]>([]);
   const [loading, setLoading]           = useState(false);
@@ -604,6 +613,9 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
   const [filter, setFilter]             = useState<FilterStatus>('all');
   const [filterCategory, setFilterCategory] = useState<string>('');
   const [filterBrand, setFilterBrand]   = useState<string>('');
+  const [filterWarehouse, setFilterWarehouse] = useState<string>('');
+  const [warehouses, setWarehouses]     = useState<DB.GLWarehouse[]>([]);
+  const [showWhModal, setShowWhModal]   = useState(false);
   const [pageSize, setPageSize]         = useState<number>(PAGE_SIZE);
   const [sortKey, setSortKey]           = useState<SortKey>('default');
   const [sortDir, setSortDir]           = useState<'asc' | 'desc'>('asc');
@@ -682,7 +694,7 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
 
         const { data: chunk, error: fetchErr } = await supabase
           .from("products")
-          .select("id, product_code, product_name, brand, model, quantity, price, shop_id, visibility_scope, product_image_url, barcode, margin_percent, selling_price, category, min_quantity, reorder_level, max_quantity, attributes")
+          .select("id, product_code, product_name, brand, model, quantity, price, shop_id, visibility_scope, product_image_url, barcode, margin_percent, selling_price, category, min_quantity, reorder_level, max_quantity, attributes, warehouse_id")
           .eq("shop_id", ownedShopId)
           .order("created_at", { ascending: false })
           .range(from, to);
@@ -988,6 +1000,7 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
         reorder_level:    form.reorder_level === '' ? null : Number(form.reorder_level),
         max_quantity:     form.max_quantity === '' ? null : Number(form.max_quantity),
         attributes:       Object.fromEntries(attrRows.filter(r => r.key.trim() !== '').map(r => [r.key.trim(), r.value])),
+        warehouse_id:     form.warehouse_id === '' ? null : Number(form.warehouse_id),
       };
 
       let productId: number;
@@ -1423,6 +1436,7 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
       const matchesFilter = filter === 'all' || (filter === 'reorder' ? needsReorder(p) : s === filter);
       const matchesCat   = !filterCategory || (p.category || '') === filterCategory;
       const matchesBrand = !filterBrand || (p.brand || '') === filterBrand;
+      const matchesWh    = !filterWarehouse || (filterWarehouse === 'none' ? (p.warehouse_id == null) : String(p.warehouse_id ?? '') === filterWarehouse);
       const matchesSearch = !q
         || p.product_code?.toLowerCase().includes(q)
         || p.product_name?.toLowerCase().includes(q)
@@ -1430,7 +1444,7 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
         || p.barcode?.toLowerCase().includes(q)
         || p.category?.toLowerCase().includes(q);
 
-      if (matchesFilter && matchesCat && matchesBrand && matchesSearch) allFiltered.push(p);
+      if (matchesFilter && matchesCat && matchesBrand && matchesWh && matchesSearch) allFiltered.push(p);
     }
 
     return {
@@ -1438,7 +1452,7 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
       counts: { all: products.length, in_stock: inStock, low_stock: lowStock, out_of_stock: outOfStock, reorder },
       totals: { value: totalValue, qty: totalQty },
     };
-  }, [products, filter, search, filterCategory, filterBrand]);
+  }, [products, filter, search, filterCategory, filterBrand, filterWarehouse]);
 
   // قوائم خيارات الفلاتر (من البيانات)
   const categoryOptions = useMemo(() => [...new Set(products.map(p => (p.category || '').trim()).filter(Boolean))].sort(), [products]);
@@ -1528,6 +1542,7 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
       margin_percent:     p.margin_percent != null ? String(p.margin_percent) : '',
       selling_price:      p.selling_price != null ? String(p.selling_price) : '',
       category:           p.category ?? '',
+      warehouse_id:       p.warehouse_id != null ? String(p.warehouse_id) : '',
       min_quantity:       p.min_quantity != null ? String(p.min_quantity) : '',
       reorder_level:      p.reorder_level != null ? String(p.reorder_level) : '',
       max_quantity:       p.max_quantity != null ? String(p.max_quantity) : '',
@@ -1964,6 +1979,7 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
           <div className="h-px bg-slate-800 my-1" />
           <RailBtn icon={<ClipboardCheck size={15} />} label={t('Stock Count', 'الجرد المخزني')} onClick={() => onNavigate?.('stock-adjustments')} />
           <RailBtn icon={<SlidersHorizontal size={15} />} label={t('Adjustments', 'تسويات المخزون')} onClick={() => onNavigate?.('stock-adjustments')} />
+          <RailBtn icon={<Boxes size={15} />} label={t('Manage Warehouses', 'إدارة المستودعات')} onClick={() => setShowWhModal(true)} />
           <RailBtn icon={<ArrowRightLeft size={15} />} label={t('Transfers', 'تحويل بين المستودعات')} onClick={() => showSuccess(t('Coming soon', 'قريبًا بإذن الله'))} />
           <RailBtn icon={<LineChart size={15} />} label={t('Movement Report', 'تقرير حركة المخزون')} onClick={() => setShowMovesReport(true)} />
           <div className="h-px bg-slate-800 my-1" />
@@ -2030,8 +2046,15 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
             {brandOptions.map(b => <option key={b} value={b}>{b}</option>)}
           </select>
         )}
-        {(filterCategory || filterBrand) && (
-          <button onClick={() => { setFilterCategory(''); setFilterBrand(''); setPage(1); }} className="shrink-0 px-3 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white border border-slate-800">{t('Clear', 'مسح')}</button>
+        {warehouses.length > 0 && (
+          <select value={filterWarehouse} onChange={e => { setFilterWarehouse(e.target.value); setPage(1); }} className="shrink-0 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 focus:border-emerald-500 outline-none">
+            <option value="">{t('All Warehouses', 'جميع المستودعات')}</option>
+            {warehouses.map(w => <option key={w.id} value={String(w.id)}>{w.name}</option>)}
+            <option value="none">{t('No warehouse', 'بدون مستودع')}</option>
+          </select>
+        )}
+        {(filterCategory || filterBrand || filterWarehouse) && (
+          <button onClick={() => { setFilterCategory(''); setFilterBrand(''); setFilterWarehouse(''); setPage(1); }} className="shrink-0 px-3 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white border border-slate-800">{t('Clear', 'مسح')}</button>
         )}
       </section>
 
@@ -2160,6 +2183,7 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
                   {([
                     { k: 'image' as keyof ColVis,      label: t('Image', 'الصورة') },
                     { k: 'category' as keyof ColVis,   label: t('Category / Details', 'الصنف / التفاصيل') },
+                    { k: 'warehouse' as keyof ColVis,  label: t('Warehouse', 'المستودع') },
                     { k: 'cost' as keyof ColVis,       label: t('Unit Cost', 'التكلفة') },
                     { k: 'selling' as keyof ColVis,    label: t('Selling Price', 'سعر البيع') },
                     { k: 'value' as keyof ColVis,      label: t('Stock Value', 'قيمة المخزون') },
@@ -2293,6 +2317,7 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
                 {cols.image && <th scope="col" className="p-4 w-[64px] text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Image', 'الصورة')}</th>}
                 <SortHeader label={t('Product Details', 'تفاصيل المنتج')} k="name" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                 {cols.category && <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Category / Details', 'الصنف / التفاصيل')}</th>}
+                {cols.warehouse && <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Warehouse', 'المستودع')}</th>}
                 <SortHeader label={t('Stock Level', 'المخزون')} k="quantity" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                 {cols.cost && <SortHeader label={t('Unit Cost', 'التكلفة')} k="cost" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />}
                 {cols.selling && <SortHeader label={t('Selling Price', 'سعر البيع')} k="selling" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />}
@@ -2356,6 +2381,11 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
                         <span className="font-medium text-xs">{p.category || p.brand || '—'}</span>
                         <span className="text-[10px] text-slate-500 uppercase">{p.model || p.brand || '—'}</span>
                       </div>
+                    </td>
+                    )}
+                    {cols.warehouse && (
+                    <td className="p-4 text-slate-300 text-xs">
+                      {warehouseName(p.warehouse_id) || <span className="text-slate-600">—</span>}
                     </td>
                     )}
                     <td className="p-4">
@@ -2506,8 +2536,8 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
                   />
                 </div>
 
-                {/* ── إدارة المخزون: التصنيف + حدود المخزون ── */}
-                <div className="col-span-2">
+                {/* ── إدارة المخزون: التصنيف + المستودع + حدود المخزون ── */}
+                <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Category', 'التصنيف')}</label>
                   <input
                     type="text"
@@ -2516,6 +2546,17 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
                     onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
                     placeholder={t('e.g. Filters, Oils…', 'مثال: فلاتر، زيوت…')}
                   />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Warehouse', 'المستودع')}</label>
+                  <select
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-emerald-500 focus:outline-none transition-colors text-sm"
+                    value={form.warehouse_id}
+                    onChange={e => setForm(f => ({ ...f, warehouse_id: e.target.value }))}
+                  >
+                    <option value="">{t('— None —', '— بدون —')}</option>
+                    {warehouses.map(w => <option key={w.id} value={String(w.id)}>{w.name}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Reorder Level', 'حد إعادة الطلب')}</label>
@@ -2897,6 +2938,86 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
       {showMovesReport && (
         <MovesReportModal orgId={orgId} branchId={ownedShopId ? Number(ownedShopId) : null} products={products} t={t} isRTL={isRTL} onClose={() => setShowMovesReport(false)} />
       )}
+
+      {/* ── Manage Warehouses ── */}
+      {showWhModal && (
+        <WarehousesModal orgId={orgId} warehouses={warehouses} t={t} isRTL={isRTL} onClose={() => setShowWhModal(false)} onChanged={reloadWarehouses} />
+      )}
+    </div>
+  );
+}
+
+// ─── Warehouses management modal ─────────────────────────────────────────────
+function WarehousesModal({ orgId, warehouses, t, isRTL, onClose, onChanged }: {
+  orgId: number | null; warehouses: DB.GLWarehouse[]; t: (en: string, ar: string) => string; isRTL: boolean; onClose: () => void; onChanged: () => void;
+}) {
+  const [newName, setNewName] = useState('');
+  const [editId, setEditId] = useState<number | null>(null);
+  const [editName, setEditName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const add = async () => {
+    if (!orgId || !newName.trim()) return;
+    setBusy(true); setErr(null);
+    const res = await DB.addWarehouse(orgId, { name: newName });
+    setBusy(false);
+    if (!res.ok) { setErr(res.error || 'تعذّر الإضافة'); return; }
+    setNewName(''); onChanged();
+  };
+  const saveEdit = async (id: number) => {
+    if (!editName.trim()) return;
+    setBusy(true); setErr(null);
+    const res = await DB.updateWarehouse(id, { name: editName });
+    setBusy(false);
+    if (!res.ok) { setErr(res.error || 'تعذّر التعديل'); return; }
+    setEditId(null); onChanged();
+  };
+  const del = async (id: number) => {
+    if (!orgId) return;
+    if (!window.confirm(t('Delete this warehouse? Items will be unassigned.', 'حذف المستودع؟ ستُفصل أصنافه (بدون مستودع).'))) return;
+    setBusy(true); setErr(null);
+    const res = await DB.deleteWarehouse(orgId, id);
+    setBusy(false);
+    if (!res.ok) { setErr(res.error || 'تعذّر الحذف'); return; }
+    onChanged();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[95] bg-black/60 flex items-center justify-center p-3" dir={isRTL ? 'rtl' : 'ltr'} onClick={onClose}>
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-800">
+          <h2 className="text-white font-black flex items-center gap-2"><Boxes size={18} className="text-emerald-500" /> {t('Manage Warehouses', 'إدارة المستودعات')}</h2>
+          <button onClick={onClose} className="text-slate-500 hover:text-white"><X size={20} /></button>
+        </div>
+        <div className="p-5 space-y-3 overflow-y-auto">
+          {err && <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl px-4 py-2.5 text-sm">{err}</div>}
+          <div className="flex items-center gap-2">
+            <input value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && add()} placeholder={t('New warehouse name', 'اسم مستودع جديد')} className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-emerald-500" />
+            <button onClick={add} disabled={busy || !newName.trim()} className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-bold px-4 py-2.5 rounded-xl"><Plus size={16} /> {t('Add', 'إضافة')}</button>
+          </div>
+          <div className="divide-y divide-slate-800">
+            {warehouses.length === 0 && <div className="text-center text-slate-600 py-6 text-sm">{t('No warehouses yet.', 'لا توجد مستودعات بعد.')}</div>}
+            {warehouses.map(w => (
+              <div key={w.id} className="flex items-center gap-2 py-2.5">
+                {editId === w.id ? (
+                  <>
+                    <input value={editName} onChange={e => setEditName(e.target.value)} onKeyDown={e => e.key === 'Enter' && saveEdit(w.id)} className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-emerald-500" autoFocus />
+                    <button onClick={() => saveEdit(w.id)} className="p-2 text-emerald-400 hover:bg-emerald-500/10 rounded-lg"><Check size={16} /></button>
+                    <button onClick={() => setEditId(null)} className="p-2 text-slate-500 hover:text-white"><X size={16} /></button>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex-1 text-sm text-white">{w.name}</span>
+                    <button onClick={() => { setEditId(w.id); setEditName(w.name); }} className="p-2 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg"><Edit2 size={15} /></button>
+                    <button onClick={() => del(w.id)} className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg"><Trash2 size={15} /></button>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

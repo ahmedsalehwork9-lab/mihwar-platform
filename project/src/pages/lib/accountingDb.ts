@@ -2850,3 +2850,39 @@ export async function logSaleMoves(orgId: number, branchId: number | null, lines
   const { error } = await supabase.from("gl_stock_moves").insert(rows);
   if (error) console.error("logSaleMoves", error);
 }
+
+
+// ══════════════════════════════════════════════════════════════════════════
+//  المستودعات (المخزون) — كيان مستقل + ربط الصنف بمستودع
+// ══════════════════════════════════════════════════════════════════════════
+export type GLWarehouse = { id: number; organization_id: number; branch_id: number | null; name: string; is_default: boolean; created_at?: string };
+
+export async function fetchWarehouses(orgId: number): Promise<GLWarehouse[]> {
+  const { data, error } = await supabase.from("warehouses").select("*").eq("organization_id", orgId).order("name", { ascending: true });
+  if (error) { console.error("fetchWarehouses", error); return []; }
+  return (data as GLWarehouse[]) || [];
+}
+
+export async function addWarehouse(orgId: number, a: { name: string; branch_id?: number | null }): Promise<{ ok: boolean; error?: string; id?: number }> {
+  const name = (a.name || "").trim();
+  if (!name) return { ok: false, error: "اكتب اسم المستودع." };
+  const { data, error } = await supabase.from("warehouses").insert({ organization_id: orgId, name, branch_id: a.branch_id ?? null }).select("id").single();
+  if (error) { console.error("addWarehouse", error); return { ok: false, error: error.message }; }
+  return { ok: true, id: Number((data as any).id) };
+}
+
+export async function updateWarehouse(id: number, a: { name: string }): Promise<{ ok: boolean; error?: string }> {
+  const name = (a.name || "").trim();
+  if (!name) return { ok: false, error: "اكتب اسم المستودع." };
+  const { error } = await supabase.from("warehouses").update({ name }).eq("id", id);
+  if (error) { console.error("updateWarehouse", error); return { ok: false, error: error.message }; }
+  return { ok: true };
+}
+
+export async function deleteWarehouse(orgId: number, id: number): Promise<{ ok: boolean; error?: string }> {
+  // فصل الأصناف عن المستودع قبل حذفه (لا نحذف أصنافًا)
+  await supabase.from("products").update({ warehouse_id: null }).eq("warehouse_id", id).eq("organization_id", orgId);
+  const { error } = await supabase.from("warehouses").delete().eq("id", id).eq("organization_id", orgId);
+  if (error) { console.error("deleteWarehouse", error); return { ok: false, error: error.message }; }
+  return { ok: true };
+}

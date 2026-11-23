@@ -32,6 +32,7 @@ const BusinessAnalyticsPage = lazy(() => import('./pages/reports/BusinessAnalyti
 const MonthlyFinancialPage = lazy(() => import('./pages/reports/MonthlyFinancialPage'));
 const ReportBuilderPage = lazy(() => import('./pages/reports/ReportBuilderPage'));
 const CompanySettingsPage = lazy(() => import('./pages/CompanySettingsPage'));
+const AddCustomerWizard = lazy(() => import('./pages/AddCustomerWizard'));
 const AccountingPage = lazy(() => import('./pages/accounting/AccountingPage'));
 const QuotationPage = lazy(() => import('./pages/accounting/QuotationPage'));
 const POSPage = lazy(() => import('./pages/accounting/POSPage'));
@@ -165,7 +166,7 @@ function AppContent() {
             (isAdmin ? <ShopsPage /> : <AccessDenied />)}
 
           {page === 'create-shop' &&
-            (isAdmin ? <CreateShopPage /> : <AccessDenied />)}
+            (isAdmin ? <AddCustomerWizard onNavigate={setPage} /> : <AccessDenied />)}
 
           {page === 'users' &&
             (isAdmin ? <UsersPage /> : <AccessDenied />)}

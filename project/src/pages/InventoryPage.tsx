@@ -579,7 +579,7 @@ function MobileProductCard({ p, selected, onToggle, onEdit, onDelete, t }: Mobil
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) => void } = {}) {
-  const { ownedShopId, user } = (useAuth() as any) ?? {};
+  const { ownedShopId, user, branches } = (useAuth() as any) ?? {};
   const [showMovesReport, setShowMovesReport] = useState(false);
   const { t, isRTL }   = useLang();
   const [orgId, setOrgId] = useState<number | null>(null);
@@ -608,6 +608,8 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
   const [filterCategory, setFilterCategory] = useState<string>('');
   const [filterBrand, setFilterBrand]   = useState<string>('');
   const [filterWarehouse, setFilterWarehouse] = useState<string>('');
+  const [filterBranch, setFilterBranch] = useState<string>('');   // عمود/فلتر «الفرع» (shop_id كنص) في وضع كل الفروع
+  const [allBranches, setAllBranches]   = useState(false);        // عرض أصناف كل فروع المجموعة معًا
   const [warehouses, setWarehouses]     = useState<DB.GLWarehouse[]>([]);
   const [showWhModal, setShowWhModal]   = useState(false);
   const reloadWarehouses = useCallback(async () => {
@@ -615,6 +617,13 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
   }, [orgId]);
   useEffect(() => { reloadWarehouses(); }, [reloadWarehouses]);
   const warehouseName = useCallback((id: number | null | undefined) => id == null ? '' : (warehouses.find(w => w.id === id)?.name ?? ''), [warehouses]);
+  // كل فروع المجموعة التي يصل إليها المستخدم (للـ «كل الفروع» + عمود الفرع)
+  const branchList = useMemo(() => (Array.isArray(branches) ? branches : []) as { id: number; name: string }[], [branches]);
+  const branchIds  = useMemo(() => branchList.map(b => b.id), [branchList]);
+  const branchName = useCallback((id: number | null | undefined) => {
+    if (id == null) return '';
+    return branchList.find(b => b.id === id)?.name ?? ('فرع ' + id);
+  }, [branchList]);
   const [pageSize, setPageSize]         = useState<number>(PAGE_SIZE);
   const [sortKey, setSortKey]           = useState<SortKey>('default');
   const [sortDir, setSortDir]           = useState<'asc' | 'desc'>('asc');
@@ -661,9 +670,11 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
 
   // ── Database Actions ───────────────────────────────────────────────────────
   const fetchProducts = useCallback(async () => {
-    console.log(`[MIHWAR fetchProducts] ▶ called — ownedShopId=${ownedShopId}`);
-    if (!ownedShopId) {
-      console.warn('[MIHWAR fetchProducts] ✖ aborted — ownedShopId is null/undefined');
+    // نطاق التحميل: فرع واحد (الافتراضي) أو كل فروع المجموعة عند تفعيل «كل الفروع»
+    const scopeIds = allBranches && branchIds.length > 0 ? branchIds : null;
+    console.log(`[MIHWAR fetchProducts] ▶ called — ownedShopId=${ownedShopId} — allBranches=${allBranches} — scope=${scopeIds ? scopeIds.join(',') : 'single'}`);
+    if (!ownedShopId && !scopeIds) {
+      console.warn('[MIHWAR fetchProducts] ✖ aborted — no shop scope');
       return;
     }
 
@@ -671,10 +682,12 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
     setError(null);
 
     try {
-      const { count: dbCount, error: countErr } = await supabase
+      const countBase = supabase
         .from('products')
-        .select('*', { count: 'exact', head: true })
-        .eq('shop_id', ownedShopId);
+        .select('*', { count: 'exact', head: true });
+      const { count: dbCount, error: countErr } = await (scopeIds
+        ? countBase.in('shop_id', scopeIds)
+        : countBase.eq('shop_id', ownedShopId));
 
       if (countErr) {
         console.error('[MIHWAR fetchProducts] COUNT query failed:', countErr.message, countErr);
@@ -691,10 +704,11 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
         const to = from + FETCH_CHUNK - 1;
         console.log(`[MIHWAR fetchProducts] chunk ${chunkIndex} — range(${from}, ${to})`);
 
-        const { data: chunk, error: fetchErr } = await supabase
+        const chunkBase = supabase
           .from("products")
-          .select("id, product_code, product_name, brand, model, quantity, price, shop_id, visibility_scope, product_image_url, barcode, margin_percent, selling_price, category, min_quantity, reorder_level, max_quantity, attributes, warehouse_id")
-          .eq("shop_id", ownedShopId)
+          .select("id, product_code, product_name, brand, model, quantity, price, shop_id, visibility_scope, product_image_url, barcode, margin_percent, selling_price, category, min_quantity, reorder_level, max_quantity, attributes, warehouse_id");
+        const chunkScoped = scopeIds ? chunkBase.in("shop_id", scopeIds) : chunkBase.eq("shop_id", ownedShopId);
+        const { data: chunk, error: fetchErr } = await chunkScoped
           .order("created_at", { ascending: false })
           .range(from, to);
 
@@ -737,7 +751,7 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
     } finally {
       setLoading(false);
     }
-  }, [ownedShopId]);
+  }, [ownedShopId, allBranches, branchIds]);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
@@ -1436,6 +1450,7 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
       const matchesCat   = !filterCategory || (p.category || '') === filterCategory;
       const matchesBrand = !filterBrand || (p.brand || '') === filterBrand;
       const matchesWh    = !filterWarehouse || (filterWarehouse === 'none' ? (p.warehouse_id == null) : String(p.warehouse_id ?? '') === filterWarehouse);
+      const matchesBranch = !allBranches || !filterBranch || String(p.shop_id) === filterBranch;
       const matchesSearch = !q
         || p.product_code?.toLowerCase().includes(q)
         || p.product_name?.toLowerCase().includes(q)
@@ -1443,7 +1458,7 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
         || p.barcode?.toLowerCase().includes(q)
         || p.category?.toLowerCase().includes(q);
 
-      if (matchesFilter && matchesCat && matchesBrand && matchesWh && matchesSearch) allFiltered.push(p);
+      if (matchesFilter && matchesCat && matchesBrand && matchesWh && matchesBranch && matchesSearch) allFiltered.push(p);
     }
 
     return {
@@ -1451,7 +1466,7 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
       counts: { all: products.length, in_stock: inStock, low_stock: lowStock, out_of_stock: outOfStock, reorder },
       totals: { value: totalValue, qty: totalQty },
     };
-  }, [products, filter, search, filterCategory, filterBrand, filterWarehouse]);
+  }, [products, filter, search, filterCategory, filterBrand, filterWarehouse, allBranches, filterBranch]);
 
   // قوائم خيارات الفلاتر (من البيانات)
   const categoryOptions = useMemo(() => [...new Set(products.map(p => (p.category || '').trim()).filter(Boolean))].sort(), [products]);
@@ -1953,16 +1968,35 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
         <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2">
             <Package className="text-emerald-500 shrink-0" size={24} />
-            <span className="truncate">{t('Local Inventory', 'المخزون المحلي')}</span>
+            <span className="truncate">{allBranches ? t('All Branches Inventory', 'مخزون كل الفروع') : t('Local Inventory', 'المخزون المحلي')}</span>
           </h1>
         </div>
-        <button
-          onClick={fetchProducts}
-          className="p-2.5 rounded-xl border border-slate-800 bg-slate-900/50 text-slate-400 hover:text-white transition-all active:scale-95"
-          aria-label={t('Refresh', 'تحديث')}
-        >
-          <RefreshCw size={18} className={loading ? 'animate-spin text-emerald-500' : ''} />
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {branchList.length > 1 && (
+            <div className="flex items-center rounded-xl border border-slate-800 bg-slate-900/50 p-0.5 text-xs font-bold">
+              <button
+                onClick={() => { setAllBranches(false); setFilterBranch(''); setPage(1); }}
+                className={`px-3 py-1.5 rounded-lg transition-all ${!allBranches ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+              >
+                {t('Current Branch', 'الفرع الحالي')}
+              </button>
+              <button
+                onClick={() => { setAllBranches(true); setPage(1); }}
+                className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${allBranches ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+              >
+                <Boxes size={13} /> {t('All Branches', 'كل الفروع')}
+                <span className={`px-1.5 py-0.5 rounded-md text-[10px] ${allBranches ? 'bg-white/20' : 'bg-slate-800'}`}>{branchList.length}</span>
+              </button>
+            </div>
+          )}
+          <button
+            onClick={fetchProducts}
+            className="p-2.5 rounded-xl border border-slate-800 bg-slate-900/50 text-slate-400 hover:text-white transition-all active:scale-95"
+            aria-label={t('Refresh', 'تحديث')}
+          >
+            <RefreshCw size={18} className={loading ? 'animate-spin text-emerald-500' : ''} />
+          </button>
+        </div>
       </header>
 
       <div className="flex gap-4 items-start">
@@ -2052,8 +2086,14 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
             <option value="none">{t('No warehouse', 'بدون مستودع')}</option>
           </select>
         )}
-        {(filterCategory || filterBrand || filterWarehouse) && (
-          <button onClick={() => { setFilterCategory(''); setFilterBrand(''); setFilterWarehouse(''); setPage(1); }} className="shrink-0 px-3 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white border border-slate-800">{t('Clear', 'مسح')}</button>
+        {allBranches && branchList.length > 0 && (
+          <select value={filterBranch} onChange={e => { setFilterBranch(e.target.value); setPage(1); }} className="shrink-0 bg-slate-900 border border-emerald-800/60 rounded-xl px-3 py-2 text-xs text-emerald-300 focus:border-emerald-500 outline-none">
+            <option value="">{t('All Branches', 'كل الفروع')}</option>
+            {branchList.map(b => <option key={b.id} value={String(b.id)}>{b.name}</option>)}
+          </select>
+        )}
+        {(filterCategory || filterBrand || filterWarehouse || filterBranch) && (
+          <button onClick={() => { setFilterCategory(''); setFilterBrand(''); setFilterWarehouse(''); setFilterBranch(''); setPage(1); }} className="shrink-0 px-3 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white border border-slate-800">{t('Clear', 'مسح')}</button>
         )}
       </section>
 
@@ -2316,6 +2356,7 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
                 {cols.image && <th scope="col" className="p-4 w-[64px] text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Image', 'الصورة')}</th>}
                 <SortHeader label={t('Product Details', 'تفاصيل المنتج')} k="name" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                 {cols.category && <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Category / Details', 'الصنف / التفاصيل')}</th>}
+                {allBranches && <th scope="col" className="p-4 text-emerald-500/80 font-bold uppercase text-[10px] tracking-widest">{t('Branch', 'الفرع')}</th>}
                 {cols.warehouse && <th scope="col" className="p-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest">{t('Warehouse', 'المستودع')}</th>}
                 <SortHeader label={t('Stock Level', 'المخزون')} k="quantity" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                 {cols.cost && <SortHeader label={t('Unit Cost', 'التكلفة')} k="cost" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />}
@@ -2380,6 +2421,13 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
                         <span className="font-medium text-xs">{p.category || p.brand || '—'}</span>
                         <span className="text-[10px] text-slate-500 uppercase">{p.model || p.brand || '—'}</span>
                       </div>
+                    </td>
+                    )}
+                    {allBranches && (
+                    <td className="p-4">
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-2 py-1 whitespace-nowrap">
+                        <Boxes size={11} className="shrink-0" /> {branchName(p.shop_id)}
+                      </span>
                     </td>
                     )}
                     {cols.warehouse && (

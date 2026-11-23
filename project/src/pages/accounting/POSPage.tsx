@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Search, Barcode, Trash2, Plus, Minus, ShoppingCart, X, Printer, Wallet, Clock, RotateCcw, LayoutGrid, List, PauseCircle, User, Store, Tag, Percent, PlayCircle, Power, Banknote } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
+import { useOrgConfig } from "../../context/OrgConfigContext";
 import * as DB from "../lib/accountingDb";
 import type { GLAccount, GLParty, GLTreasury, POSProduct, SalesItem, ShopInfo } from "../lib/accountingDb";
 
@@ -13,6 +14,8 @@ const PAGE = 60;
 
 export default function POSPage() {
   const { ownedShopId, branches, user } = (useAuth() as any) ?? {};
+  const { cfg } = useOrgConfig();
+  const taxRate = Number(cfg?.default_tax_rate ?? 15); // نسبة الضريبة حسب إعداد الشركة (14 مصر / 15 سعودية …)
   const [org, setOrg] = useState<{ id: number; name: string } | null>(null);
   const [products, setProducts] = useState<POSProduct[]>([]);
   const [accounts, setAccounts] = useState<GLAccount[]>([]);
@@ -168,9 +171,9 @@ export default function POSPage() {
     const lineDisc = cart.reduce((s, l) => s + Math.min(Math.max(l.disc, 0), DB.posPrice(l.product) * l.qty), 0);
     const invDisc = Math.min(Math.max(Number(discount) || 0, 0), Math.max(0, gross - lineDisc));
     const net = r2(gross - lineDisc - invDisc);
-    const vat = r2(net * 0.15);
+    const vat = r2(net * (taxRate / 100));
     return { gross: r2(gross), lineDisc: r2(lineDisc), invDisc: r2(invDisc), net, vat, total: r2(net + vat) };
-  }, [cart, discount]);
+  }, [cart, discount, taxRate]);
 
   const custAccountOf = (p: GLParty | undefined) => (!p ? null : (p.account_id ?? (p.parent_id ? parties.find((x) => x.id === p.parent_id)?.account_id ?? null : null)));
   const withAccT = useMemo(() => treasuries.filter((x) => x.account_id), [treasuries]);
@@ -226,7 +229,7 @@ export default function POSPage() {
         branch_id: ownedShopId ? Number(ownedShopId) : null, date: today(),
         party_id: custId === "" ? null : Number(custId), customer_name: custParty?.name ?? null,
         revenue_account_id: Number(revAcc), tax_account_id: vatAcc === "" ? null : Number(vatAcc),
-        tax_rate: 15, tax_inclusive: false, items, notes: null, shift_id: shift?.id ?? null, source: "pos",
+        tax_rate: taxRate, tax_inclusive: false, items, notes: null, shift_id: shift?.id ?? null, source: "pos",
       }, tenders));
       return;
     }
@@ -242,7 +245,7 @@ export default function POSPage() {
       party_id: custId === "" ? null : Number(custId), customer_name: custParty?.name ?? null,
       payment_type: payType, treasury_account_id: collectAcc,
       customer_account_id: custAcc, revenue_account_id: Number(revAcc), tax_account_id: vatAcc === "" ? null : Number(vatAcc),
-      tax_rate: 15, tax_inclusive: false, items, paid_amount: payType === "credit" ? 0 : t.total, notes: null, shift_id: shift?.id ?? null, source: "pos",
+      tax_rate: taxRate, tax_inclusive: false, items, paid_amount: payType === "credit" ? 0 : t.total, notes: null, shift_id: shift?.id ?? null, source: "pos",
     }));
   };
 
@@ -321,7 +324,7 @@ export default function POSPage() {
       <hr/>
       <table style="width:100%;font-size:12px">
         <tr><td style="text-align:right">الإجمالي قبل الضريبة</td><td style="text-align:left;direction:ltr">${fmt(sub)}</td></tr>
-        <tr><td style="text-align:right">ضريبة القيمة المضافة 15%</td><td style="text-align:left;direction:ltr">${fmt(tax)}</td></tr>
+        <tr><td style="text-align:right">ضريبة القيمة المضافة ${taxRate}%</td><td style="text-align:left;direction:ltr">${fmt(tax)}</td></tr>
         <tr style="font-weight:800;font-size:14px"><td style="text-align:right">الإجمالي شامل الضريبة</td><td style="text-align:left;direction:ltr">${fmt(tot)}</td></tr>
       </table>
       <hr/>
@@ -551,7 +554,7 @@ export default function POSPage() {
           <div className="flex items-center justify-between text-xs text-slate-400"><span>خصم الفاتورة (F6)</span>
             <input ref={discRef} type="number" step="0.01" value={discount} onChange={(e) => setDiscount(e.target.value)} className="w-24 bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1 text-xs text-left [direction:ltr] outline-none focus:border-blue-500" />
           </div>
-          <div className="flex items-center justify-between text-xs text-slate-400"><span>ضريبة 15%</span><span className="font-mono text-amber-300 [direction:ltr]">{fmt(t.vat)}</span></div>
+          <div className="flex items-center justify-between text-xs text-slate-400"><span>ضريبة {taxRate}%</span><span className="font-mono text-amber-300 [direction:ltr]">{fmt(t.vat)}</span></div>
           <div className="flex items-center justify-between text-lg font-black text-white border-t border-slate-800 pt-2"><span>الإجمالي</span><span className="font-mono text-emerald-400 [direction:ltr]">{fmt(t.total)}</span></div>
 
           {PayPanel}

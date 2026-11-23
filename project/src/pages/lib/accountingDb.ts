@@ -2835,3 +2835,18 @@ export async function fetchProductPurchases(orgId: number, productId: number): P
   }
   return out;
 }
+
+
+// تسجيل حركة بيع (صادر) في سجل حركات المخزون — إضافي، لا يغيّر منطق البيع.
+export async function logSaleMoves(orgId: number, branchId: number | null, lines: { product_id: number; qty: number; unit_cost: number }[], refId: number | null, moveType: string = "sale_out"): Promise<void> {
+  const rows = (lines || [])
+    .filter((l) => l.product_id && (Number(l.qty) || 0) > 0)
+    .map((l) => ({
+      organization_id: orgId, branch_id: branchId, product_id: l.product_id,
+      move_type: moveType, qty: -Math.abs(Number(l.qty) || 0), unit_cost: Number(l.unit_cost) || null,
+      ref_type: "pos_sale", ref_id: refId ?? null, notes: null, created_by: null,
+    }));
+  if (!rows.length) return;
+  const { error } = await supabase.from("gl_stock_moves").insert(rows);
+  if (error) console.error("logSaleMoves", error);
+}

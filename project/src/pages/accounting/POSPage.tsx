@@ -198,6 +198,12 @@ export default function POSPage() {
     const finish = async (res: { ok: boolean; error?: string; invoiceNo?: number }) => {
       if (!res.ok) { setSaving(false); alert("تعذّر إصدار الفاتورة: " + (res.error || "")); return; }
       for (const l of cart) await DB.adjustProductStock(l.product.id, -l.qty);
+      // تسجيل حركة بيع (صادر) في سجل الحركات — إضافي، لا يؤثر على إصدار الفاتورة
+      try {
+        await DB.logSaleMoves(org.id, ownedShopId ? Number(ownedShopId) : null,
+          cart.map((l) => ({ product_id: l.product.id, qty: l.qty, unit_cost: Number(l.product.price) || 0 })),
+          res.invoiceNo ?? null);
+      } catch (e) { console.error("logSaleMoves", e); }
       setSaving(false);
       printReceipt(res.invoiceNo || 0, items);
       clearCart(); await reloadProducts(); if (showToday) await loadToday();

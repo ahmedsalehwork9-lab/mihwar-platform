@@ -602,6 +602,9 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
 
   const [search, setSearch]             = useState('');
   const [filter, setFilter]             = useState<FilterStatus>('all');
+  const [filterCategory, setFilterCategory] = useState<string>('');
+  const [filterBrand, setFilterBrand]   = useState<string>('');
+  const [pageSize, setPageSize]         = useState<number>(PAGE_SIZE);
   const [sortKey, setSortKey]           = useState<SortKey>('default');
   const [sortDir, setSortDir]           = useState<'asc' | 'desc'>('asc');
   const [cols, setCols]                 = useState<ColVis>(loadCols);
@@ -1418,6 +1421,8 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
       totalQty   += p.quantity;
 
       const matchesFilter = filter === 'all' || (filter === 'reorder' ? needsReorder(p) : s === filter);
+      const matchesCat   = !filterCategory || (p.category || '') === filterCategory;
+      const matchesBrand = !filterBrand || (p.brand || '') === filterBrand;
       const matchesSearch = !q
         || p.product_code?.toLowerCase().includes(q)
         || p.product_name?.toLowerCase().includes(q)
@@ -1425,7 +1430,7 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
         || p.barcode?.toLowerCase().includes(q)
         || p.category?.toLowerCase().includes(q);
 
-      if (matchesFilter && matchesSearch) allFiltered.push(p);
+      if (matchesFilter && matchesCat && matchesBrand && matchesSearch) allFiltered.push(p);
     }
 
     return {
@@ -1433,7 +1438,11 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
       counts: { all: products.length, in_stock: inStock, low_stock: lowStock, out_of_stock: outOfStock, reorder },
       totals: { value: totalValue, qty: totalQty },
     };
-  }, [products, filter, search]);
+  }, [products, filter, search, filterCategory, filterBrand]);
+
+  // قوائم خيارات الفلاتر (من البيانات)
+  const categoryOptions = useMemo(() => [...new Set(products.map(p => (p.category || '').trim()).filter(Boolean))].sort(), [products]);
+  const brandOptions = useMemo(() => [...new Set(products.map(p => (p.brand || '').trim()).filter(Boolean))].sort(), [products]);
 
   const toggleSort = useCallback((key: SortKey) => {
     if (sortKey === key) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
@@ -1469,10 +1478,10 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
     });
   }, [filtered, sortKey, sortDir, defaultMarginPercent]);
 
-  const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
+  const totalPages = Math.ceil(sorted.length / pageSize);
   const pageItems  = useMemo(
-    () => sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-    [sorted, page]
+    () => sorted.slice((page - 1) * pageSize, page * pageSize),
+    [sorted, page, pageSize]
   );
 
   // قيمة المخزون حسب التصنيف (أعلى 6)
@@ -1867,11 +1876,17 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
   ];
 
   // ── Shared pagination UI ──────────────────────────────────────────────────
-  const PaginationControls = () => totalPages > 1 ? (
-    <div className="flex items-center justify-between p-4 border-t border-slate-800 bg-slate-950/20">
-      <span className="text-[11px] text-slate-500 font-medium">
-        {t('Showing', 'عرض')} {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} {t('of', 'من')} {filtered.length}
-      </span>
+  const PaginationControls = () => (
+    <div className="flex items-center justify-between gap-3 p-4 border-t border-slate-800 bg-slate-950/20 flex-wrap">
+      <div className="flex items-center gap-3">
+        <span className="text-[11px] text-slate-500 font-medium">
+          {t('Showing', 'عرض')} {filtered.length === 0 ? 0 : (page - 1) * pageSize + 1}–{Math.min(page * pageSize, filtered.length)} {t('of', 'من')} {filtered.length}
+        </span>
+        <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }} className="bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-[11px] text-slate-300 focus:border-emerald-500 outline-none">
+          {[12, 24, 50, 100].map(n => <option key={n} value={n}>{n} / {t('page', 'صفحة')}</option>)}
+        </select>
+      </div>
+      {totalPages > 1 && (
       <div className="flex items-center gap-1" role="navigation" aria-label={t('Pagination', 'التنقل بين الصفحات')}>
         <button
           onClick={() => setPage(p => Math.max(1, p - 1))}
@@ -1904,8 +1919,9 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
           {isRTL ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
         </button>
       </div>
+      )}
     </div>
-  ) : null;
+  );
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
@@ -2002,6 +2018,21 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
             </span>
           </button>
         ))}
+        {categoryOptions.length > 0 && (
+          <select value={filterCategory} onChange={e => { setFilterCategory(e.target.value); setPage(1); }} className="shrink-0 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 focus:border-emerald-500 outline-none">
+            <option value="">{t('All Categories', 'كل التصنيفات')}</option>
+            {categoryOptions.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        )}
+        {brandOptions.length > 0 && (
+          <select value={filterBrand} onChange={e => { setFilterBrand(e.target.value); setPage(1); }} className="shrink-0 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 focus:border-emerald-500 outline-none">
+            <option value="">{t('All Brands', 'كل العلامات')}</option>
+            {brandOptions.map(b => <option key={b} value={b}>{b}</option>)}
+          </select>
+        )}
+        {(filterCategory || filterBrand) && (
+          <button onClick={() => { setFilterCategory(''); setFilterBrand(''); setPage(1); }} className="shrink-0 px-3 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white border border-slate-800">{t('Clear', 'مسح')}</button>
+        )}
       </section>
 
       {/* ── KPI Cards ── */}
@@ -3088,7 +3119,7 @@ function ProductDetailDrawer({ p, orgId, defMargin, t, isRTL, onClose, onEdit }:
   const status = getStatus(p.quantity);
   const statusLabel = status === 'in_stock' ? t('In Stock', 'متوفر') : status === 'low_stock' ? t('Low Stock', 'منخفض') : t('Out of Stock', 'نافد');
   const statusColor = status === 'in_stock' ? 'text-emerald-400' : status === 'low_stock' ? 'text-amber-400' : 'text-red-400';
-  const moveLabel = (m: string) => m === 'purchase_in' ? t('Purchase In', 'وارد شراء') : m === 'purchase_return' ? t('Purchase Return', 'مرتجع شراء') : m === 'adjust' ? t('Adjustment', 'تسوية') : m;
+  const moveLabel = (m: string) => m === 'purchase_in' ? t('Purchase In', 'وارد شراء') : m === 'purchase_return' ? t('Purchase Return', 'مرتجع شراء') : m === 'adjust' ? t('Adjustment', 'تسوية') : m === 'sale_out' ? t('Sale Out', 'صادر بيع') : m;
 
   return (
     <div className="fixed inset-0 z-[90] bg-black/60 flex justify-start" dir={isRTL ? 'rtl' : 'ltr'} onClick={onClose}>

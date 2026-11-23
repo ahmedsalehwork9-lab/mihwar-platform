@@ -65,6 +65,7 @@ export type Page =
   | 'reports-center'
   | 'business-analytics'
   | 'monthly-financial'
+  | 'report-builder'
   | 'accounting'
   | 'alerts'
   | 'shop-settings'       // ← إعدادات المحل + QR
@@ -104,6 +105,7 @@ const pageTitles: Record<Page, { en: string; ar: string }> = {
   'reports-center':  { en: 'Reports Center',   ar: 'مركز التقارير'   },
   'business-analytics': { en: 'Business Analytics', ar: 'تحليلات الأعمال' },
   'monthly-financial': { en: 'Monthly Financial', ar: 'التقرير المالي الشهري' },
+  'report-builder': { en: 'Report Builder', ar: 'مُنشئ التقارير' },
   'accounting':      { en: 'Accounting',       ar: 'الحسابات'        },
   'alerts':          { en: 'Alerts',           ar: 'التنبيهات'       },
   'shop-settings':   { en: 'Shop Settings',    ar: 'إعدادات المحل'   },
@@ -233,6 +235,7 @@ const OPERATIONS: OpEntry[] = [
     { labelEn: 'Reports Center',   labelAr: 'مركز التقارير',  page: 'reports-center' },
     { labelEn: 'Business Analytics', labelAr: 'تحليلات الأعمال', page: 'business-analytics' },
     { labelEn: 'Monthly Financial', labelAr: 'التقرير المالي الشهري', page: 'monthly-financial' },
+    { labelEn: 'Report Builder', labelAr: 'مُنشئ التقارير', page: 'report-builder' },
     { labelEn: 'Reports',          labelAr: 'التقارير',       page: 'reports' },
     { labelEn: 'Financial Report (Ops)', labelAr: 'التقرير التشغيلي (التوصيل)', page: 'financial-report' },
   ] },

@@ -29,6 +29,7 @@ const FinancialReportPage = lazy(() => import('./pages/finance/FinancialReportPa
 const ReportsHubPage = lazy(() => import('./pages/ReportsHubPage'));
 const BusinessAnalyticsPage = lazy(() => import('./pages/reports/BusinessAnalyticsPage'));
 const MonthlyFinancialPage = lazy(() => import('./pages/reports/MonthlyFinancialPage'));
+const ReportBuilderPage = lazy(() => import('./pages/reports/ReportBuilderPage'));
 const AccountingPage = lazy(() => import('./pages/accounting/AccountingPage'));
 const QuotationPage = lazy(() => import('./pages/accounting/QuotationPage'));
 const POSPage = lazy(() => import('./pages/accounting/POSPage'));
@@ -141,6 +142,7 @@ function AppContent() {
           {page === 'reports-center' && <ReportsHubPage setPage={setPage} setAccSection={setAccSection} />}
           {page === 'business-analytics' && <BusinessAnalyticsPage onNavigate={setPage} onSection={setAccSection} />}
           {page === 'monthly-financial' && <MonthlyFinancialPage onNavigate={setPage} />}
+          {page === 'report-builder' && <ReportBuilderPage />}
           {page === 'accounting' && <AccountingPage section={accSection} onSection={setAccSection} onNavigate={setPage} />}
 
           {/* صفحات قيد التطوير (مجموعات المبيعات/المشتريات) */}

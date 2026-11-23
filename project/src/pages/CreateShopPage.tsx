@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { COUNTRY_PRESETS, saveOrgConfig } from './lib/orgConfig';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import {
@@ -390,6 +391,7 @@ const BLANK_FORM = {
   google_maps_url:         '',
   organization_id:         '',
   group_id:                '',
+  country:                 'SA',
   shop_type:               'branch'  as ShopType,
   // FIX: lowercase values to match shops.visibility_mode column constraint
   visibility_mode:         'public'  as VisibilityMode,
@@ -591,6 +593,16 @@ export default function CreateShopPage() {
       }
 
       const selectedOrg = organizations.find(o => o.id === Number(form.organization_id));
+      // طبّق دولة العميل على مؤسسته (العملة/الضريبة/التوقيت) — متسامح لو أعمدة الإعداد غير موجودة بعد
+      if (form.organization_id && form.country && COUNTRY_PRESETS[form.country]) {
+        const _p = COUNTRY_PRESETS[form.country];
+        try {
+          await saveOrgConfig(Number(form.organization_id), {
+            country: _p.country!, currency: _p.currency!, currency_symbol: _p.currency_symbol!,
+            timezone: _p.timezone!, default_tax_rate: _p.default_tax_rate!,
+          });
+        } catch (e) { console.error('apply country config', e); }
+      }
       setSuccessInfo({
         shop_name:         form.shop_name,
         email:             form.email,
@@ -711,6 +723,18 @@ export default function CreateShopPage() {
                   <option value="">{t('select_group')}</option>
                   {groups.map(g => (
                     <option key={g.id} value={g.id}>{g.name}</option>
+                  ))}
+                </SelectField>
+
+                <SelectField
+                  label={isRtl ? 'الدولة' : 'Country'}
+                  icon={<Building2 size={17} />}
+                  isRtl={isRtl}
+                  value={form.country}
+                  onChange={e => updateField('country', e.target.value)}
+                >
+                  {Object.entries(COUNTRY_PRESETS).map(([k, pr]) => (
+                    <option key={k} value={k}>{isRtl ? pr.ar : pr.en}</option>
                   ))}
                 </SelectField>
               </div>

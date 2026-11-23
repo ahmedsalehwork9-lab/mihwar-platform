@@ -38,6 +38,7 @@ import { useAuth } from '../context/AuthContext';
 import { useLang } from '../context/LanguageContext';
 import { ThemeToggle } from './ThemeToggle';
 import BranchSwitcher from './BranchSwitcher';
+import TrialBanner from './TrialBanner';
 
 // ══════════════════════════════════════════════════════════════════════
 // PAGE TYPE
@@ -868,6 +869,7 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
 
         {/* Main content */}
         <main className="flex-1 overflow-y-auto p-4 lg:p-6 pb-20 lg:pb-6">
+          <TrialBanner />
           {children}
         </main>
 

@@ -3,6 +3,7 @@
 // طبقة إعدادات الشركة (الدولة/العملة/التوقيت/اللغة/الضريبة) + مُنسّقات مركزية.
 // العملة طبقة عرض فقط — لا تُغيَّر أي قيمة مخزّنة.
 // حامل عملة عالمي (ACTIVE) يقرأه reportingKit.money ليتبع عملة الشركة النشطة.
+// p27: أُضيف subscription_status + trial_ends_at لعرض لافتة الفترة التجريبية للعميل.
 // =============================================================
 import { supabase } from "./supabase";
 
@@ -17,6 +18,8 @@ export type OrgConfig = {
   number_format: "en" | "ar";
   fiscal_year_start: number;
   is_internal: boolean;
+  subscription_status: string;      // trial | active | suspended | expired
+  trial_ends_at: string | null;     // ISO date | null
 };
 
 export const COUNTRY_PRESETS: Record<string, Partial<OrgConfig> & { en: string; ar: string }> = {
@@ -29,6 +32,7 @@ export const COUNTRY_PRESETS: Record<string, Partial<OrgConfig> & { en: string; 
 export const DEFAULT_CONFIG: OrgConfig = {
   orgId: 0, country: "SA", currency: "SAR", currency_symbol: "ر.س", timezone: "Asia/Riyadh",
   default_language: "ar", default_tax_rate: 15, number_format: "en", fiscal_year_start: 1, is_internal: false,
+  subscription_status: "active", trial_ends_at: null,
 };
 
 // ── حامل العملة النشطة (عالمي) ───────────────────────────────────────────────
@@ -48,7 +52,7 @@ export async function fetchOrgConfig(orgId: number): Promise<OrgConfig> {
   try {
     const { data, error } = await supabase
       .from("organizations")
-      .select("id, country, currency, currency_symbol, timezone, default_language, default_tax_rate, number_format, fiscal_year_start, is_internal")
+      .select("id, country, currency, currency_symbol, timezone, default_language, default_tax_rate, number_format, fiscal_year_start, is_internal, subscription_status, trial_ends_at")
       .eq("id", orgId).maybeSingle();
     if (error || !data) return { ...DEFAULT_CONFIG, orgId };
     const d = data as any;
@@ -63,6 +67,8 @@ export async function fetchOrgConfig(orgId: number): Promise<OrgConfig> {
       number_format: (d.number_format as any) ?? DEFAULT_CONFIG.number_format,
       fiscal_year_start: d.fiscal_year_start != null ? Number(d.fiscal_year_start) : 1,
       is_internal: !!d.is_internal,
+      subscription_status: d.subscription_status ?? DEFAULT_CONFIG.subscription_status,
+      trial_ends_at: d.trial_ends_at ?? null,
     };
   } catch {
     return { ...DEFAULT_CONFIG, orgId };
@@ -70,6 +76,7 @@ export async function fetchOrgConfig(orgId: number): Promise<OrgConfig> {
 }
 
 export async function saveOrgConfig(orgId: number, patch: Partial<OrgConfig>): Promise<{ ok: boolean; error?: string }> {
+  // ملاحظة: subscription_status و trial_ends_at لا يُحفظان من محرّر الإعدادات (تُدار عبر الأونبوردنج).
   const row: Record<string, any> = {};
   for (const k of ["country", "currency", "currency_symbol", "timezone", "default_language", "default_tax_rate", "number_format", "fiscal_year_start", "is_internal"] as const) {
     if (patch[k] !== undefined) row[k] = patch[k];

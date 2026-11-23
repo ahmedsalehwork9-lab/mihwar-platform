@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import * as DB from "../lib/accountingDb";
+import { ACTIVE } from "../lib/orgConfig";
 import type {
   GLAccount, GLParty, GLTreasury, POSProduct, GLPurchaseInvoice,
   PurchaseItem, PurchaseKind, PurchasePayType,
@@ -53,7 +54,7 @@ export default function PurchaseInvoicesPage() {
   const [fKind, setFKind] = useState<PurchaseKind>("inventory");
   const [fDebitAcc, setFDebitAcc] = useState<number | "">("");
   const [fTaxAcc, setFTaxAcc] = useState<number | "">("");
-  const [fRate, setFRate] = useState("15");
+  const [fRate, setFRate] = useState(String(ACTIVE.taxRate));
   const [fInclusive, setFInclusive] = useState(false);
   const [fPay, setFPay] = useState<PurchasePayType>("credit");
   const [fTreasury, setFTreasury] = useState<number | "">("");
@@ -182,7 +183,7 @@ export default function PurchaseInvoicesPage() {
 
   const resetForm = () => {
     setFDate(today()); setFSupplierAcc(""); setFSupplierName(""); setFSupplierInvNo("");
-    setFKind("inventory"); setFRate("15"); setFInclusive(false); setFPay("credit");
+    setFKind("inventory"); setFRate(String(ACTIVE.taxRate)); setFInclusive(false); setFPay("credit");
     setFPaid(""); setFDue(""); setFNotes(""); setLines([emptyLine()]); setErr(null);
   };
   const openNew = () => { resetForm(); setShowAddSup(false); setNsName(""); setNsPhone(""); setNsTax(""); setMode("new"); window.scrollTo(0, 0); };

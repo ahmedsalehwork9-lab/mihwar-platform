@@ -466,11 +466,15 @@ export default function CreateShopPage() {
 
   useEffect(() => {
     const initData = async () => {
+      // استبعاد شركات Internal Pilot من إحصاءات الحسابات التجارية — متسامح لو العمود غير موجود بعد
+      let _intIds: number[] = [];
+      try { const _ir = await supabase.from('organizations').select('id').eq('is_internal', true); _intIds = (_ir.data || []).map((o: any) => o.id).filter(Boolean); } catch { _intIds = []; }
+      const _excl = (qb: any) => (_intIds.length ? qb.not('organization_id', 'in', `(${_intIds.join(',')})`) : qb);
       const [statsRes, orgRes] = await Promise.all([
         Promise.all([
-          supabase.from('shops').select('id', { count: 'exact', head: true }),
-          supabase.from('shops').select('id', { count: 'exact', head: true }).eq('is_active', true),
-          supabase.from('shops').select('id', { count: 'exact', head: true }).eq('subscription_status', 'trial'),
+          _excl(supabase.from('shops').select('id', { count: 'exact', head: true })),
+          _excl(supabase.from('shops').select('id', { count: 'exact', head: true }).eq('is_active', true)),
+          _excl(supabase.from('shops').select('id', { count: 'exact', head: true }).eq('subscription_status', 'trial')),
         ]),
         supabase.from('organizations').select('id, name').order('name'),
       ]);

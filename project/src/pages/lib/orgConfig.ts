@@ -33,12 +33,13 @@ export const DEFAULT_CONFIG: OrgConfig = {
 
 // ── حامل العملة النشطة (عالمي) ───────────────────────────────────────────────
 // يُحدّثه OrgConfigProvider عند تحميل الشركة؛ تقرأه المُنسّقات أدناه و reportingKit.
-export const ACTIVE = { symbol: "ر.س", code: "SAR", numberFormat: "en" as "en" | "ar", timezone: "Asia/Riyadh" };
+export const ACTIVE = { symbol: "ر.س", code: "SAR", numberFormat: "en" as "en" | "ar", timezone: "Asia/Riyadh", taxRate: 15 };
 export function setActiveFromConfig(cfg: OrgConfig) {
   ACTIVE.symbol = cfg.currency_symbol || "ر.س";
   ACTIVE.code = cfg.currency || "SAR";
   ACTIVE.numberFormat = (cfg.number_format as any) || "en";
   ACTIVE.timezone = cfg.timezone || "Asia/Riyadh";
+  ACTIVE.taxRate = cfg.default_tax_rate ?? 15;
 }
 
 // ── جلب إعداد الشركة (بأمان: يرجع الافتراضات لو الأعمدة غير موجودة بعد) ──────────

@@ -182,6 +182,9 @@ export default function AdminDashboardPage() {
       const completed   = ordersData?.filter(o => o.status === 'completed').length ?? 0;
       const rejected    = ordersData?.filter(o => o.status === 'rejected').length  ?? 0;
       const totalAmount = ordersData?.reduce((sum, o) => sum + Number(o.total_amount ?? 0), 0) ?? 0;
+      // استبعاد الشركات الداخلية (Internal Pilot) من عدّ العملاء التجاريين — متسامح لو العمود غير موجود بعد
+      let internalOrgCount = 0;
+      try { const _ir = await supabase.from('organizations').select('*', { count: 'exact', head: true }).eq('is_internal', true); internalOrgCount = _ir.count ?? 0; } catch { internalOrgCount = 0; }
 
       setStats({
         shops:              shopsCount      ?? 0,
@@ -189,7 +192,7 @@ export default function AdminDashboardPage() {
         products:           productsCount   ?? 0,
         orders:             ordersCount     ?? 0,
         users:              usersCount      ?? 0,
-        organizations:      orgsCount       ?? 0,
+        organizations:      Math.max(0, (orgsCount ?? 0) - internalOrgCount),
         groups:             groupsCount     ?? 0,
         warehouses:         warehousesCount ?? 0,
         branches:           branchesCount   ?? 0,

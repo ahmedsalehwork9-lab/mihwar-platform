@@ -21,6 +21,7 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import * as DB from "../lib/accountingDb";
+import { ACTIVE } from "../lib/orgConfig";
 import PartyQuickEditor from "../lib/PartyQuickEditor";
 import type { GLAccount, GLLine, EntryWithLines, LedgerLine, AccType } from "../lib/accountingDb";
 
@@ -1733,7 +1734,7 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, onPar
   const [treasuryAcc, setTreasuryAcc] = useState<number | "">("");
   const [treasuryRows, setTreasuryRows] = useState<DB.GLTreasury[]>([]);
   const [paidAmount, setPaidAmount] = useState("");
-  const [taxRate, setTaxRate] = useState("15");
+  const [taxRate, setTaxRate] = useState(String(ACTIVE.taxRate));
   const [taxInclusive, setTaxInclusive] = useState(false);
   const [revAcc, setRevAcc] = useState<number | "">("");
   const [taxAcc, setTaxAcc] = useState<number | "">("");
@@ -1765,7 +1766,7 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, onPar
   const setItem = (i: number, patch: any) => setItems((p) => p.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
   const addItem = () => setItems((p) => [...p, { description: "", qty: "1", unit_price: "" }]);
   const delItem = (i: number) => setItems((p) => (p.length > 1 ? p.filter((_, idx) => idx !== i) : p));
-  const resetForm = () => { setDate(today()); setPartyId(""); setCustAcc(null); setCustName(""); setPayType("cash"); setTreasuryAcc(""); setPaidAmount(""); setTaxRate("15"); setTaxInclusive(false); setItems([{ description: "", qty: "1", unit_price: "" }]); setNotes(""); setBranch(branches?.length === 1 ? String(branches[0].id) : ""); };
+  const resetForm = () => { setDate(today()); setPartyId(""); setCustAcc(null); setCustName(""); setPayType("cash"); setTreasuryAcc(""); setPaidAmount(""); setTaxRate(String(ACTIVE.taxRate)); setTaxInclusive(false); setItems([{ description: "", qty: "1", unit_price: "" }]); setNotes(""); setBranch(branches?.length === 1 ? String(branches[0].id) : ""); };
 
   const save = async () => {
     const its = items.map((it) => ({ description: it.description.trim(), qty: Number(it.qty) || 0, unit_price: Number(it.unit_price) || 0, line_total: Math.round((Number(it.qty) || 0) * (Number(it.unit_price) || 0) * 100) / 100 })).filter((it) => it.line_total > 0);

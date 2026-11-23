@@ -231,7 +231,8 @@ const OPERATIONS: OpEntry[] = [
     { labelEn: 'Reports Center',   labelAr: 'مركز التقارير',  page: 'reports-center' },
   ] },
 
-  { type: 'group', key: 'accounting', icon: <Calculator size={17} />, labelEn: 'Accounting', labelAr: 'الحسابات', homePage: 'accounting', homeSection: 'journal', children: [
+  { type: 'group', key: 'accounting', icon: <Calculator size={17} />, labelEn: 'Accounting', labelAr: 'الحسابات', homePage: 'accounting', homeSection: 'dashboard', children: [
+    { labelEn: 'Dashboard',      labelAr: 'لوحة التحكم',      section: 'dashboard' },
     { labelEn: 'Journal',        labelAr: 'القيود اليومية',   section: 'journal' },
     { labelEn: 'Treasury',       labelAr: 'الخزن والبنوك',    section: 'treasury' },
     { labelEn: 'Parties',        labelAr: 'العملاء والموردين', section: 'parties' },

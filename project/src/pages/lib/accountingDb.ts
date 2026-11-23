@@ -576,6 +576,9 @@ export async function updateEntry(
 
 ): Promise<{ ok: boolean; error?: string }> {
 
+  // حراسة: لا يُعدَّل قيد مُرحّل مباشرةً — يُصحَّح بقيد عكسي
+  const { data: curU } = await supabase.from("gl_journal_entries").select("status").eq("id", id).single();
+  if (curU && (curU as any).status === "posted") return { ok: false, error: "لا يمكن تعديل قيد مُرحّل. أنشئ قيدًا عكسيًا للتصحيح." };
   const { error: e0 } = await supabase
 
     .from("gl_journal_entries")
@@ -746,6 +749,9 @@ export async function deleteEntry(id: number): Promise<{ ok: boolean; error?: st
 
   // نظّف المرفقات (ملفات التخزين + سجلاتها) قبل حذف القيد*
 
+  // حراسة: لا يُحذف قيد مُرحّل — يُصحَّح بقيد عكسي
+  const { data: curD } = await supabase.from("gl_journal_entries").select("status").eq("id", id).single();
+  if (curD && (curD as any).status === "posted") return { ok: false, error: "لا يمكن حذف قيد مُرحّل. أنشئ قيدًا عكسيًا للتصحيح." };
   const atts = await fetchAttachments(id);
 
   if (atts.length) {
@@ -2885,4 +2891,35 @@ export async function deleteWarehouse(orgId: number, id: number): Promise<{ ok: 
   const { error } = await supabase.from("warehouses").delete().eq("id", id).eq("organization_id", orgId);
   if (error) { console.error("deleteWarehouse", error); return { ok: false, error: error.message }; }
   return { ok: true };
+}
+
+
+// ── قيد عكسي موثّق لتصحيح قيد مُرحّل (لا يحذف الأصل) ──
+export async function reverseEntry(entryId: number, opts?: { date?: string }): Promise<{ ok: boolean; error?: string; id?: number }> {
+  const { data: head, error: eH } = await supabase.from("gl_journal_entries").select("*").eq("id", entryId).single();
+  if (eH || !head) return { ok: false, error: eH?.message || "القيد غير موجود" };
+  const h = head as any;
+  if ((h.status || "posted") !== "posted") return { ok: false, error: "لا يمكن عكس قيد غير مُرحّل." };
+  if ((h.notes || "").includes("[REVERSED]")) return { ok: false, error: "هذا القيد معكوس مسبقًا." };
+  const { data: lns, error: eL } = await supabase.from("gl_journal_lines").select("*").eq("entry_id", entryId);
+  if (eL) return { ok: false, error: eL.message };
+  const revLines: GLLine[] = (lns || []).map((l: any) => ({
+    account_id: l.account_id, debit: Number(l.credit) || 0, credit: Number(l.debit) || 0,
+    branch_id: l.branch_id ?? null, note: l.note ?? null, party_id: l.party_id ?? null,
+  }));
+  if (revLines.length < 2) return { ok: false, error: "القيد الأصلي بلا سطور كافية." };
+  const date = opts?.date || new Date().toISOString().slice(0, 10);
+  const header: EntryHeader = {
+    date,
+    description: `عكس قيد JV-${h.entry_year}-${String(h.entry_no).padStart(4, "0")}` + (h.description ? ` — ${h.description}` : ""),
+    branch_id: h.branch_id ?? null,
+    entry_type: h.entry_type || "general",
+    notes: `[REVERSAL] قيد عكسي للقيد ${h.entry_no}/${h.entry_year}`,
+    status: "posted",
+  };
+  const res = await createEntry(h.organization_id, header, revLines);
+  if (!res.ok) return res;
+  const mark = (h.notes ? h.notes + " " : "") + `[REVERSED] عُكس بالقيد #${res.id}`;
+  await supabase.from("gl_journal_entries").update({ notes: mark }).eq("id", entryId);
+  return { ok: true, id: res.id };
 }

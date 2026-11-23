@@ -86,7 +86,7 @@ function AppContent() {
   const { session, loading, isAdmin } = useAuth();
 
   const [page, setPage] = useState<Page>('dashboard');
-  const [accSection, setAccSection] = useState<string>('journal'); // القسم النشط داخل الحسابات (يتحكم به الشريط الجانبي)
+  const [accSection, setAccSection] = useState<string>('dashboard'); // القسم النشط داخل الحسابات (يتحكم به الشريط الجانبي)
   const [showLanding, setShowLanding] = useState(true);
 
   if (loading) {

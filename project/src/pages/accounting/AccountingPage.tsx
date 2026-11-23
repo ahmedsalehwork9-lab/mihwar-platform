@@ -16,6 +16,7 @@ import {
   Building2, FileCheck2, Send, Layers, Paperclip, ExternalLink,
   Wallet, Landmark, ArrowDownCircle, ArrowUpCircle, Users, Phone, Printer,
   TrendingDown, TrendingUp, BarChart3, ShoppingCart,
+  LayoutDashboard, RotateCcw, Eye, ArrowUpDown, Banknote, CheckCircle2, FileClock,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../lib/supabase";
@@ -43,9 +44,10 @@ const BTN_SUCCESS = "inline-flex items-center justify-center gap-1.5 px-5 py-2.5
 const BTN_GHOST_EM = "inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-xs transition-colors disabled:opacity-50 hover:bg-emerald-500/20";
 const BTN_GHOST_BL = "inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-300 font-bold text-xs transition-colors disabled:opacity-50 hover:bg-blue-500/20";
 
-type Tab = "chart" | "opening" | "journal" | "sales" | "ledger" | "trial" | "statements" | "assets" | "treasury" | "parties";
+type Tab = "dashboard" | "chart" | "opening" | "journal" | "sales" | "ledger" | "trial" | "statements" | "assets" | "treasury" | "parties";
 const TYPE_OPTS: AccType[] = ["asset", "liability", "equity", "revenue", "expense"];
 const TABS: { k: Tab; label: string; icon: any }[] = [
+  { k: "dashboard", label: "لوحة التحكم", icon: LayoutDashboard },
   { k: "chart", label: "دليل الحسابات", icon: Network },
   { k: "opening", label: "الأرصدة الافتتاحية", icon: Landmark },
   { k: "journal", label: "القيود اليومية", icon: BookOpen },
@@ -372,6 +374,7 @@ export default function AccountingPage({ section, onSection, onNavigate }: { sec
         </div>
       </div>
 
+      {tab === "dashboard" && <DashboardTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} parties={parties} onSection={setTab} onNavigate={onNavigate} />}
       {tab === "chart" && <ChartTab org={org} accounts={accounts} reload={reloadAccounts} busy={busy} setBusy={setBusy} />}
       {tab === "opening" && <OpeningTab org={org} accounts={accounts} postable={postable} branches={branches} />}
       {tab === "journal" && <JournalTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} parties={parties} />}
@@ -597,8 +600,137 @@ function ChartTab({ org, accounts, reload, busy, setBusy }: { org: { id: number;
 type DraftLine = { account_id: number | ""; debit: string; credit: string; branch_id: number | ""; note: string; party_id: number | null };
 const emptyLine = (): DraftLine => ({ account_id: "", debit: "", credit: "", branch_id: "", note: "", party_id: null });
 
+// ══════════════ لوحة التحكم المحاسبية ══════════════
+function DashboardTab({ org, postable, parties, onSection }: any) {
+  const [loading, setLoading] = useState(true);
+  const [st, setSt] = useState<{ debit: number; credit: number; posted: number; draft: number; cash: number; bank: number; unbalanced: number; byType: { label: string; value: number; color: string }[]; monthly: { label: string; value: number }[] }>({ debit: 0, credit: 0, posted: 0, draft: 0, cash: 0, bank: 0, unbalanced: 0, byType: [], monthly: [] });
+
+  const TYPE_COLORS: Record<string, string> = { sales: "#10b981", purchases: "#3b82f6", receipt: "#22c55e", payment: "#ef4444", settlement: "#f59e0b", depreciation: "#a855f7", opening: "#64748b", general: "#06b6d4" };
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setLoading(true);
+      const y = new Date().getFullYear();
+      const es = await DB.fetchEntries(org.id, `${y}-01-01`, today());
+      let debit = 0, credit = 0, posted = 0, draft = 0, unbalanced = 0;
+      const typeAgg: Record<string, number> = {};
+      const monthAgg: Record<string, number> = {};
+      for (const e of es) {
+        const isPosted = (e.status || "posted") === "posted";
+        const d = (e.lines || []).reduce((s, l) => s + Number(l.debit || 0), 0);
+        const c = (e.lines || []).reduce((s, l) => s + Number(l.credit || 0), 0);
+        if (isPosted) {
+          posted++; debit += d; credit += c;
+          if (Math.abs(d - c) > 0.009) unbalanced++;
+          const tk = e.entry_type || "general"; typeAgg[tk] = (typeAgg[tk] || 0) + d;
+          const mk = (e.date || "").slice(0, 7); monthAgg[mk] = (monthAgg[mk] || 0) + d;
+        } else draft++;
+      }
+      const trs = await DB.fetchTreasuries(org.id);
+      let cash = 0, bank = 0;
+      await Promise.all((trs || []).map(async (t: any) => {
+        if (!t.account_id) return;
+        const net = await DB.fetchAccountNet(org.id, t.account_id);
+        if ((t.kind || "cash") === "bank") bank += net; else cash += net;
+      }));
+      const byType = Object.entries(typeAgg).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ label: DB.ENTRY_TYPE_LABEL[k] || k, value: v, color: TYPE_COLORS[k] || "#64748b" }));
+      const monthly = Object.entries(monthAgg).sort((a, b) => a[0].localeCompare(b[0])).map(([k, v]) => ({ label: k.slice(5), value: v }));
+      if (!alive) return;
+      setSt({ debit, credit, posted, draft, cash, bank, unbalanced, byType, monthly });
+      setLoading(false);
+    })();
+    return () => { alive = false; };
+  }, [org.id]);
+
+  const custCount = (parties || []).filter((p: any) => p.type === "customer").length;
+  const suppCount = (postable || []).filter((a: any) => String(a.code || "").startsWith("2101") && String(a.code) !== "2101").length;
+
+  const KCard = ({ icon: Icon, label, value, sub, color, onClick }: any) => (
+    <button type="button" onClick={onClick} disabled={!onClick}
+      className={`${CARD} p-4 flex flex-col justify-between min-h-[104px] text-right transition-all ${onClick ? "hover:border-blue-500/50 active:scale-[0.99] cursor-pointer" : "cursor-default"}`}>
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-bold text-slate-500">{label}</span>
+        <span className={`w-8 h-8 rounded-xl bg-slate-800/60 flex items-center justify-center ${color}`}><Icon size={16} /></span>
+      </div>
+      <div className={`text-xl font-black mt-1 [direction:ltr] text-right ${color}`}>{value}</div>
+      {sub && <div className="text-[10px] text-slate-500 mt-0.5">{sub}</div>}
+    </button>
+  );
+
+  if (loading) return <div className="p-10 text-center text-slate-500 text-sm">جارٍ تجهيز اللوحة…</div>;
+
+  const money = (n: number) => `${fmt(n)} ر.س`;
+
+  return (
+    <div className="space-y-4">
+      {st.unbalanced > 0 && (
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-bold">
+          <TrendingDown size={15} /> يوجد {st.unbalanced} قيد مُرحّل غير متوازن — راجعها من القيود اليومية.
+        </div>
+      )}
+
+      {/* بطاقات المؤشرات */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+        <KCard icon={TrendingUp}  label="إجمالي المدين (مُرحّل)" value={money(st.debit)}  color="text-emerald-400" />
+        <KCard icon={TrendingDown} label="إجمالي الدائن (مُرحّل)" value={money(st.credit)} color="text-amber-400" />
+        <KCard icon={CheckCircle2} label="قيود مُرحّلة"  value={st.posted} color="text-blue-400"   onClick={() => onSection?.("journal")} />
+        <KCard icon={FileClock}    label="قيود مسودة"   value={st.draft}  color="text-orange-400" sub="بانتظار الترحيل" onClick={() => onSection?.("journal")} />
+        <KCard icon={Wallet}       label="رصيد الصناديق" value={money(st.cash)} color="text-emerald-400" onClick={() => onSection?.("treasury")} />
+        <KCard icon={Banknote}     label="رصيد البنوك"   value={money(st.bank)} color="text-sky-400"     onClick={() => onSection?.("treasury")} />
+        <KCard icon={Users}        label="عدد العملاء"   value={custCount} color="text-indigo-400" onClick={() => onSection?.("parties")} />
+        <KCard icon={Users}        label="عدد الموردين"  value={suppCount} color="text-rose-400"   sub="حسابات فرعية تحت 2101" onClick={() => onSection?.("parties")} />
+      </div>
+
+      {/* روابط التقارير */}
+      <div className={`${CARD} p-3`}>
+        <div className="text-[11px] font-bold text-slate-500 mb-2 px-1">تقارير سريعة</div>
+        <div className="flex flex-wrap gap-2">
+          {[
+            { k: "ledger",     label: "كشف حساب",      icon: FileText },
+            { k: "trial",      label: "ميزان المراجعة", icon: Scale },
+            { k: "statements", label: "القوائم المالية", icon: BarChart3 },
+            { k: "journal",    label: "القيود اليومية",  icon: BookOpen },
+            { k: "chart",      label: "دليل الحسابات",   icon: Network },
+          ].map((r) => { const RI = r.icon; return (
+            <button key={r.k} onClick={() => onSection?.(r.k)} className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800/60 border border-slate-700 text-slate-200 text-xs font-bold hover:border-blue-500/50 hover:text-white transition-all">
+              <RI size={14} className="text-blue-400" /> {r.label}
+            </button>
+          ); })}
+        </div>
+      </div>
+
+      {/* الرسوم */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div className={`${CARD} p-4`}>
+          <SectionHead icon={BarChart3} title="الحركة الشهرية (مدين مُرحّل)" />
+          {st.monthly.length ? <LineChart data={st.monthly} /> : <div className="p-8 text-center text-slate-600 text-xs">لا توجد حركة هذا العام.</div>}
+        </div>
+        <div className={`${CARD} p-4`}>
+          <SectionHead icon={Layers} title="القيود المُرحّلة حسب المصدر" />
+          {st.byType.length ? (
+            <div className="flex items-center gap-4 flex-wrap justify-center py-2">
+              <DonutChart data={st.byType} />
+              <div className="space-y-1.5 text-xs">
+                {st.byType.map((d) => (
+                  <div key={d.label} className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: d.color }} />
+                    <span className="text-slate-400">{d.label}</span>
+                    <span className="text-slate-200 font-mono [direction:ltr] mr-2">{fmt(d.value)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : <div className="p-8 text-center text-slate-600 text-xs">لا توجد قيود مُرحّلة.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════ القيود اليومية ══════════════
 function JournalTab({ org, postable, accById, branches, branchName, parties }: any) {
-  const multiBranch = branches && branches.length > 1;
+  const multiBranch = branches &&branches.length > 1;
 
   // فلاتر العرض
   const [from, setFrom] = useState(monthStart());
@@ -606,7 +738,12 @@ function JournalTab({ org, postable, accById, branches, branchName, parties }: a
   const [fBranch, setFBranch] = useState<string>("");
   const [fType, setFType] = useState<string>("");
   const [fStatus, setFStatus] = useState<string>("");
+  const [fAccount, setFAccount] = useState<string>("");
   const [search, setSearch] = useState<string>("");
+  const [sortKey, setSortKey] = useState<"no" | "date" | "debit">("date");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [drawerEntry, setDrawerEntry] = useState<EntryWithLines | null>(null);
+  const [reversing, setReversing] = useState(false);
   const [entries, setEntries] = useState<EntryWithLines[]>([]);
 
   // نموذج الإدخال/التعديل
@@ -723,19 +860,47 @@ function JournalTab({ org, postable, accById, branches, branchName, parties }: a
   };
 
   const post = async (id: number) => { const r = await DB.setEntryStatus(id, "posted"); if (r.ok) await reload(); else alert("تعذّر الترحيل: " + (r.error || "")); };
-  const del = async (id: number) => { if (!window.confirm("حذف هذا القيد؟")) return; const r = await DB.deleteEntry(id); if (r.ok) await reload(); else alert("تعذّر الحذف: " + (r.error || "")); };
+  const del = async (id: number) => { if (!window.confirm("حذف هذا القيد؟")) return; const r = await DB.deleteEntry(id); if (r.ok) { setDrawerEntry(null); await reload(); } else alert("تعذّر الحذف: " + (r.error || "")); };
+  const reverse = async (e: EntryWithLines) => {
+    if (!window.confirm(`إنشاء قيد عكسي للقيد ${jvLabel(e.entry_year, e.entry_no)}؟ سيُنشأ قيد مُرحّل معاكس ويبقى الأصل كما هو.`)) return;
+    setReversing(true);
+    const r = await DB.reverseEntry(e.id, { date: today() });
+    setReversing(false);
+    if (r.ok) { setDrawerEntry(null); await reload(); alert("تم إنشاء القيد العكسي بنجاح."); }
+    else alert("تعذّر إنشاء القيد العكسي: " + (r.error || ""));
+  };
+  const isPosted = (e: EntryWithLines) => (e.status || "posted") === "posted";
+  const entryDC = (e: EntryWithLines) => {
+    const d = (e.lines || []).reduce((s, l) => s + Number(l.debit || 0), 0);
+    const c = (e.lines || []).reduce((s, l) => s + Number(l.credit || 0), 0);
+    return { d, c };
+  };
 
   // تصفية العرض (نوع/حالة/بحث)
   const shown = useMemo(() => entries.filter((e) => {
     if (fType && (e.entry_type || "general") !== fType) return false;
     if (fStatus && (e.status || "posted") !== fStatus) return false;
+    if (fAccount && !(e.lines || []).some((l) => String(l.account_id) === fAccount)) return false;
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       const hay = `${e.entry_no} ${e.description || ""} ${e.notes || ""} ${jvLabel(e.entry_year, e.entry_no)}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
-  }), [entries, fType, fStatus, search]);
+  }), [entries, fType, fStatus, fAccount, search]);
+
+  const sortedShown = useMemo(() => {
+    const arr = [...shown];
+    const dir = sortDir === "asc" ? 1 : -1;
+    arr.sort((a, b) => {
+      if (sortKey === "no") return ((a.entry_year * 1e6 + a.entry_no) - (b.entry_year * 1e6 + b.entry_no)) * dir;
+      if (sortKey === "debit") return (entryDC(a).d - entryDC(b).d) * dir;
+      return ((a.date || "").localeCompare(b.date || "") || (a.entry_no - b.entry_no)) * dir;
+    });
+    return arr;
+  }, [shown, sortKey, sortDir]);
+
+  const toggleSort = (k: "no" | "date" | "debit") => { if (sortKey === k) setSortDir((d) => (d === "asc" ? "desc" : "asc")); else { setSortKey(k); setSortDir("desc"); } };
 
   const draftCount = entries.filter((e) => (e.status || "posted") === "draft").length;
 
@@ -751,6 +916,7 @@ function JournalTab({ org, postable, accById, branches, branchName, parties }: a
           )}
           <div><label className={LABEL}>النوع</label><select value={fType} onChange={(e) => setFType(e.target.value)} className={SELECT}><option value="">كل الأنواع</option>{DB.ENTRY_TYPE_OPTS.map((t) => <option key={t} value={t}>{DB.ENTRY_TYPE_LABEL[t]}</option>)}</select></div>
           <div><label className={LABEL}>الحالة</label><select value={fStatus} onChange={(e) => setFStatus(e.target.value)} className={SELECT}><option value="">الكل</option><option value="posted">مُرحّل</option><option value="draft">مسودة</option></select></div>
+          <div><label className={LABEL}>الحساب</label><select value={fAccount} onChange={(e) => setFAccount(e.target.value)} className={SELECT + " max-w-[200px]"}><option value="">كل الحسابات</option>{postable.map((a: any) => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}</select></div>
           <div className="flex-1 min-w-[160px]"><label className={LABEL}>بحث</label>
             <div className="relative">
               <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" />
@@ -878,50 +1044,168 @@ function JournalTab({ org, postable, accById, branches, branchName, parties }: a
             <span className="text-slate-500">{shown.length} قيد</span>
           </div>
         } />
-        {shown.length === 0 ? (
+        {sortedShown.length === 0 ? (
           <div className="p-10 text-center text-slate-500 text-sm">لا توجد قيود مطابقة ضمن هذه الفترة/الفلاتر.</div>
         ) : (
-          <div className="divide-y divide-slate-800">
-            {shown.map((e) => {
-              const d = (e.lines || []).reduce((s, l) => s + Number(l.debit || 0), 0);
-              const isDraft = (e.status || "posted") === "draft";
-              return (
-                <div key={e.id} className="p-3">
-                  <div className="flex items-center gap-2.5 flex-wrap mb-2">
-                    <span className="font-mono text-xs font-bold text-blue-300 [direction:ltr]">{jvLabel(e.entry_year, e.entry_no)}</span>
-                    <span className="font-mono text-xs text-slate-400 [direction:ltr]">{e.date}</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-700/40 text-slate-300">{DB.ENTRY_TYPE_LABEL[e.entry_type || "general"]}</span>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${isDraft ? "bg-amber-500/15 text-amber-400" : "bg-emerald-500/15 text-emerald-400"}`}>{isDraft ? "مسودة" : "مُرحّل"}</span>
-                    {attMap[e.id] ? <button onClick={() => startEdit(e)} title="عرض المرفقات" className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-300 hover:bg-blue-500/20"><Paperclip size={10} /> {attMap[e.id]}</button> : null}
-                    <span className="text-sm text-slate-200">{e.description || "—"}</span>
-                    {e.branch_id != null && <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-300">{branchName(e.branch_id)}</span>}
-                    <span className="mr-auto font-mono text-xs font-bold text-emerald-400 [direction:ltr]">{fmt(d)} ر.س</span>
-                    <div className="flex items-center gap-1">
-                      {isDraft && <button onClick={() => post(e.id)} title="ترحيل" className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center hover:bg-emerald-500/20"><Send size={13} /></button>}
-                      <button onClick={() => startEdit(e)} title="تعديل" className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-300 flex items-center justify-center hover:bg-blue-500/20"><Pencil size={13} /></button>
-                      <button onClick={() => del(e.id)} title="حذف" className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400 flex items-center justify-center hover:bg-red-500/20"><Trash2 size={13} /></button>
-                    </div>
-                  </div>
-                  <div className="overflow-x-auto rounded-lg border border-slate-800/60">
-                    <table className="w-full border-collapse" style={{ minWidth: 480 }}>
-                      <tbody>
-                        {(e.lines || []).map((l, i) => { const a = accById.get(l.account_id); return (
-                          <tr key={i} className="text-xs border-b border-slate-800/60 last:border-0">
-                            <td className="px-2 py-1 text-slate-400 font-mono [direction:ltr] w-16">{a?.code}</td>
-                            <td className="px-2 py-1 text-slate-200">{a?.name || l.account_id}{l.note ? <span className="text-slate-500"> — {l.note}</span> : null}{l.branch_id != null ? <span className="text-blue-300/70 text-[10px]"> · {branchName(l.branch_id)}</span> : null}</td>
-                            <td className="px-2 py-1 text-center font-mono text-emerald-300/90 [direction:ltr] w-24">{Number(l.debit) ? fmt(Number(l.debit)) : ""}</td>
-                            <td className="px-2 py-1 text-center font-mono text-amber-300/90 [direction:ltr] w-24">{Number(l.credit) ? fmt(Number(l.credit)) : ""}</td>
-                          </tr>
-                        ); })}
-                      </tbody>
-                    </table>
-                  </div>
-                  {e.notes ? <div className="mt-1.5 text-[11px] text-slate-500">📝 {e.notes}</div> : null}
-                </div>
-              );
-            })}
+          <div className="overflow-x-auto">
+            <table className="w-full text-right border-collapse" style={{ minWidth: 820 }}>
+              <thead>
+                <tr className="bg-slate-950/40 border-b border-slate-800 text-[10px] text-slate-500">
+                  <SortTH label="رقم القيد" active={sortKey === "no"} dir={sortDir} onClick={() => toggleSort("no")} />
+                  <SortTH label="التاريخ" active={sortKey === "date"} dir={sortDir} onClick={() => toggleSort("date")} />
+                  <th className="px-3 py-2.5 font-bold">المصدر</th>
+                  <th className="px-3 py-2.5 font-bold">البيان</th>
+                  {multiBranch && <th className="px-3 py-2.5 font-bold">الفرع</th>}
+                  <SortTH label="مدين" active={sortKey === "debit"} dir={sortDir} onClick={() => toggleSort("debit")} center />
+                  <th className="px-3 py-2.5 font-bold text-center">دائن</th>
+                  <th className="px-3 py-2.5 font-bold text-center">الحالة</th>
+                  <th className="px-3 py-2.5 font-bold text-center">إجراءات</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60">
+                {sortedShown.map((e) => {
+                  const { d, c } = entryDC(e);
+                  const draft = !isPosted(e);
+                  const reversed = (e.notes || "").includes("[REVERSED]");
+                  const isReversal = (e.notes || "").includes("[REVERSAL]");
+                  return (
+                    <tr key={e.id} onClick={() => setDrawerEntry(e)} className="text-xs hover:bg-slate-800/30 cursor-pointer transition-colors">
+                      <td className="px-3 py-2.5 font-mono font-bold text-blue-300 [direction:ltr] whitespace-nowrap">
+                        {jvLabel(e.entry_year, e.entry_no)}
+                        {attMap[e.id] ? <Paperclip size={10} className="inline mr-1 text-slate-500" /> : null}
+                      </td>
+                      <td className="px-3 py-2.5 font-mono text-slate-400 [direction:ltr] whitespace-nowrap">{e.date}</td>
+                      <td className="px-3 py-2.5"><span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-700/40 text-slate-300 whitespace-nowrap">{DB.ENTRY_TYPE_LABEL[e.entry_type || "general"]}</span></td>
+                      <td className="px-3 py-2.5 text-slate-200 max-w-[260px] truncate">
+                        {e.description || "—"}
+                        {reversed && <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-300 mr-1">معكوس</span>}
+                        {isReversal && <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300 mr-1">قيد عكسي</span>}
+                      </td>
+                      {multiBranch && <td className="px-3 py-2.5 text-slate-400 whitespace-nowrap">{e.branch_id != null ? branchName(e.branch_id) : "—"}</td>}
+                      <td className="px-3 py-2.5 text-center font-mono text-emerald-300 [direction:ltr] whitespace-nowrap">{fmt(d)}</td>
+                      <td className="px-3 py-2.5 text-center font-mono text-amber-300 [direction:ltr] whitespace-nowrap">{fmt(c)}</td>
+                      <td className="px-3 py-2.5 text-center"><span className={`text-[10px] px-2 py-0.5 rounded-full font-bold whitespace-nowrap ${draft ? "bg-amber-500/15 text-amber-400" : "bg-emerald-500/15 text-emerald-400"}`}>{draft ? "مسودة" : "مُرحّل"}</span></td>
+                      <td className="px-3 py-2.5" onClick={(ev) => ev.stopPropagation()}>
+                        <div className="flex items-center justify-center gap-1">
+                          <button onClick={() => setDrawerEntry(e)} title="عرض التفاصيل" className="w-7 h-7 rounded-lg bg-slate-700/40 text-slate-300 flex items-center justify-center hover:bg-slate-700"><Eye size={13} /></button>
+                          {draft ? (
+                            <>
+                              <button onClick={() => post(e.id)} title="ترحيل" className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center hover:bg-emerald-500/20"><Send size={13} /></button>
+                              <button onClick={() => startEdit(e)} title="تعديل" className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-300 flex items-center justify-center hover:bg-blue-500/20"><Pencil size={13} /></button>
+                              <button onClick={() => del(e.id)} title="حذف" className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400 flex items-center justify-center hover:bg-red-500/20"><Trash2 size={13} /></button>
+                            </>
+                          ) : (
+                            !reversed && <button onClick={() => reverse(e)} disabled={reversing} title="قيد عكسي (تصحيح)" className="w-7 h-7 rounded-lg bg-purple-500/10 text-purple-300 flex items-center justify-center hover:bg-purple-500/20 disabled:opacity-50"><RotateCcw size={13} /></button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
+      </div>
+
+      {drawerEntry && (
+        <JournalDrawer
+          entry={drawerEntry} accById={accById} branchName={branchName} attCount={attMap[drawerEntry.id] || 0}
+          onClose={() => setDrawerEntry(null)}
+          onPost={!isPosted(drawerEntry) ? () => post(drawerEntry.id) : undefined}
+          onEdit={!isPosted(drawerEntry) ? () => { startEdit(drawerEntry); setDrawerEntry(null); } : undefined}
+          onDelete={!isPosted(drawerEntry) ? () => del(drawerEntry.id) : undefined}
+          onReverse={isPosted(drawerEntry) && !(drawerEntry.notes || "").includes("[REVERSED]") ? () => reverse(drawerEntry) : undefined}
+          reversing={reversing}
+        />
+      )}
+    </div>
+  );
+}
+
+// رأس عمود قابل للفرز في جدول القيود
+function SortTH({ label, active, dir, onClick, center }: { label: string; active: boolean; dir: "asc" | "desc"; onClick: () => void; center?: boolean }) {
+  return (
+    <th className={`px-3 py-2.5 font-bold cursor-pointer select-none hover:text-slate-300 ${center ? "text-center" : ""}`} onClick={onClick}>
+      <span className="inline-flex items-center gap-1">{label}<ArrowUpDown size={11} className={active ? "text-blue-400" : "text-slate-600"} /></span>
+    </th>
+  );
+}
+
+// لوحة تفاصيل القيد (Drawer) — عرض كامل + إجراءات محكومة بالحالة
+function JournalDrawer({ entry, accById, branchName, attCount, onClose, onPost, onEdit, onDelete, onReverse, reversing }: any) {
+  const e = entry as EntryWithLines;
+  const lines = e.lines || [];
+  const d = lines.reduce((s, l) => s + Number(l.debit || 0), 0);
+  const c = lines.reduce((s, l) => s + Number(l.credit || 0), 0);
+  const draft = (e.status || "posted") === "draft";
+  const reversed = (e.notes || "").includes("[REVERSED]");
+  const Info = ({ label, value }: any) => (
+    <div><div className="text-[10px] text-slate-500 font-bold">{label}</div><div className="text-sm text-slate-200">{value}</div></div>
+  );
+  return (
+    <div className="fixed inset-0 z-50 flex" onClick={onClose}>
+      <div className="flex-1 bg-black/50" />
+      <div dir="rtl" onClick={(ev) => ev.stopPropagation()} className="w-full max-w-md bg-slate-900 border-l border-slate-800 h-full overflow-y-auto shadow-2xl">
+        <div className="sticky top-0 bg-slate-900 border-b border-slate-800 px-4 py-3 flex items-center justify-between z-10">
+          <div className="flex items-center gap-2">
+            <FileCheck2 size={18} className="text-blue-400" />
+            <div>
+              <div className="font-mono font-bold text-blue-300 [direction:ltr]">{jvLabel(e.entry_year, e.entry_no)}</div>
+              <div className="text-[10px] text-slate-500">{DB.ENTRY_TYPE_LABEL[e.entry_type || "general"]}</div>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-lg bg-slate-800 text-slate-400 flex items-center justify-center hover:text-white"><X size={16} /></button>
+        </div>
+
+        <div className="p-4 space-y-4">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`text-[11px] px-2.5 py-1 rounded-full font-bold ${draft ? "bg-amber-500/15 text-amber-400" : "bg-emerald-500/15 text-emerald-400"}`}>{draft ? "مسودة" : "مُرحّل"}</span>
+            {reversed && <span className="text-[11px] px-2.5 py-1 rounded-full bg-red-500/10 text-red-300">معكوس</span>}
+            {attCount > 0 && <span className="text-[11px] px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-300 inline-flex items-center gap-1"><Paperclip size={11} /> {attCount} مرفق</span>}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Info label="التاريخ" value={<span className="font-mono [direction:ltr]">{e.date}</span>} />
+            <Info label="الفرع" value={e.branch_id != null ? branchName(e.branch_id) : "—"} />
+            <Info label="البيان" value={e.description || "—"} />
+            <Info label="أُنشئ في" value={<span className="font-mono [direction:ltr] text-xs">{(e as any).created_at ? String((e as any).created_at).slice(0, 16).replace("T", " ") : "—"}</span>} />
+          </div>
+
+          <div className="rounded-xl border border-slate-800 overflow-hidden">
+            <table className="w-full text-xs">
+              <thead><tr className="bg-slate-950/50 text-slate-500 text-[10px]">
+                <th className="px-2 py-2 text-right font-bold">الحساب</th>
+                <th className="px-2 py-2 text-center font-bold w-20">مدين</th>
+                <th className="px-2 py-2 text-center font-bold w-20">دائن</th>
+              </tr></thead>
+              <tbody className="divide-y divide-slate-800/60">
+                {lines.map((l, i) => { const a = accById.get(l.account_id); return (
+                  <tr key={i}>
+                    <td className="px-2 py-2 text-slate-200"><span className="font-mono text-slate-500 [direction:ltr] text-[10px]">{a?.code}</span> {a?.name || l.account_id}{l.note ? <div className="text-[10px] text-slate-500">— {l.note}</div> : null}</td>
+                    <td className="px-2 py-2 text-center font-mono text-emerald-300 [direction:ltr]">{Number(l.debit) ? fmt(Number(l.debit)) : ""}</td>
+                    <td className="px-2 py-2 text-center font-mono text-amber-300 [direction:ltr]">{Number(l.credit) ? fmt(Number(l.credit)) : ""}</td>
+                  </tr>
+                ); })}
+              </tbody>
+              <tfoot><tr className="bg-slate-950/40 font-bold border-t border-slate-800">
+                <td className="px-2 py-2 text-slate-400">الإجمالي</td>
+                <td className="px-2 py-2 text-center font-mono text-emerald-400 [direction:ltr]">{fmt(d)}</td>
+                <td className="px-2 py-2 text-center font-mono text-amber-400 [direction:ltr]">{fmt(c)}</td>
+              </tr></tfoot>
+            </table>
+          </div>
+          {Math.abs(d - c) > 0.009 && <div className="text-[11px] text-amber-400">⚠ القيد غير متوازن — الفرق {fmt(d - c)}</div>}
+          {e.notes ? <div className="text-[11px] text-slate-500 bg-slate-950/40 rounded-lg p-2">📝 {e.notes}</div> : null}
+
+          <div className="flex flex-wrap gap-2 pt-1">
+            {onPost && <button onClick={onPost} className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-500"><Send size={14} /> ترحيل</button>}
+            {onEdit && <button onClick={onEdit} className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-blue-500/10 text-blue-300 text-xs font-bold hover:bg-blue-500/20"><Pencil size={14} /> تعديل</button>}
+            {onDelete && <button onClick={onDelete} className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-red-500/10 text-red-400 text-xs font-bold hover:bg-red-500/20"><Trash2 size={14} /> حذف</button>}
+            {onReverse && <button onClick={onReverse} disabled={reversing} className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-purple-500/10 text-purple-300 text-xs font-bold hover:bg-purple-500/20 disabled:opacity-50"><RotateCcw size={14} /> {reversing ? "جارٍ…" : "قيد عكسي للتصحيح"}</button>}
+          </div>
+          {!draft && !onReverse && reversed && <div className="text-[11px] text-slate-500 text-center">تم عكس هذا القيد مسبقًا.</div>}
+        </div>
       </div>
     </div>
   );

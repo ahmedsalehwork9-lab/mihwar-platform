@@ -1,84 +1,38 @@
-﻿/**
- * MIHWAR | Ù…ÙØ­ÙˆØ± â€” Landing Page
- * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
- * File: src/pages/LandingPage.tsx
- * 
- * Integration:
- * In App.tsx, render this component when page === 'landing':
- * <LandingPage onLogin={() => setPage('login')} />
+/**
+ * MIHWAR CLOUD ERP — صفحة الهبوط العامة (إعادة تصميم).
+ * تحافظ على الواجهة السابقة: props onLogin / activity، ومسارات النشاط (/spare-parts …) تعرض نفس الصفحة.
  */
-
-import LandingNav from "../components/landing/LandingNav";
-import HeroSection from "../components/landing/HeroSection";
-import ProblemSection from "../components/landing/ProblemSection";
-import FeaturesSection from "../components/landing/FeaturesSection";
-import HowItWorksSection from "../components/landing/HowItWorksSection";
-import ScreenshotsSection from "../components/landing/ScreenshotsSection";
-import PricingSection from "../components/landing/PricingSection";
-import FaqSection from "../components/landing/FaqSection";
-import CtaSection from "../components/landing/CtaSection";
-import LandingFooter from "../components/landing/LandingFooter";
+import { useCallback, useState } from "react";
+import { useLang } from "../context/LanguageContext";
+import { LandingTopNav, Hero, CapabilityStrip, ModulesSection, NewFeaturesSection, BranchSection, ReportsSection, DemoSection, PricingSection2, FaqSection2, FinalCta, LandingFooter2 } from "../components/landing/LandingSections";
+import SubscriptionModal from "../components/landing/SubscriptionModal";
+import type { PlanId } from "../components/landing/subscriptionLogic";
 
 type ActivityType = "spare-parts" | "grocery" | "cafe" | "restaurant" | "retail" | "general";
-type LandingPageProps = {
-  onLogin?: () => void;
-  activity?: ActivityType;
-};
+type LandingPageProps = { onLogin?: () => void; activity?: ActivityType };
 
-export default function LandingPage({ onLogin, activity }: LandingPageProps) {
-  const path = window.location.pathname;
-  const currentActivity: ActivityType = activity ?? (
-    path === "/spare-parts" ? "spare-parts" :
-    path === "/grocery" ? "grocery" :
-    path === "/cafe" ? "cafe" :
-    path === "/restaurant" ? "restaurant" :
-    path === "/retail" ? "retail" :
-    "general"
-  );
-  // Navigation wrapper to ensure it only fires if the prop is provided
-  const handleNavigation = () => {
-    onLogin?.();
-  };
-
+export default function LandingPage({ onLogin }: LandingPageProps) {
+  const { isRTL } = useLang();
+  const [modal, setModal] = useState<{ open: boolean; plan: PlanId; n: number }>({ open: false, plan: "trial", n: 0 });
+  const login = useCallback(() => { onLogin?.(); }, [onLogin]);
+  const join = useCallback((p?: PlanId) => setModal((m) => ({ open: true, plan: p ?? "trial", n: m.n + 1 })), []);
   return (
-    <div
-      dir="rtl"
-      className="min-h-screen overflow-x-hidden"
-      style={{ background: "#0A1220", color: "#E8EDF5" }}
-    >
-      {/* Navigation Bar */}
-      <LandingNav onLogin={handleNavigation} />
-
+    <div dir={isRTL ? "rtl" : "ltr"} className="min-h-screen overflow-x-hidden scroll-smooth bg-[#ffffff] text-[#0B1F44]" style={{ scrollBehavior: "smooth" }}>
+      <LandingTopNav onLogin={login} onJoin={join} />
       <main>
-        {/* Hero Section */}
-        <HeroSection activity={currentActivity} onStart={handleNavigation} onLogin={handleNavigation} />
-
-        {/* Problem Description */}
-        <ProblemSection activity={currentActivity} />
-
-        {/* Core Features */}
-        <FeaturesSection activity={currentActivity} />
-
-        {/* Workflow Steps */}
-        <HowItWorksSection activity={currentActivity} />
-
-        {/* App Preview / Screenshots */}
-        <ScreenshotsSection activity={currentActivity} />
-
-        {/* Subscription Plans */}
-        <PricingSection onStart={handleNavigation} />
-
-        {/* Frequently Asked Questions */}
-        <FaqSection />
-
-        {/* Final Call to Action */}
-        <CtaSection onStart={handleNavigation} />
+        <Hero onJoin={join} />
+        <CapabilityStrip />
+        <ModulesSection />
+        <NewFeaturesSection />
+        <BranchSection />
+        <ReportsSection />
+        <DemoSection onJoin={join} />
+        <PricingSection2 onJoin={join} />
+        <FaqSection2 />
+        <FinalCta onJoin={join} />
       </main>
-
-      {/* Footer */}
-      <LandingFooter activity={currentActivity} />
+      <LandingFooter2 onLogin={login} onJoin={join} />
+      <SubscriptionModal key={modal.n} open={modal.open} plan={modal.plan} onClose={() => setModal((m) => ({ ...m, open: false }))} />
     </div>
   );
 }
-
-

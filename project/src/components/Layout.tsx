@@ -31,10 +31,12 @@ import {
   Calculator,
   ClipboardCheck,
   Boxes,
+  Inbox,
 } from 'lucide-react';
 
 import { supabase } from '../pages/lib/supabase';
 import NotificationBell from '../context/NotificationBell';
+import { countNew } from './landing/subscriptionApi';
 import { useAuth } from '../context/AuthContext';
 import { useLang } from '../context/LanguageContext';
 import { ThemeToggle } from './ThemeToggle';
@@ -81,7 +83,8 @@ export type Page =
   | 'system-settings'
   | 'global-inventory'
   | 'global-orders'
-  | 'organizations';
+  | 'organizations'
+  | 'subscription-requests';
 
 // ══════════════════════════════════════════════════════════════════════
 // PAGE TITLES — عناوين الصفحات بالعربي والإنجليزي
@@ -124,6 +127,7 @@ const pageTitles: Record<Page, { en: string; ar: string }> = {
   'global-inventory':{ en: 'Global Inventory', ar: 'المخزون العام'   },
   'global-orders':   { en: 'Global Orders',    ar: 'الطلبات العامة'  },
   'organizations':   { en: 'Organizations',    ar: 'المجموعات'       },
+  'subscription-requests': { en: 'Subscription Requests', ar: 'طلبات الاشتراك' },
 };
 
 // ══════════════════════════════════════════════════════════════════════
@@ -181,6 +185,7 @@ const navSections: NavSection[] = [
       { id: 'global-inventory',  icon: <Package size={17} />,      label: 'Global Inventory', labelAr: 'المخزون العام',   adminOnly: true },
       { id: 'global-orders',     icon: <ShoppingCart size={17} />, label: 'Global Orders',    labelAr: 'الطلبات العامة',  adminOnly: true },
       { id: 'organizations',     icon: <Building2 size={17} />,    label: 'Organizations',    labelAr: 'المجموعات',       adminOnly: true },
+      { id: 'subscription-requests', icon: <Inbox size={17} />,    label: 'Subscription Requests', labelAr: 'طلبات الاشتراك', adminOnly: true },
       { id: 'system-settings',   icon: <Settings size={17} />,     label: 'System Settings',  labelAr: 'إعدادات النظام',  adminOnly: true },
     ],
   },
@@ -307,9 +312,9 @@ const SectionLabel = ({ label }: { label: string }) => (
 );
 
 const NavButton = ({
-  item, isActive, label, onClick,
+  item, isActive, label, onClick, badge,
 }: {
-  item: NavItem; isActive: boolean; label: string; onClick: () => void;
+  item: NavItem; isActive: boolean; label: string; onClick: () => void; badge?: number;
 }) => (
   <button
     onClick={onClick}
@@ -326,6 +331,9 @@ const NavButton = ({
       {item.icon}
     </span>
     <span className="flex-1 text-left">{label}</span>
+    {!!badge && badge > 0 && (
+      <span className="min-w-[20px] rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[10px] font-black leading-none text-white" aria-label={`${badge} new`}>{badge > 99 ? '99+' : badge}</span>
+    )}
     {!isActive && (
       <ChevronRight size={13} className="opacity-0 group-hover:opacity-40 transition-opacity duration-200 flex-shrink-0" />
     )}
@@ -403,6 +411,17 @@ function CommandPalette({ commands, onClose, lang }: { commands: Cmd[]; onClose:
 export default function Layout({ page, setPage, accSection, setAccSection, children }: LayoutProps) {
   const { signOut, isAdmin, ownedShopId, permissions, branches } = useAuth();
   const { lang, setLang, t, isRTL }       = useLang();
+  // عدد طلبات الاشتراك الجديدة (للأدمن فقط) — يظهر كشارة بجانب البند
+  const [newSubReqs, setNewSubReqs] = useState(0);
+  useEffect(() => {
+    if (!isAdmin) return;
+    let alive = true;
+    const run = () => { void countNew().then((n) => { if (alive) setNewSubReqs(n); }); };
+    run();
+    const id = window.setInterval(run, 60000);
+    window.addEventListener('mihwar:sub-requests-changed', run);
+    return () => { alive = false; window.clearInterval(id); window.removeEventListener('mihwar:sub-requests-changed', run); };
+  }, [isAdmin]);
   const [sidebarOpen, setSidebarOpen]     = useState(false);
   const [showMore,    setShowMore]         = useState(false);
   const [cmdOpen,     setCmdOpen]          = useState(false);
@@ -508,6 +527,7 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
                         item={item}
                         isActive={page === item.id}
                         label={t(item.label, item.labelAr)}
+                        badge={item.id === 'subscription-requests' ? newSubReqs : undefined}
                         onClick={() => { setPage(item.id); setSidebarOpen(false); }}
                       />
                     ))}

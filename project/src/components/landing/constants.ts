@@ -1,0 +1,1 @@
+export const BRAND_NAME_FALLBACK = "MIHWAR CLOUD ERP";

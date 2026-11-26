@@ -53,6 +53,7 @@ const PermissionsPage = lazy(() => import('./pages/PermissionsPage'));
 const GlobalInventoryPage = lazy(() => import('./pages/GlobalInventoryPage'));
 const GlobalOrdersPage = lazy(() => import('./pages/GlobalOrdersPage'));
 const OrganizationsPage = lazy(() => import('./pages/OrganizationsPage'));
+const SubscriptionRequestsPage = lazy(() => import('./pages/admin/SubscriptionRequestsPage'));
 
 // ── Shared loading fallback ─────────────────────────────────────────────────
 function PageLoader() {
@@ -186,6 +187,9 @@ function AppContent() {
 
           {page === 'organizations' &&
             (isAdmin ? <OrganizationsPage /> : <AccessDenied />)}
+
+          {page === 'subscription-requests' &&
+            (isAdmin ? <SubscriptionRequestsPage /> : <AccessDenied />)}
 
         </Suspense>
       </Layout>

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Eye, EyeOff, Truck } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
+import { BrandLogo } from "../components/brand/BrandLogo";
 
 import { supabase } from "./lib/supabase";
 import { useLang } from "../context/LanguageContext";
@@ -133,24 +134,12 @@ export default function LoginPage() {
           {/* LOGO */}
           <div className="flex flex-col items-center mb-8">
 
-            <div className="w-16 h-16 rounded-2xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/30 mb-5">
-
-              <Truck
-                size={28}
-                className="text-white"
-              />
-            </div>
-
-            <h1 className="text-3xl font-bold text-white text-center">
-              {lang === "ar"
-                ? "MIHWAR | مِحور"
-                : "MIHWAR | مِحور"}
-            </h1>
+            <BrandLogo size={96} onDark stacked className="mb-5" />
 
             <p className="text-slate-400 mt-2 text-center">
               {lang === "ar"
-                ? "شبكة تجارة قطع الغيار الذكية"
-                : "Smart Spare Parts Trading Network"}
+                ? "نظام تخطيط موارد المؤسسات السحابي"
+                : "Cloud-based ERP for modern business"}
             </p>
           </div>
 

@@ -772,7 +772,7 @@ export async function deleteEntry(id: number): Promise<{ ok: boolean; error?: st
 
 // حركة حساب (لكشف الحساب) ضمن فترة — ترجع السطور مع تاريخ ووصف القيد*
 
-export type LedgerLine = { date: string; entry_no: number; description: string | null; branch_id: number | null; account_id: number; party_id: number | null; debit: number; credit: number; note: string | null };
+export type LedgerLine = { date: string; entry_no: number; description: string | null; branch_id: number | null; account_id: number; party_id: number | null; debit: number; credit: number; note: string | null; entry_year?: number | null; entry_type?: string | null; status?: string | null };
 
 
 
@@ -788,7 +788,7 @@ export async function fetchLedgerMulti(orgId: number, accountIds: number[], from
 
     .from("gl_journal_lines")
 
-    .select("account_id, party_id, debit, credit, branch_id, note, entry:gl_journal_entries!inner(date, entry_no, description, organization_id)")
+    .select("account_id, party_id, debit, credit, branch_id, note, entry:gl_journal_entries!inner(date, entry_no, entry_year, entry_type, status, description, organization_id)")
 
     .in("account_id", accountIds)
 
@@ -808,7 +808,7 @@ export async function fetchLedgerMulti(orgId: number, accountIds: number[], from
 
   const rows = ((data as any[]) || []).map((r) => ({
 
-    date: r.entry?.date, entry_no: r.entry?.entry_no, description: r.entry?.description,
+    date: r.entry?.date, entry_no: r.entry?.entry_no, entry_year: r.entry?.entry_year ?? null, entry_type: r.entry?.entry_type ?? null, status: r.entry?.status ?? null, description: r.entry?.description,
 
     branch_id: r.branch_id, account_id: r.account_id, party_id: r.party_id ?? null, debit: Number(r.debit) || 0, credit: Number(r.credit) || 0, note: r.note,
 

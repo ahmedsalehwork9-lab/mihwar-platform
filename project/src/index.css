@@ -1,3 +1,18 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* MIHWAR CLOUD ERP brand tokens (CSS variables mirror tailwind.config.js) */
+:root {
+  --brand-navy: #0B1F44;
+  --brand-blue: #007BFF;
+  --brand-cyan: #00C2FF;
+  --brand-gray: #E6E8ED;
+  --brand-white: #FFFFFF;
+  --font-latin: 'Montserrat', 'IBM Plex Sans Arabic', system-ui, sans-serif;
+  --font-arabic: 'IBM Plex Sans Arabic', 'Montserrat', system-ui, sans-serif;
+}
+html, body { font-family: var(--font-latin); }
+html[lang="ar"], html[dir="rtl"], [dir="rtl"] { font-family: var(--font-arabic); }
+[dir="ltr"] .font-brand, .font-brand { font-family: var(--font-latin); }
+:focus-visible { outline: 2px solid var(--brand-cyan); outline-offset: 2px; }

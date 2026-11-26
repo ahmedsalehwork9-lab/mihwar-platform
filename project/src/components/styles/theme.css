@@ -5,7 +5,7 @@
    Import once in src/main.tsx after index.css.
    ============================================================= */
 
-   html.light body { background:#eef1f5 !important; color:#0f172a; }
+   html.light body { background:#eef1f5 !important; color:#0B1F44; }
    html.light ::selection { background:#1f3a5f22; }
    html.light { color-scheme: light; }
    
@@ -189,50 +189,50 @@
    html.light .group:hover .group-hover\:bg-slate-700\/90{background-color:#e2e8f0 !important;}
    
    /* Text */
-   html.light .text-white{color:#0f172a !important;}
-   html.light .hover\:text-white:hover{color:#0f172a !important;}
-   html.light .focus\:text-white:focus{color:#0f172a !important;}
-   html.light .group:hover .group-hover\:text-white{color:#0f172a !important;}
-   html.light .text-white\/5{color:#0f172a !important;}
-   html.light .hover\:text-white\/5:hover{color:#0f172a !important;}
-   html.light .focus\:text-white\/5:focus{color:#0f172a !important;}
-   html.light .group:hover .group-hover\:text-white\/5{color:#0f172a !important;}
-   html.light .text-white\/10{color:#0f172a !important;}
-   html.light .hover\:text-white\/10:hover{color:#0f172a !important;}
-   html.light .focus\:text-white\/10:focus{color:#0f172a !important;}
-   html.light .group:hover .group-hover\:text-white\/10{color:#0f172a !important;}
-   html.light .text-white\/20{color:#0f172a !important;}
-   html.light .hover\:text-white\/20:hover{color:#0f172a !important;}
-   html.light .focus\:text-white\/20:focus{color:#0f172a !important;}
-   html.light .group:hover .group-hover\:text-white\/20{color:#0f172a !important;}
-   html.light .text-white\/30{color:#0f172a !important;}
-   html.light .hover\:text-white\/30:hover{color:#0f172a !important;}
-   html.light .focus\:text-white\/30:focus{color:#0f172a !important;}
-   html.light .group:hover .group-hover\:text-white\/30{color:#0f172a !important;}
-   html.light .text-white\/40{color:#0f172a !important;}
-   html.light .hover\:text-white\/40:hover{color:#0f172a !important;}
-   html.light .focus\:text-white\/40:focus{color:#0f172a !important;}
-   html.light .group:hover .group-hover\:text-white\/40{color:#0f172a !important;}
-   html.light .text-white\/50{color:#0f172a !important;}
-   html.light .hover\:text-white\/50:hover{color:#0f172a !important;}
-   html.light .focus\:text-white\/50:focus{color:#0f172a !important;}
-   html.light .group:hover .group-hover\:text-white\/50{color:#0f172a !important;}
-   html.light .text-white\/60{color:#0f172a !important;}
-   html.light .hover\:text-white\/60:hover{color:#0f172a !important;}
-   html.light .focus\:text-white\/60:focus{color:#0f172a !important;}
-   html.light .group:hover .group-hover\:text-white\/60{color:#0f172a !important;}
-   html.light .text-white\/70{color:#0f172a !important;}
-   html.light .hover\:text-white\/70:hover{color:#0f172a !important;}
-   html.light .focus\:text-white\/70:focus{color:#0f172a !important;}
-   html.light .group:hover .group-hover\:text-white\/70{color:#0f172a !important;}
-   html.light .text-white\/80{color:#0f172a !important;}
-   html.light .hover\:text-white\/80:hover{color:#0f172a !important;}
-   html.light .focus\:text-white\/80:focus{color:#0f172a !important;}
-   html.light .group:hover .group-hover\:text-white\/80{color:#0f172a !important;}
-   html.light .text-white\/90{color:#0f172a !important;}
-   html.light .hover\:text-white\/90:hover{color:#0f172a !important;}
-   html.light .focus\:text-white\/90:focus{color:#0f172a !important;}
-   html.light .group:hover .group-hover\:text-white\/90{color:#0f172a !important;}
+   html.light .text-white{color:#0B1F44 !important;}
+   html.light .hover\:text-white:hover{color:#0B1F44 !important;}
+   html.light .focus\:text-white:focus{color:#0B1F44 !important;}
+   html.light .group:hover .group-hover\:text-white{color:#0B1F44 !important;}
+   html.light .text-white\/5{color:#0B1F44 !important;}
+   html.light .hover\:text-white\/5:hover{color:#0B1F44 !important;}
+   html.light .focus\:text-white\/5:focus{color:#0B1F44 !important;}
+   html.light .group:hover .group-hover\:text-white\/5{color:#0B1F44 !important;}
+   html.light .text-white\/10{color:#0B1F44 !important;}
+   html.light .hover\:text-white\/10:hover{color:#0B1F44 !important;}
+   html.light .focus\:text-white\/10:focus{color:#0B1F44 !important;}
+   html.light .group:hover .group-hover\:text-white\/10{color:#0B1F44 !important;}
+   html.light .text-white\/20{color:#0B1F44 !important;}
+   html.light .hover\:text-white\/20:hover{color:#0B1F44 !important;}
+   html.light .focus\:text-white\/20:focus{color:#0B1F44 !important;}
+   html.light .group:hover .group-hover\:text-white\/20{color:#0B1F44 !important;}
+   html.light .text-white\/30{color:#0B1F44 !important;}
+   html.light .hover\:text-white\/30:hover{color:#0B1F44 !important;}
+   html.light .focus\:text-white\/30:focus{color:#0B1F44 !important;}
+   html.light .group:hover .group-hover\:text-white\/30{color:#0B1F44 !important;}
+   html.light .text-white\/40{color:#0B1F44 !important;}
+   html.light .hover\:text-white\/40:hover{color:#0B1F44 !important;}
+   html.light .focus\:text-white\/40:focus{color:#0B1F44 !important;}
+   html.light .group:hover .group-hover\:text-white\/40{color:#0B1F44 !important;}
+   html.light .text-white\/50{color:#0B1F44 !important;}
+   html.light .hover\:text-white\/50:hover{color:#0B1F44 !important;}
+   html.light .focus\:text-white\/50:focus{color:#0B1F44 !important;}
+   html.light .group:hover .group-hover\:text-white\/50{color:#0B1F44 !important;}
+   html.light .text-white\/60{color:#0B1F44 !important;}
+   html.light .hover\:text-white\/60:hover{color:#0B1F44 !important;}
+   html.light .focus\:text-white\/60:focus{color:#0B1F44 !important;}
+   html.light .group:hover .group-hover\:text-white\/60{color:#0B1F44 !important;}
+   html.light .text-white\/70{color:#0B1F44 !important;}
+   html.light .hover\:text-white\/70:hover{color:#0B1F44 !important;}
+   html.light .focus\:text-white\/70:focus{color:#0B1F44 !important;}
+   html.light .group:hover .group-hover\:text-white\/70{color:#0B1F44 !important;}
+   html.light .text-white\/80{color:#0B1F44 !important;}
+   html.light .hover\:text-white\/80:hover{color:#0B1F44 !important;}
+   html.light .focus\:text-white\/80:focus{color:#0B1F44 !important;}
+   html.light .group:hover .group-hover\:text-white\/80{color:#0B1F44 !important;}
+   html.light .text-white\/90{color:#0B1F44 !important;}
+   html.light .hover\:text-white\/90:hover{color:#0B1F44 !important;}
+   html.light .focus\:text-white\/90:focus{color:#0B1F44 !important;}
+   html.light .group:hover .group-hover\:text-white\/90{color:#0B1F44 !important;}
    html.light .text-slate-200{color:#1e293b !important;}
    html.light .hover\:text-slate-200:hover{color:#1e293b !important;}
    html.light .focus\:text-slate-200:focus{color:#1e293b !important;}
@@ -455,94 +455,94 @@
    html.light .group:hover .group-hover\:text-slate-600\/90{color:#475569 !important;}
    
    /* Accent text (higher contrast on light) */
-   html.light .text-blue-400{color:#2563eb !important;}
-   html.light .hover\:text-blue-400:hover{color:#2563eb !important;}
-   html.light .focus\:text-blue-400:focus{color:#2563eb !important;}
-   html.light .group:hover .group-hover\:text-blue-400{color:#2563eb !important;}
-   html.light .text-blue-400\/5{color:#2563eb !important;}
-   html.light .hover\:text-blue-400\/5:hover{color:#2563eb !important;}
-   html.light .focus\:text-blue-400\/5:focus{color:#2563eb !important;}
-   html.light .group:hover .group-hover\:text-blue-400\/5{color:#2563eb !important;}
-   html.light .text-blue-400\/10{color:#2563eb !important;}
-   html.light .hover\:text-blue-400\/10:hover{color:#2563eb !important;}
-   html.light .focus\:text-blue-400\/10:focus{color:#2563eb !important;}
-   html.light .group:hover .group-hover\:text-blue-400\/10{color:#2563eb !important;}
-   html.light .text-blue-400\/20{color:#2563eb !important;}
-   html.light .hover\:text-blue-400\/20:hover{color:#2563eb !important;}
-   html.light .focus\:text-blue-400\/20:focus{color:#2563eb !important;}
-   html.light .group:hover .group-hover\:text-blue-400\/20{color:#2563eb !important;}
-   html.light .text-blue-400\/30{color:#2563eb !important;}
-   html.light .hover\:text-blue-400\/30:hover{color:#2563eb !important;}
-   html.light .focus\:text-blue-400\/30:focus{color:#2563eb !important;}
-   html.light .group:hover .group-hover\:text-blue-400\/30{color:#2563eb !important;}
-   html.light .text-blue-400\/40{color:#2563eb !important;}
-   html.light .hover\:text-blue-400\/40:hover{color:#2563eb !important;}
-   html.light .focus\:text-blue-400\/40:focus{color:#2563eb !important;}
-   html.light .group:hover .group-hover\:text-blue-400\/40{color:#2563eb !important;}
-   html.light .text-blue-400\/50{color:#2563eb !important;}
-   html.light .hover\:text-blue-400\/50:hover{color:#2563eb !important;}
-   html.light .focus\:text-blue-400\/50:focus{color:#2563eb !important;}
-   html.light .group:hover .group-hover\:text-blue-400\/50{color:#2563eb !important;}
-   html.light .text-blue-400\/60{color:#2563eb !important;}
-   html.light .hover\:text-blue-400\/60:hover{color:#2563eb !important;}
-   html.light .focus\:text-blue-400\/60:focus{color:#2563eb !important;}
-   html.light .group:hover .group-hover\:text-blue-400\/60{color:#2563eb !important;}
-   html.light .text-blue-400\/70{color:#2563eb !important;}
-   html.light .hover\:text-blue-400\/70:hover{color:#2563eb !important;}
-   html.light .focus\:text-blue-400\/70:focus{color:#2563eb !important;}
-   html.light .group:hover .group-hover\:text-blue-400\/70{color:#2563eb !important;}
-   html.light .text-blue-400\/80{color:#2563eb !important;}
-   html.light .hover\:text-blue-400\/80:hover{color:#2563eb !important;}
-   html.light .focus\:text-blue-400\/80:focus{color:#2563eb !important;}
-   html.light .group:hover .group-hover\:text-blue-400\/80{color:#2563eb !important;}
-   html.light .text-blue-400\/90{color:#2563eb !important;}
-   html.light .hover\:text-blue-400\/90:hover{color:#2563eb !important;}
-   html.light .focus\:text-blue-400\/90:focus{color:#2563eb !important;}
-   html.light .group:hover .group-hover\:text-blue-400\/90{color:#2563eb !important;}
-   html.light .text-blue-500{color:#2563eb !important;}
-   html.light .hover\:text-blue-500:hover{color:#2563eb !important;}
-   html.light .focus\:text-blue-500:focus{color:#2563eb !important;}
-   html.light .group:hover .group-hover\:text-blue-500{color:#2563eb !important;}
-   html.light .text-blue-500\/5{color:#2563eb !important;}
-   html.light .hover\:text-blue-500\/5:hover{color:#2563eb !important;}
-   html.light .focus\:text-blue-500\/5:focus{color:#2563eb !important;}
-   html.light .group:hover .group-hover\:text-blue-500\/5{color:#2563eb !important;}
-   html.light .text-blue-500\/10{color:#2563eb !important;}
-   html.light .hover\:text-blue-500\/10:hover{color:#2563eb !important;}
-   html.light .focus\:text-blue-500\/10:focus{color:#2563eb !important;}
-   html.light .group:hover .group-hover\:text-blue-500\/10{color:#2563eb !important;}
-   html.light .text-blue-500\/20{color:#2563eb !important;}
-   html.light .hover\:text-blue-500\/20:hover{color:#2563eb !important;}
-   html.light .focus\:text-blue-500\/20:focus{color:#2563eb !important;}
-   html.light .group:hover .group-hover\:text-blue-500\/20{color:#2563eb !important;}
-   html.light .text-blue-500\/30{color:#2563eb !important;}
-   html.light .hover\:text-blue-500\/30:hover{color:#2563eb !important;}
-   html.light .focus\:text-blue-500\/30:focus{color:#2563eb !important;}
-   html.light .group:hover .group-hover\:text-blue-500\/30{color:#2563eb !important;}
-   html.light .text-blue-500\/40{color:#2563eb !important;}
-   html.light .hover\:text-blue-500\/40:hover{color:#2563eb !important;}
-   html.light .focus\:text-blue-500\/40:focus{color:#2563eb !important;}
-   html.light .group:hover .group-hover\:text-blue-500\/40{color:#2563eb !important;}
-   html.light .text-blue-500\/50{color:#2563eb !important;}
-   html.light .hover\:text-blue-500\/50:hover{color:#2563eb !important;}
-   html.light .focus\:text-blue-500\/50:focus{color:#2563eb !important;}
-   html.light .group:hover .group-hover\:text-blue-500\/50{color:#2563eb !important;}
-   html.light .text-blue-500\/60{color:#2563eb !important;}
-   html.light .hover\:text-blue-500\/60:hover{color:#2563eb !important;}
-   html.light .focus\:text-blue-500\/60:focus{color:#2563eb !important;}
-   html.light .group:hover .group-hover\:text-blue-500\/60{color:#2563eb !important;}
-   html.light .text-blue-500\/70{color:#2563eb !important;}
-   html.light .hover\:text-blue-500\/70:hover{color:#2563eb !important;}
-   html.light .focus\:text-blue-500\/70:focus{color:#2563eb !important;}
-   html.light .group:hover .group-hover\:text-blue-500\/70{color:#2563eb !important;}
-   html.light .text-blue-500\/80{color:#2563eb !important;}
-   html.light .hover\:text-blue-500\/80:hover{color:#2563eb !important;}
-   html.light .focus\:text-blue-500\/80:focus{color:#2563eb !important;}
-   html.light .group:hover .group-hover\:text-blue-500\/80{color:#2563eb !important;}
-   html.light .text-blue-500\/90{color:#2563eb !important;}
-   html.light .hover\:text-blue-500\/90:hover{color:#2563eb !important;}
-   html.light .focus\:text-blue-500\/90:focus{color:#2563eb !important;}
-   html.light .group:hover .group-hover\:text-blue-500\/90{color:#2563eb !important;}
+   html.light .text-blue-400{color:#0062CC !important;}
+   html.light .hover\:text-blue-400:hover{color:#0062CC !important;}
+   html.light .focus\:text-blue-400:focus{color:#0062CC !important;}
+   html.light .group:hover .group-hover\:text-blue-400{color:#0062CC !important;}
+   html.light .text-blue-400\/5{color:#0062CC !important;}
+   html.light .hover\:text-blue-400\/5:hover{color:#0062CC !important;}
+   html.light .focus\:text-blue-400\/5:focus{color:#0062CC !important;}
+   html.light .group:hover .group-hover\:text-blue-400\/5{color:#0062CC !important;}
+   html.light .text-blue-400\/10{color:#0062CC !important;}
+   html.light .hover\:text-blue-400\/10:hover{color:#0062CC !important;}
+   html.light .focus\:text-blue-400\/10:focus{color:#0062CC !important;}
+   html.light .group:hover .group-hover\:text-blue-400\/10{color:#0062CC !important;}
+   html.light .text-blue-400\/20{color:#0062CC !important;}
+   html.light .hover\:text-blue-400\/20:hover{color:#0062CC !important;}
+   html.light .focus\:text-blue-400\/20:focus{color:#0062CC !important;}
+   html.light .group:hover .group-hover\:text-blue-400\/20{color:#0062CC !important;}
+   html.light .text-blue-400\/30{color:#0062CC !important;}
+   html.light .hover\:text-blue-400\/30:hover{color:#0062CC !important;}
+   html.light .focus\:text-blue-400\/30:focus{color:#0062CC !important;}
+   html.light .group:hover .group-hover\:text-blue-400\/30{color:#0062CC !important;}
+   html.light .text-blue-400\/40{color:#0062CC !important;}
+   html.light .hover\:text-blue-400\/40:hover{color:#0062CC !important;}
+   html.light .focus\:text-blue-400\/40:focus{color:#0062CC !important;}
+   html.light .group:hover .group-hover\:text-blue-400\/40{color:#0062CC !important;}
+   html.light .text-blue-400\/50{color:#0062CC !important;}
+   html.light .hover\:text-blue-400\/50:hover{color:#0062CC !important;}
+   html.light .focus\:text-blue-400\/50:focus{color:#0062CC !important;}
+   html.light .group:hover .group-hover\:text-blue-400\/50{color:#0062CC !important;}
+   html.light .text-blue-400\/60{color:#0062CC !important;}
+   html.light .hover\:text-blue-400\/60:hover{color:#0062CC !important;}
+   html.light .focus\:text-blue-400\/60:focus{color:#0062CC !important;}
+   html.light .group:hover .group-hover\:text-blue-400\/60{color:#0062CC !important;}
+   html.light .text-blue-400\/70{color:#0062CC !important;}
+   html.light .hover\:text-blue-400\/70:hover{color:#0062CC !important;}
+   html.light .focus\:text-blue-400\/70:focus{color:#0062CC !important;}
+   html.light .group:hover .group-hover\:text-blue-400\/70{color:#0062CC !important;}
+   html.light .text-blue-400\/80{color:#0062CC !important;}
+   html.light .hover\:text-blue-400\/80:hover{color:#0062CC !important;}
+   html.light .focus\:text-blue-400\/80:focus{color:#0062CC !important;}
+   html.light .group:hover .group-hover\:text-blue-400\/80{color:#0062CC !important;}
+   html.light .text-blue-400\/90{color:#0062CC !important;}
+   html.light .hover\:text-blue-400\/90:hover{color:#0062CC !important;}
+   html.light .focus\:text-blue-400\/90:focus{color:#0062CC !important;}
+   html.light .group:hover .group-hover\:text-blue-400\/90{color:#0062CC !important;}
+   html.light .text-blue-500{color:#0062CC !important;}
+   html.light .hover\:text-blue-500:hover{color:#0062CC !important;}
+   html.light .focus\:text-blue-500:focus{color:#0062CC !important;}
+   html.light .group:hover .group-hover\:text-blue-500{color:#0062CC !important;}
+   html.light .text-blue-500\/5{color:#0062CC !important;}
+   html.light .hover\:text-blue-500\/5:hover{color:#0062CC !important;}
+   html.light .focus\:text-blue-500\/5:focus{color:#0062CC !important;}
+   html.light .group:hover .group-hover\:text-blue-500\/5{color:#0062CC !important;}
+   html.light .text-blue-500\/10{color:#0062CC !important;}
+   html.light .hover\:text-blue-500\/10:hover{color:#0062CC !important;}
+   html.light .focus\:text-blue-500\/10:focus{color:#0062CC !important;}
+   html.light .group:hover .group-hover\:text-blue-500\/10{color:#0062CC !important;}
+   html.light .text-blue-500\/20{color:#0062CC !important;}
+   html.light .hover\:text-blue-500\/20:hover{color:#0062CC !important;}
+   html.light .focus\:text-blue-500\/20:focus{color:#0062CC !important;}
+   html.light .group:hover .group-hover\:text-blue-500\/20{color:#0062CC !important;}
+   html.light .text-blue-500\/30{color:#0062CC !important;}
+   html.light .hover\:text-blue-500\/30:hover{color:#0062CC !important;}
+   html.light .focus\:text-blue-500\/30:focus{color:#0062CC !important;}
+   html.light .group:hover .group-hover\:text-blue-500\/30{color:#0062CC !important;}
+   html.light .text-blue-500\/40{color:#0062CC !important;}
+   html.light .hover\:text-blue-500\/40:hover{color:#0062CC !important;}
+   html.light .focus\:text-blue-500\/40:focus{color:#0062CC !important;}
+   html.light .group:hover .group-hover\:text-blue-500\/40{color:#0062CC !important;}
+   html.light .text-blue-500\/50{color:#0062CC !important;}
+   html.light .hover\:text-blue-500\/50:hover{color:#0062CC !important;}
+   html.light .focus\:text-blue-500\/50:focus{color:#0062CC !important;}
+   html.light .group:hover .group-hover\:text-blue-500\/50{color:#0062CC !important;}
+   html.light .text-blue-500\/60{color:#0062CC !important;}
+   html.light .hover\:text-blue-500\/60:hover{color:#0062CC !important;}
+   html.light .focus\:text-blue-500\/60:focus{color:#0062CC !important;}
+   html.light .group:hover .group-hover\:text-blue-500\/60{color:#0062CC !important;}
+   html.light .text-blue-500\/70{color:#0062CC !important;}
+   html.light .hover\:text-blue-500\/70:hover{color:#0062CC !important;}
+   html.light .focus\:text-blue-500\/70:focus{color:#0062CC !important;}
+   html.light .group:hover .group-hover\:text-blue-500\/70{color:#0062CC !important;}
+   html.light .text-blue-500\/80{color:#0062CC !important;}
+   html.light .hover\:text-blue-500\/80:hover{color:#0062CC !important;}
+   html.light .focus\:text-blue-500\/80:focus{color:#0062CC !important;}
+   html.light .group:hover .group-hover\:text-blue-500\/80{color:#0062CC !important;}
+   html.light .text-blue-500\/90{color:#0062CC !important;}
+   html.light .hover\:text-blue-500\/90:hover{color:#0062CC !important;}
+   html.light .focus\:text-blue-500\/90:focus{color:#0062CC !important;}
+   html.light .group:hover .group-hover\:text-blue-500\/90{color:#0062CC !important;}
    html.light .text-emerald-400{color:#059669 !important;}
    html.light .hover\:text-emerald-400:hover{color:#059669 !important;}
    html.light .focus\:text-emerald-400:focus{color:#059669 !important;}
@@ -1182,7 +1182,7 @@
    /* Inputs on light */
    html.light input::placeholder,
    html.light textarea::placeholder { color:#94a3b8 !important; }
-   html.light select option { background:#ffffff; color:#0f172a; }
+   html.light select option { background:#ffffff; color:#0B1F44; }
    
    /* Mono/code text contrast on light */
    html.light .font-mono.text-slate-500,

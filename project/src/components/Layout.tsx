@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
+import { BrandLogo } from './brand/BrandLogo';
 import {
-  Truck,
   LayoutDashboard,
   Package,
   Search,
@@ -30,6 +30,7 @@ import {
   FolderOpen,
   Calculator,
   ClipboardCheck,
+  Boxes,
 } from 'lucide-react';
 
 import { supabase } from '../pages/lib/supabase';
@@ -49,10 +50,12 @@ export type Page =
   | 'search'
   | 'inventory'
   | 'stock-adjustments'
+  | 'item-movement'
   | 'orders'
   | 'reports'
   | 'sales'
   | 'pos'
+  | 'sales-invoice'
   | 'sales-reconciliation'
   | 'quotation'
   | 'purchases'
@@ -69,7 +72,7 @@ export type Page =
   | 'report-builder'
   | 'accounting'
   | 'alerts'
-  | 'shop-settings'       // ← إعدادات المحل + QR
+  | 'shop-settings'       // ← إعدادات الشركة والفروع
   | 'admin'
   | 'shops'
   | 'create-shop'
@@ -89,10 +92,12 @@ const pageTitles: Record<Page, { en: string; ar: string }> = {
   'search':          { en: 'Store',         ar: 'المتجر'        },
   'inventory':       { en: 'Inventory',        ar: 'المخزون'         },
   'stock-adjustments': { en: 'Stock Adjustments', ar: 'الجرد والتسويات' },
+  'item-movement':   { en: 'Item Movement',    ar: 'حركة الصنف'      },
   'orders':          { en: 'Orders',           ar: 'الطلبات'         },
   'reports':         { en: 'Reports',          ar: 'التقارير'        },
   'sales':           { en: 'Sales',            ar: 'المبيعات'        },
   'pos':             { en: 'POS',              ar: 'نقاط البيع'      },
+  'sales-invoice':   { en: 'New Sales Invoice', ar: 'فاتورة مبيعات جديدة' },
   'sales-reconciliation': { en: 'Sales Reconciliation', ar: 'تسوية المبيعات' },
   'quotation':       { en: 'Quotation',        ar: 'عرض سعر'         },
   purchases: { en: 'Purchases', ar: 'المشتريات' },
@@ -109,7 +114,7 @@ const pageTitles: Record<Page, { en: string; ar: string }> = {
   'report-builder': { en: 'Report Builder', ar: 'مُنشئ التقارير' },
   'accounting':      { en: 'Accounting',       ar: 'الحسابات'        },
   'alerts':          { en: 'Alerts',           ar: 'التنبيهات'       },
-  'shop-settings':   { en: 'Shop Settings',    ar: 'إعدادات المحل'   },
+  'shop-settings':   { en: 'Company & Branch Settings', ar: 'إعدادات الشركة والفروع' },
   'admin':           { en: 'Admin Dashboard',  ar: 'لوحة الأدمن'     },
   'shops':           { en: 'Shops',            ar: 'المحلات'         },
   'create-shop':     { en: 'Create Shop',      ar: 'إضافة محل'       },
@@ -196,7 +201,7 @@ const navSections: NavSection[] = [
       { id: 'reports-center', icon: <FolderOpen size={17} />, label: 'Reports Center', labelAr: 'مركز التقارير', adminOnly: false },
       { id: 'accounting', icon: <Calculator size={17} />, label: 'Accounting', labelAr: 'الحسابات', adminOnly: false },
       { id: 'alerts',        icon: <Bell size={17} />,            label: 'Alerts',         labelAr: 'التنبيهات',      adminOnly: false },
-      { id: 'shop-settings', icon: <QrCode size={17} />,          label: 'Shop Settings',  labelAr: 'إعدادات المحل',  adminOnly: false },
+      { id: 'shop-settings', icon: <QrCode size={17} />,          label: 'Company & Branch Settings',  labelAr: 'إعدادات الشركة والفروع',  adminOnly: false },
     ],
   },
 ];
@@ -214,10 +219,11 @@ const OPERATIONS: OpEntry[] = [
   { type: 'item', id: 'search',    icon: <Search size={17} />,          labelEn: 'Store',     labelAr: 'المتجر' },
   { type: 'item', id: 'inventory', icon: <Package size={17} />,         labelEn: 'Inventory', labelAr: 'المخزون' },
   { type: 'item', id: 'stock-adjustments', icon: <ClipboardCheck size={17} />, labelEn: 'Stock Count', labelAr: 'الجرد والتسويات' },
+  { type: 'item', id: 'item-movement', icon: <Boxes size={17} />, labelEn: 'Item Movement', labelAr: 'حركة الصنف' },
   { type: 'item', id: 'orders',    icon: <ShoppingCart size={17} />,    labelEn: 'Orders',    labelAr: 'الطلبات' },
 
   { type: 'group', key: 'sales', icon: <TrendingUp size={17} />, labelEn: 'Sales', labelAr: 'المبيعات', homePage: 'sales-reconciliation', children: [
-    { labelEn: 'Sales',                labelAr: 'المبيعات',       section: 'sales' },
+    { labelEn: 'Sales',                labelAr: 'المبيعات',       page: 'sales-invoice' },
     { labelEn: 'POS',                  labelAr: 'نقاط البيع',     page: 'pos' },
     { labelEn: 'Sales Reconciliation', labelAr: 'تسوية المبيعات', page: 'sales-reconciliation' },
     { labelEn: 'Quotation',            labelAr: 'عرض سعر',        page: 'quotation' },
@@ -256,7 +262,7 @@ const OPERATIONS: OpEntry[] = [
   ] },
 
   { type: 'item', id: 'alerts',        icon: <Bell size={17} />,   labelEn: 'Alerts',        labelAr: 'التنبيهات' },
-  { type: 'item', id: 'shop-settings', icon: <QrCode size={17} />, labelEn: 'Shop Settings', labelAr: 'إعدادات الفرع' },
+  { type: 'item', id: 'shop-settings', icon: <QrCode size={17} />, labelEn: 'Company & Branch Settings', labelAr: 'إعدادات الشركة والفروع' },
 ];
 
 // صفحات «قريبًا» — مسموح بها للجميع دون صلاحية خاصة (حتى لا يعيد التوجيه طردها)
@@ -481,16 +487,8 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
       <div className="flex flex-col h-full overflow-hidden">
 
         {/* Logo */}
-        <div className="flex-shrink-0 px-5 py-5 border-b border-slate-700/50">
-          <div className="flex items-center gap-3">
-            <div className="bg-blue-600 p-2 rounded-xl shadow-lg shadow-blue-500/20">
-              <Truck size={20} className="text-white" />
-            </div>
-            <div>
-              <div className="text-white font-bold text-sm">{t('MIHWAR', 'مِحور')}</div>
-              <div className="text-slate-500 text-[10px] tracking-widest">MIHWAR PLATFORM</div>
-            </div>
-          </div>
+        <div className="flex-shrink-0 px-5 py-4 border-b border-slate-700/50" data-testid="sidebar-logo">
+          <BrandLogo size={46} onDark />
         </div>
 
         {/* Nav */}
@@ -635,8 +633,8 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
     const navigableItems = !isAdmin ? [
       {
         icon: <QrCode size={18} />,
-        labelEn: 'Shop Settings & QR',
-        labelAr: 'إعدادات المحل والـ QR',
+        labelEn: 'Company & Branch Settings',
+        labelAr: 'إعدادات الشركة والفروع',
         onPress: () => { setShowMore(false); setPage('shop-settings'); },
       },
     ] : [];
@@ -674,7 +672,7 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
             </button>
           </div>
 
-          {/* Navigable items (مثل إعدادات المحل) */}
+          {/* Navigable items (مثل إعدادات الشركة والفروع) */}
           {navigableItems.length > 0 && (
             <div className="px-4 pt-3 pb-1 space-y-1">
               {navigableItems.map((item) => (

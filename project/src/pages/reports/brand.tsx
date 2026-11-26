@@ -18,13 +18,13 @@ export type BrandConfig = {
 
 // Placeholder محايد — يُستبدل لاحقًا عند اعتماد الهوية النهائية، من مكان واحد.
 export const BRAND: BrandConfig = {
-  productName: "منصة التقارير",
-  productNameEn: "Reporting Suite",
+  productName: "مِحور كلاود ERP",
+  productNameEn: "MIHWAR CLOUD ERP",
   tagline: "لوحات وتقارير مؤسسية",
   taglineEn: "Enterprise dashboards & reports",
   colors: {
-    primary: "#3b82f6", positive: "#10b981", analytic: "#a855f7",
-    warning: "#f59e0b", negative: "#ef4444", surface: "#0f172a", bg: "#020617",
+    primary: "#007BFF", positive: "#10b981", analytic: "#a855f7",
+    warning: "#f59e0b", negative: "#ef4444", surface: "#0B1F44", bg: "#06122B",
   },
 };
 

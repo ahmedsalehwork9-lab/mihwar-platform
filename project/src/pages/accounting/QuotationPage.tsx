@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FilePlus2, Printer, Search, Trash2, RefreshCw, ArrowRightLeft, Plus, X } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
+import { useLang } from "../../context/LanguageContext";
+import { fetchPrintOrg } from "../sales/salesInvoiceApi";
+import { printHTML } from "../sales/salesInvoicePrint";
+import { buildDocHTML } from "../print/docTemplates";
 import * as DB from "../lib/accountingDb";
 import PartyQuickEditor from "../lib/PartyQuickEditor";
 import type { GLAccount, GLParty, GLQuotation, GLTreasury, SalesItem } from "../lib/accountingDb";
@@ -14,6 +18,7 @@ type DraftItem = { description: string; qty: string; unit_price: string };
 
 export default function QuotationPage() {
   const { ownedShopId, branches } = (useAuth() as any) ?? {};
+  const { lang } = useLang();
   const [org, setOrg] = useState<{id:number;name:string}|null>(null);
   const [accounts,setAccounts] = useState<GLAccount[]>([]);
   const [parties,setParties] = useState<GLParty[]>([]);
@@ -93,11 +98,11 @@ export default function QuotationPage() {
     setShowForm(false);reset();await reload();
   };
 
-  const print=(q:GLQuotation)=>{
+  const print=async(q:GLQuotation)=>{
     const customer=q.customer_name||parties.find(p=>p.id===q.party_id)?.name||"—";
-    const lines=q.items.map((it,i)=>`<tr><td>${i+1}</td><td>${it.description}</td><td>${it.qty}</td><td>${money(it.unit_price)}</td><td>${money(it.line_total)}</td></tr>`).join("");
-    const html=`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>عرض سعر ${q.quotation_no}</title><style>body{font-family:Tahoma,Arial;padding:32px;color:#172033}header{display:flex;justify-content:space-between;border-bottom:3px solid #183b60;padding-bottom:16px}h1{font-size:24px}table{width:100%;border-collapse:collapse;margin-top:24px}th{background:#183b60;color:white}td,th{border:1px solid #cbd5e1;padding:10px;text-align:center}td:nth-child(2){text-align:right}.total{margin:20px 0 0 auto;width:280px}.total div{display:flex;justify-content:space-between;padding:6px;border-bottom:1px solid #ddd}.muted{color:#64748b}</style></head><body><header><div><h1>عرض سعر</h1><b>رقم العرض: ${q.quotation_no}/${q.quotation_year}</b><p>التاريخ: ${q.date} · صالح حتى: ${q.valid_until||"—"}</p></div><div><h2>${org?.name||"المؤسسة"}</h2><p>العميل: ${customer}</p></div></header><table><thead><tr><th>#</th><th>الصنف / البيان</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th></tr></thead><tbody>${lines}</tbody></table><section class="total"><div><span>الإجمالي قبل الخصم</span><b>${money(q.subtotal+q.discount_amount)}</b></div><div><span>الخصم</span><b>${money(q.discount_amount)}</b></div><div><span>الضريبة ${q.tax_rate}%</span><b>${money(q.tax_amount)}</b></div><div><strong>الإجمالي النهائي</strong><strong>${money(q.total)}</strong></div></section><p class="muted">${q.notes||""}</p><script>window.onload=()=>window.print()</script></body></html>`;
-    const w=window.open("","_blank");if(!w){alert("اسمح بالنوافذ المنبثقة للطباعة.");return;}w.document.write(html);w.document.close();
+    const po=await fetchPrintOrg(org?.id??0, ownedShopId??null).catch(()=>({name:org?.name??null,tax_number:null,commercial_registration:null,phone:null,address:null,logo_url:null}));
+    const items=(q.items||[]).map(it=>({description:it.description,qty:Number(it.qty)||0,price:Number(it.unit_price)||0,total:Number(it.line_total)||0}));
+    printHTML(buildDocHTML({kind:"quotation",number:`QT-${q.quotation_year}-${String(q.quotation_no).padStart(4,"0")}`,date:q.date,dueDate:q.valid_until,partyName:customer,items,subtotal:q.subtotal,discount:q.discount_amount,taxRate:q.tax_rate,tax:q.tax_amount,total:q.total,notes:q.notes,currency:"",branchId:ownedShopId??null},po,lang==="en"?"en":"ar"));
   };
 
   const convert=async()=>{

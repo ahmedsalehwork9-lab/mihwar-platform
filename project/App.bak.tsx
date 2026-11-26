@@ -1,0 +1,290 @@
+import { useState, lazy, Suspense } from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { LanguageProvider } from './context/LanguageContext';
+import { OrgConfigProvider } from './context/OrgConfigContext';
+import { NotificationProvider } from './context/NotificationContext';
+
+import LoginPage from './pages/LoginPage';
+import LandingPage from './pages/LandingPage';
+
+import Layout, { Page } from './components/Layout';
+
+// ── Public pages ────────────────────────────────────────────────────────────
+const VerifyInvoicePage = lazy(() => import('./pages/VerifyInvoicePage'));
+const ShopPublicPage = lazy(() => import('./pages/ShopPublicPage'));
+
+// ── Shop user pages ─────────────────────────────────────────────────────────
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const SearchPage = lazy(() => import('./pages/SearchPage'));
+const InventoryPage = lazy(() => import('./pages/InventoryPage'));
+const OrdersPage = lazy(() => import('./pages/orders/OrdersPage'));
+const ReportsPage = lazy(() => import('./pages/ReportsPage'));
+const AlertsPage = lazy(() => import('./pages/AlertsPage'));
+const ShopSettingsPage = lazy(() => import('./pages/ShopSettingsPage'));
+const SalesReconciliationPage = lazy(() => import('./pages/sales/SalesReconciliationPage'));
+const PurchasesPage = lazy(() => import('./pages/purchases/PurchasesPage'));
+const FixedExpensesPage = lazy(() => import('./pages/expenses/FixedExpensesPage'));
+const FinancialReportPage = lazy(() => import('./pages/finance/FinancialReportPage'));
+const ReportsHubPage = lazy(() => import('./pages/ReportsHubPage'));
+const BusinessAnalyticsPage = lazy(() => import('./pages/reports/BusinessAnalyticsPage'));
+const MonthlyFinancialPage = lazy(() => import('./pages/reports/MonthlyFinancialPage'));
+const ReportBuilderPage = lazy(() => import('./pages/reports/ReportBuilderPage'));
+const CompanySettingsPage = lazy(() => import('./pages/CompanySettingsPage'));
+const AddCustomerWizard = lazy(() => import('./pages/AddCustomerWizard'));
+const AccountingPage = lazy(() => import('./pages/accounting/AccountingPage'));
+const QuotationPage = lazy(() => import('./pages/accounting/QuotationPage'));
+const SalesInvoicePage = lazy(() => import('./pages/sales/SalesInvoicePage'));
+const POSPage = lazy(() => import('./pages/accounting/POSPage'));
+const PurchaseInvoicesPage = lazy(() => import('./pages/purchases/PurchaseInvoicesPage'));
+const PurchaseReturnsPage = lazy(() => import('./pages/purchases/PurchaseReturnsPage'));
+const SupplierPaymentsPage = lazy(() => import('./pages/purchases/SupplierPaymentsPage'));
+const StockAdjustmentsPage = lazy(() => import('./pages/inventory/stocktake/StocktakePage'));
+const ItemMovementPage = lazy(() => import('./pages/inventory/itemMovement/ItemMovementPage'));
+
+// ── Admin pages ─────────────────────────────────────────────────────────────
+const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
+const ShopsPage = lazy(() => import('./pages/ShopsPage'));
+const CreateShopPage = lazy(() => import('./pages/CreateShopPage'));
+const UsersPage = lazy(() => import('./pages/UsersPage'));
+const PermissionsPage = lazy(() => import('./pages/PermissionsPage'));
+const GlobalInventoryPage = lazy(() => import('./pages/GlobalInventoryPage'));
+const GlobalOrdersPage = lazy(() => import('./pages/GlobalOrdersPage'));
+const OrganizationsPage = lazy(() => import('./pages/OrganizationsPage'));
+
+// ── Shared loading fallback ─────────────────────────────────────────────────
+function PageLoader() {
+  return (
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-10 h-10 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    </div>
+  );
+}
+
+// ── Access denied ───────────────────────────────────────────────────────────
+function AccessDenied() {
+  return (
+    <div className="flex items-center justify-center h-[70vh]">
+      <div className="bg-red-500/10 border border-red-500/20 rounded-3xl p-10 text-center max-w-md">
+        <h2 className="text-2xl font-bold text-red-400 mb-3">غير مصرح</h2>
+        <p className="text-slate-400">ليس لديك صلاحية الوصول إلى هذه المنطقة الإدارية</p>
+      </div>
+    </div>
+  );
+}
+
+// صفحة «قيد التطوير» للبنود الجديدة قبل بنائها
+function ComingSoon({ title }: { title: string }) {
+  return (
+    <div className="p-4 lg:p-6 min-h-screen" dir="rtl">
+      <div className="max-w-lg mx-auto mt-10 bg-slate-900 border border-slate-800 rounded-2xl p-10 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-blue-500/10 text-blue-400 flex items-center justify-center mx-auto mb-4 text-3xl">🚧</div>
+        <h2 className="text-white font-black text-xl mb-2">{title}</h2>
+        <p className="text-slate-500 text-sm">هذه الصفحة قيد التطوير — قريبًا بإذن الله.</p>
+      </div>
+    </div>
+  );
+}
+
+// ── App content ─────────────────────────────────────────────────────────────
+function AppContent() {
+  const { session, loading, isAdmin } = useAuth();
+
+  const [page, setPage] = useState<Page>('dashboard');
+  const [accSection, setAccSection] = useState<string>('dashboard'); // القسم النشط داخل الحسابات (يتحكم به الشريط الجانبي)
+  const [showLanding, setShowLanding] = useState(true);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="w-14 h-14 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!session) {
+    if (showLanding) {
+      return (
+        <LandingPage
+          onLogin={() => setShowLanding(false)}
+        />
+      );
+    }
+
+    return <LoginPage />;
+  }
+
+  const renderAdminPlaceholder = (title: string) => (
+    <div className="flex items-center justify-center h-[70vh]">
+      <div className="bg-blue-500/10 border border-blue-500/20 rounded-3xl p-10 text-center">
+        <h2 className="text-2xl font-bold text-blue-400 mb-3">{title}</h2>
+        <p className="text-slate-400">هذه الصفحة تحت التطوير</p>
+      </div>
+    </div>
+  );
+
+  return (
+    <NotificationProvider>
+      <Layout page={page} setPage={setPage} accSection={accSection} setAccSection={setAccSection}>
+        <Suspense fallback={<PageLoader />}>
+
+          {/* USER PAGES */}
+          {page === 'dashboard' && <DashboardPage />}
+          {page === 'search' && <SearchPage />}
+          {page === 'inventory' && <InventoryPage onNavigate={setPage} />}
+          {page === 'stock-adjustments' && <StockAdjustmentsPage />}
+          {page === 'item-movement' && <ItemMovementPage />}
+          {page === 'orders' && <OrdersPage />}
+          {page === 'reports' && <ReportsPage />}
+          {page === 'alerts' && <AlertsPage />}
+          {page === 'shop-settings' && <ShopSettingsPage />}
+          {page === 'sales-reconciliation' && <SalesReconciliationPage />}
+          {page === 'purchases' && <PurchasesPage />}
+          {page === 'fixed-expenses' && <FixedExpensesPage />}
+          {page === 'financial-report' && <FinancialReportPage />}
+          {page === 'reports-center' && <ReportsHubPage setPage={setPage} setAccSection={setAccSection} />}
+          {page === 'business-analytics' && <BusinessAnalyticsPage onNavigate={setPage} onSection={setAccSection} />}
+          {page === 'monthly-financial' && <MonthlyFinancialPage onNavigate={setPage} />}
+          {page === 'report-builder' && <ReportBuilderPage />}
+          {page === 'accounting' && <AccountingPage section={accSection} onSection={setAccSection} onNavigate={setPage} />}
+
+          {/* صفحات قيد التطوير (مجموعات المبيعات/المشتريات) */}
+          {page === 'sales' && <ComingSoon title="المبيعات" />}
+          {page === 'pos' && <POSPage />}
+          {page === 'sales-invoice' && <SalesInvoicePage onNavigate={(p) => setPage(p as Page)} onSection={setAccSection} />}
+          {page === 'quotation' && <QuotationPage />}
+          {page === 'purchase-invoices' && <PurchaseInvoicesPage />}
+          {page === 'purchase-orders' && <ComingSoon title="أوامر الشراء" />}
+          {page === 'purchase-reconciliation' && <ComingSoon title="تسوية المشتريات" />}
+          {page === 'purchase-returns' && <PurchaseReturnsPage />}
+          {page === 'supplier-payments' && <SupplierPaymentsPage />}
+
+          {/* ADMIN */}
+          {page === 'admin' &&
+            (isAdmin ? <AdminDashboardPage /> : <AccessDenied />)}
+
+          {page === 'shops' &&
+            (isAdmin ? <ShopsPage /> : <AccessDenied />)}
+
+          {page === 'create-shop' &&
+            (isAdmin ? <AddCustomerWizard onNavigate={setPage} /> : <AccessDenied />)}
+
+          {page === 'users' &&
+            (isAdmin ? <UsersPage /> : <AccessDenied />)}
+
+          {page === 'permissions' &&
+            (isAdmin ? <PermissionsPage /> : <AccessDenied />)}
+
+          {page === 'global-inventory' &&
+            (isAdmin ? <GlobalInventoryPage /> : <AccessDenied />)}
+
+          {page === 'global-orders' &&
+            (isAdmin ? <GlobalOrdersPage /> : <AccessDenied />)}
+
+          {page === 'system-settings' &&
+            (isAdmin
+              ? <CompanySettingsPage />
+              : <AccessDenied />)}
+
+          {page === 'organizations' &&
+            (isAdmin ? <OrganizationsPage /> : <AccessDenied />)}
+
+        </Suspense>
+      </Layout>
+    </NotificationProvider>
+  );
+}
+
+// ── Activity landing ────────────────────────────────────────────────────────
+type ActivityType = "spare-parts" | "grocery" | "cafe" | "restaurant" | "retail" | "general";
+
+function ActivityLanding({ activity }: { activity: ActivityType }) {
+  const [showLanding, setShowLanding] = useState(true);
+
+  if (!showLanding) {
+    return (
+      <LanguageProvider>
+        <AuthProvider>
+          <LoginPage />
+        </AuthProvider>
+      </LanguageProvider>
+    );
+  }
+
+  return (
+    <LanguageProvider>
+      <LandingPage
+        activity={activity}
+        onLogin={() => setShowLanding(false)}
+      />
+    </LanguageProvider>
+  );
+}
+
+// ── Root app ────────────────────────────────────────────────────────────────
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        {/* Invoice verification */}
+        <Route
+          path="/verify/:orderId"
+          element={
+            <Suspense fallback={<PageLoader />}>
+              <VerifyInvoicePage />
+            </Suspense>
+          }
+        />
+
+        {/* Shop public page — numeric ID */}
+        <Route
+          path="/shop/:shopId"
+          element={
+            <LanguageProvider>
+              <Suspense fallback={<PageLoader />}>
+                <ShopPublicPage />
+              </Suspense>
+            </LanguageProvider>
+          }
+        />
+
+        {/* Shop public page — custom slug */}
+        <Route
+          path="/s/:slug"
+          element={
+            <LanguageProvider>
+              <Suspense fallback={<PageLoader />}>
+                <ShopPublicPage />
+              </Suspense>
+            </LanguageProvider>
+          }
+        />
+
+        {/* Activity landing pages */}
+        <Route path="/spare-parts" element={<ActivityLanding activity="spare-parts" />} />
+        <Route path="/grocery" element={<ActivityLanding activity="grocery" />} />
+        <Route path="/cafe" element={<ActivityLanding activity="cafe" />} />
+        <Route path="/restaurant" element={<ActivityLanding activity="restaurant" />} />
+        <Route path="/retail" element={<ActivityLanding activity="retail" />} />
+
+        {/* Main application */}
+        <Route
+          path="*"
+          element={
+            <LanguageProvider>
+              <AuthProvider>
+                <OrgConfigProvider>
+                  <AppContent />
+                </OrgConfigProvider>
+              </AuthProvider>
+            </LanguageProvider>
+          }
+        />
+
+      </Routes>
+    </BrowserRouter>
+  );
+}

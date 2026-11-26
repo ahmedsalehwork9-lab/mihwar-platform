@@ -1,4 +1,5 @@
 import { useState, lazy, Suspense } from 'react';
+import { BrandSplash } from './components/brand/BrandLogo';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -21,8 +22,8 @@ const SearchPage = lazy(() => import('./pages/SearchPage'));
 const InventoryPage = lazy(() => import('./pages/InventoryPage'));
 const OrdersPage = lazy(() => import('./pages/orders/OrdersPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
-const AlertsPage = lazy(() => import('./pages/AlertsPage'));
-const ShopSettingsPage = lazy(() => import('./pages/ShopSettingsPage'));
+const AlertsPage = lazy(() => import('./pages/alerts/AlertsCenterPage'));
+const ShopSettingsPage = lazy(() => import('./pages/branchSettings/BranchSettingsPage'));
 const SalesReconciliationPage = lazy(() => import('./pages/sales/SalesReconciliationPage'));
 const PurchasesPage = lazy(() => import('./pages/purchases/PurchasesPage'));
 const FixedExpensesPage = lazy(() => import('./pages/expenses/FixedExpensesPage'));
@@ -35,11 +36,13 @@ const CompanySettingsPage = lazy(() => import('./pages/CompanySettingsPage'));
 const AddCustomerWizard = lazy(() => import('./pages/AddCustomerWizard'));
 const AccountingPage = lazy(() => import('./pages/accounting/AccountingPage'));
 const QuotationPage = lazy(() => import('./pages/accounting/QuotationPage'));
+const SalesInvoicePage = lazy(() => import('./pages/sales/SalesInvoicePage'));
 const POSPage = lazy(() => import('./pages/accounting/POSPage'));
 const PurchaseInvoicesPage = lazy(() => import('./pages/purchases/PurchaseInvoicesPage'));
 const PurchaseReturnsPage = lazy(() => import('./pages/purchases/PurchaseReturnsPage'));
 const SupplierPaymentsPage = lazy(() => import('./pages/purchases/SupplierPaymentsPage'));
-const StockAdjustmentsPage = lazy(() => import('./pages/inventory/StockAdjustmentsPage'));
+const StockAdjustmentsPage = lazy(() => import('./pages/inventory/stocktake/StocktakePage'));
+const ItemMovementPage = lazy(() => import('./pages/inventory/itemMovement/ItemMovementPage'));
 
 // ── Admin pages ─────────────────────────────────────────────────────────────
 const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
@@ -54,11 +57,7 @@ const OrganizationsPage = lazy(() => import('./pages/OrganizationsPage'));
 // ── Shared loading fallback ─────────────────────────────────────────────────
 function PageLoader() {
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-      <div className="flex flex-col items-center gap-3">
-        <div className="w-10 h-10 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    </div>
+    <BrandSplash />
   );
 }
 
@@ -97,9 +96,7 @@ function AppContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="w-14 h-14 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-      </div>
+      <BrandSplash />
     );
   }
 
@@ -134,9 +131,10 @@ function AppContent() {
           {page === 'search' && <SearchPage />}
           {page === 'inventory' && <InventoryPage onNavigate={setPage} />}
           {page === 'stock-adjustments' && <StockAdjustmentsPage />}
+          {page === 'item-movement' && <ItemMovementPage />}
           {page === 'orders' && <OrdersPage />}
           {page === 'reports' && <ReportsPage />}
-          {page === 'alerts' && <AlertsPage />}
+          {page === 'alerts' && <AlertsPage onNavigate={(p) => setPage(p as Page)} onSection={setAccSection} />}
           {page === 'shop-settings' && <ShopSettingsPage />}
           {page === 'sales-reconciliation' && <SalesReconciliationPage />}
           {page === 'purchases' && <PurchasesPage />}
@@ -151,6 +149,7 @@ function AppContent() {
           {/* صفحات قيد التطوير (مجموعات المبيعات/المشتريات) */}
           {page === 'sales' && <ComingSoon title="المبيعات" />}
           {page === 'pos' && <POSPage />}
+          {page === 'sales-invoice' && <SalesInvoicePage onNavigate={(p) => setPage(p as Page)} onSection={setAccSection} />}
           {page === 'quotation' && <QuotationPage />}
           {page === 'purchase-invoices' && <PurchaseInvoicesPage />}
           {page === 'purchase-orders' && <ComingSoon title="أوامر الشراء" />}

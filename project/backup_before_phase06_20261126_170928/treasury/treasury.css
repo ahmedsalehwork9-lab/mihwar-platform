@@ -1,0 +1,35 @@
+/* =============================================================
+   src/pages/accounting/treasury/treasury.css
+   تباين الألوان لوحدة «الخزن والبنوك» — الوضع الفاتح فقط (الداكن يُعالَج في أسماء الكلاسات).
+   Light-mode contrast for the Cash & Banks module. Scoped to .tb-root, so no other page is affected.
+   theme.css (global) already remaps slate/blue/emerald/amber/red/purple 400–500; this file covers the
+   shades the module uses that it does not (300 shades, pink, cyan, indigo, sky) and the dark gradient ends.
+   ============================================================= */
+
+.tb-root .font-mono { font-variant-numeric: tabular-nums; }
+.tb-root mark { color: inherit; }
+
+html.light .tb-root .text-emerald-300, html.light .tb-root .text-emerald-400 { color: #065f46 !important; }
+html.light .tb-root .text-red-300,     html.light .tb-root .text-red-400     { color: #b91c1c !important; }
+html.light .tb-root .text-pink-300,    html.light .tb-root .text-pink-400    { color: #be185d !important; }
+html.light .tb-root .text-amber-300,   html.light .tb-root .text-amber-400   { color: #92400e !important; }
+html.light .tb-root .text-blue-100,
+html.light .tb-root .text-blue-200,
+html.light .tb-root .text-blue-300,    html.light .tb-root .text-blue-400    { color: #1d4ed8 !important; }
+html.light .tb-root .text-cyan-300     { color: #0e7490 !important; }
+html.light .tb-root .text-indigo-300   { color: #4338ca !important; }
+html.light .tb-root .text-sky-300      { color: #0369a1 !important; }
+html.light .tb-root .text-purple-300   { color: #6d28d9 !important; }
+html.light .tb-root .text-slate-100    { color: #0f172a !important; }
+
+/* gradient cards: the dark end colour is not remapped by theme.css */
+html.light .tb-root .to-slate-900 { --tw-gradient-to: #f8fafc var(--tw-gradient-to-position) !important; }
+
+/* tinted status badges keep their tint but need darker text on white */
+html.light .tb-root .bg-emerald-500\/15 { background-color: rgba(16, 185, 129, 0.14) !important; }
+html.light .tb-root .bg-amber-500\/15   { background-color: rgba(245, 158, 11, 0.16) !important; }
+html.light .tb-root .bg-red-500\/15     { background-color: rgba(239, 68, 68, 0.12) !important; }
+html.light .tb-root .bg-blue-500\/15    { background-color: rgba(59, 130, 246, 0.12) !important; }
+
+/* dropdown / dialog panels */
+html.light .tb-root mark { background-color: rgba(37, 99, 235, 0.18) !important; }

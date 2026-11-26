@@ -218,19 +218,13 @@ export default function POSPage() {
       const gross = DB.posPrice(l.product) * l.qty;
       const d = Math.min(Math.max(l.disc, 0), gross);
       const netLine = r2(gross - d);
-      return { description: l.product.product_name + (l.product.product_code ? ` (${l.product.product_code})` : ""), qty: l.qty, unit_price: l.qty ? r2(netLine / l.qty) : 0, line_total: netLine };
+      return { product_id: l.product.id, description: l.product.product_name + (l.product.product_code ? ` (${l.product.product_code})` : ""), qty: l.qty, unit_price: l.qty ? r2(netLine / l.qty) : 0, line_total: netLine };
     });
     if (t2.invDisc > 0) items.push({ description: t("Invoice discount", "خصم على الفاتورة"), qty: 1, unit_price: -t2.invDisc, line_total: -t2.invDisc });
 
     const finish = async (res: { ok: boolean; error?: string; invoiceNo?: number }) => {
       if (!res.ok) { setSaving(false); setPostErr(t("Could not issue the invoice: ", "تعذّر إصدار الفاتورة: ") + (res.error || "")); return; }
-      for (const l of cart) await DB.adjustProductStock(l.product.id, -l.qty);
-      // تسجيل حركة بيع (صادر) في سجل الحركات — إضافي، لا يؤثر على إصدار الفاتورة
-      try {
-        await DB.logSaleMoves(org.id, ownedShopId ? Number(ownedShopId) : null,
-          cart.map((l) => ({ product_id: l.product.id, qty: l.qty, unit_cost: Number(l.product.price) || 0 })),
-          res.invoiceNo ?? null);
-      } catch (e) { console.error("logSaleMoves", e); }
+      // Inventory is deducted by the invoice service from the branch default warehouse.
       setSaving(false); setPostErr("");
       printReceipt(res.invoiceNo || 0, items);
       clearCart(); await reloadProducts(); if (showToday) await loadToday();

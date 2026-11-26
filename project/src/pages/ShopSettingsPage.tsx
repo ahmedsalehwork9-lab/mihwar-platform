@@ -115,7 +115,7 @@ export default function ShopSettingsPage() {
       .eq('id', ownedShopId)
       .single();
     if (err || !data) {
-      setError(t('Failed to load shop data', 'تعذّر تحميل بيانات المحل'));
+      setError(t('Failed to load shop data', 'تعذّر تحميل بيانات المتجر'));
     } else {
       setShop(data as ShopProfile);
       setForm({
@@ -264,7 +264,7 @@ export default function ShopSettingsPage() {
       <div className="flex items-center justify-center py-24">
         <div className="text-center space-y-2">
           <AlertCircle size={32} className="text-red-400 mx-auto" />
-          <p className="text-red-400 text-sm">{error ?? t('Shop not found', 'لم يتم العثور على المحل')}</p>
+          <p className="text-red-400 text-sm">{error ?? t('Shop not found', 'لم يتم العثور على المتجر')}</p>
         </div>
       </div>
     );
@@ -282,7 +282,7 @@ export default function ShopSettingsPage() {
           <Store size={18} className="text-blue-400" />
         </div>
         <div>
-          <h1 className="text-white font-black text-lg">{t('Shop Settings', 'إعدادات المحل')}</h1>
+          <h1 className="text-white font-black text-lg">{t('Public Shop & QR', 'المتجر العام ورمز QR')}</h1>
           <p className="text-slate-500 text-xs">{shop.shop_name}</p>
         </div>
       </div>
@@ -300,7 +300,7 @@ export default function ShopSettingsPage() {
       <section className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-800 flex items-center gap-2">
           <QrCode size={16} className="text-emerald-400" />
-          <h2 className="text-white font-black text-sm">{t('Shop QR Code', 'رمز QR للمحل')}</h2>
+          <h2 className="text-white font-black text-sm">{t('Shop QR Code', 'رمز QR للمتجر')}</h2>
         </div>
 
         <div className="p-5 flex flex-col sm:flex-row gap-6 items-center">
@@ -340,7 +340,7 @@ export default function ShopSettingsPage() {
 
             {/* Public URL */}
             <div className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5">
-              <p className="text-[9px] text-slate-600 font-bold uppercase tracking-widest mb-1">{t('Public Link', 'رابط المحل العام')}</p>
+              <p className="text-[9px] text-slate-600 font-bold uppercase tracking-widest mb-1">{t('Public Link', 'رابط المتجر العام')}</p>
               <p className="text-[11px] text-blue-400 font-mono truncate">{publicUrl}</p>
             </div>
 
@@ -456,12 +456,12 @@ export default function ShopSettingsPage() {
       <section className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-800 flex items-center gap-2">
           <Store size={16} className="text-blue-400" />
-          <h2 className="text-white font-black text-sm">{t('Shop Info', 'بيانات المحل')}</h2>
+          <h2 className="text-white font-black text-sm">{t('Shop Info', 'بيانات المتجر')}</h2>
         </div>
 
         <div className="p-5 space-y-4">
           {[
-            { label: t('Shop Name', 'اسم المحل'),       key: 'shop_name',       placeholder: t('My Shop', 'اسم محلك'),                                          icon: Store,          inputType: 'text', inputMode: 'text' },
+            { label: t('Shop Name', 'اسم المتجر'),       key: 'shop_name',       placeholder: t('My Shop', 'اسم متجرك'),                                          icon: Store,          inputType: 'text', inputMode: 'text' },
             { label: t('Phone', 'رقم الجوال'),           key: 'phone',           placeholder: '05xxxxxxxx',                                                       icon: Phone,          inputType: 'tel',  inputMode: 'tel'  },
             { label: t('WhatsApp', 'واتساب'),            key: 'whatsapp',        placeholder: t('WhatsApp number (if different)', 'واتساب (لو مختلف عن الجوال)'), icon: MessageCircle,  inputType: 'tel',  inputMode: 'tel'  },
             { label: t('Google Maps URL', 'رابط الخريطة'), key: 'google_maps_url', placeholder: 'https://maps.google.com/...',                                    icon: MapPin,         inputType: 'url',  inputMode: 'url'  },
@@ -497,7 +497,7 @@ export default function ShopSettingsPage() {
       <div className="flex items-center justify-center gap-2 py-2">
         <span className={`w-2 h-2 rounded-full ${shop.is_active ? 'bg-emerald-400' : 'bg-red-400'}`} />
         <span className="text-xs text-slate-500">
-          {shop.is_active ? t('Shop is active', 'المحل نشط') : t('Shop is inactive', 'المحل غير نشط')}
+          {shop.is_active ? t('Shop is active', 'المتجر نشط') : t('Shop is inactive', 'المتجر غير نشط')}
         </span>
       </div>
 

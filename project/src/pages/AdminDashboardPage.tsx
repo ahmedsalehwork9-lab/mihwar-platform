@@ -54,7 +54,7 @@ export default function AdminDashboardPage({ onNavigate }: Props) {
     };
     const [shops, activeShops, products, orders, transfers, orgs, groups, warehouses, branches, newShops30, newUsers30, shopsWithGroup, vPub, vGrp, vPriv] = await Promise.all([
       cnt("shops", head("shops")), cnt("shops", head("shops").eq("is_active", true)), cnt("products", head("products")), cnt("orders", head("orders")), cnt("transfers", head("inventory_transfers")),
-      cnt("organizations", head("organizations")), cnt("groups", head("organization_groups")), cnt("shops", head("shops").eq("type", "warehouse")), cnt("shops", head("shops").eq("type", "branch")),
+      cnt("organizations", head("organizations")), cnt("groups", head("organization_groups")), cnt("shops", head("shops").eq("shop_type", "warehouse")), cnt("shops", head("shops").eq("shop_type", "branch")),
       cnt("shops", head("shops").gte("created_at", since)), cnt("users", head("profiles").gte("created_at", since)), cnt("shops", head("shops").not("group_id", "is", null)),
       cnt("products", head("products").eq("visibility_scope", "public")), cnt("products", head("products").eq("visibility_scope", "group")), cnt("products", head("products").eq("visibility_scope", "private")),
     ]);

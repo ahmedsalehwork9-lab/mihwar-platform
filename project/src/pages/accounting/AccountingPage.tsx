@@ -953,10 +953,16 @@ function SalesReturnsPanel({ org, invoices, parties, postable, treasuryAccounts,
     alert(`تم إنشاء مرتجع ${result.returnLabel} وربطه بالفاتورة ${selected.invoice_no}.` + (result.warning ? `\n\nتنبيه: لم يُعَد المخزون/التكلفة: ${result.warning}` : ""));
     setOpen(false); await reload(); await reloadInvoices?.();
   };
+  const [rq, setRq] = useState("");
+  const normQ = (v: unknown) => String(v ?? "").toLowerCase().replace(/[\u064B-\u0652\u0640]/g, "").replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d))).trim();
+  const shownRows = useMemo(() => {
+    const toks = normQ(rq).split(/\s+/).filter(Boolean); if (!toks.length) return rows;
+    return rows.filter((r) => { const hay = normQ([`SR-${r.return_year}-${String(r.return_no).padStart(4, "0")}`, r.return_no, r.date, `${r.original_invoice_no}/${r.original_invoice_year}`, r.customer_name, r.refund_mode === "cash" ? "رد نقدي cash refund" : "اشعار دائن credit note", r.total, r.entry_id].join(" ")); return toks.every((t) => hay.includes(t)); });
+  }, [rows, rq]);
   const retNo = (r: DB.GLSalesReturn) => `SR-${r.return_year}-${String(r.return_no).padStart(4, "0")}`;
   const retHeads = ren ? ["Return no.", "Date", "Original invoice", "Customer", "Settlement", "Total", "Entry"] : ["رقم المرتجع", "التاريخ", "الفاتورة الأصلية", "العميل", "طريقة التسوية", "الإجمالي", "القيد"];
-  const retRows = () => rows.map((r) => [retNo(r), r.date, `${r.original_invoice_no}/${r.original_invoice_year}`, r.customer_name || "—", r.refund_mode === "cash" ? (ren ? "Cash refund" : "رد نقدي") : (ren ? "Credit note" : "إشعار دائن"), Number(r.total) || 0, r.entry_id ? String(r.entry_id) : "—"]);
-  const retTotal = () => rows.reduce((a, r) => a + (Number(r.total) || 0), 0);
+  const retRows = () => shownRows.map((r) => [retNo(r), r.date, `${r.original_invoice_no}/${r.original_invoice_year}`, r.customer_name || "—", r.refund_mode === "cash" ? (ren ? "Cash refund" : "رد نقدي") : (ren ? "Credit note" : "إشعار دائن"), Number(r.total) || 0, r.entry_id ? String(r.entry_id) : "—"]);
+  const retTotal = () => shownRows.reduce((a, r) => a + (Number(r.total) || 0), 0);
   const exportReturns = () => {
     const ws = XLSX.utils.aoa_to_sheet([[ren ? "Sales returns" : "مرتجعات المبيعات", org.name], [], retHeads, ...retRows(), [], [ren ? "Total" : "الإجمالي", "", "", "", "", retTotal(), ""]]);
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Returns"); XLSX.writeFile(wb, `sales_returns_${today()}.xlsx`);
@@ -969,16 +975,16 @@ function SalesReturnsPanel({ org, invoices, parties, postable, treasuryAccounts,
   };
   return <>
     {!open && <div className={`${CARD} overflow-hidden ${returnsMode ? "" : "mt-4"}`} data-testid="returns-list">
-      <SectionHead icon={ArrowDownCircle} title={ren ? "Sales returns" : "مرتجعات المبيعات"} extra={<div className="flex items-center gap-2"><span className="hidden text-[11px] text-slate-400 md:inline">{ren ? "Return documents linked to sales invoices" : "مستندات المرتجعات المرتبطة بفواتير المبيعات"}</span><button onClick={exportReturns} disabled={!rows.length} data-testid="returns-excel" className={BTN_GHOST_EM}><Download size={14} /> Excel</button><button onClick={printReturns} disabled={!rows.length} data-testid="returns-print" className={BTN_GHOST_EM}><Printer size={14} /> {ren ? "Print" : "طباعة"}</button></div>} />
+      <SectionHead icon={ArrowDownCircle} title={ren ? "Sales returns" : "مرتجعات المبيعات"} extra={<div className="flex items-center gap-2"><div className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2"><Search size={13} className="shrink-0 text-slate-400" /><input value={rq} onChange={(e) => setRq(e.target.value)} data-testid="returns-search" placeholder={ren ? "Search no., customer, invoice, amount…" : "بحث: رقم، عميل، فاتورة، مبلغ…"} className="w-44 bg-transparent text-xs text-slate-200 outline-none placeholder:text-slate-500 md:w-60" /></div><button onClick={exportReturns} disabled={!shownRows.length} data-testid="returns-excel" className={BTN_GHOST_EM}><Download size={14} /> Excel</button><button onClick={printReturns} disabled={!shownRows.length} data-testid="returns-print" className={BTN_GHOST_EM}><Printer size={14} /> {ren ? "Print" : "طباعة"}</button></div>} />
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead className="bg-slate-950 text-slate-300 font-bold"><tr>{retHeads.map(h=><th key={h} className="p-3">{h}</th>)}</tr></thead>
-          <tbody>{rows.map(r=><tr key={r.id} className="border-t border-slate-800 hover:bg-slate-800/40">
+          <tbody>{shownRows.map(r=><tr key={r.id} className="border-t border-slate-800 hover:bg-slate-800/40">
             <td className="p-3 text-center font-mono font-bold text-emerald-400">{retNo(r)}</td>
             <td className="p-3 text-center text-slate-200">{r.date}</td><td className="p-3 text-center text-slate-200">{r.original_invoice_no}/{r.original_invoice_year}</td>
             <td className="p-3 text-slate-200">{r.customer_name||"—"}</td><td className="p-3 text-center text-slate-200">{r.refund_mode==="cash"?(ren?"Cash refund":"رد نقدي"):(ren?"Credit note":"إشعار دائن")}</td>
             <td className="p-3 text-center font-mono font-bold text-emerald-400">{fmt(r.total)}</td><td className="p-3 text-center text-slate-300">{r.entry_id||"—"}</td>
-          </tr>)}{!rows.length&&<tr><td colSpan={7} className="p-8 text-center text-slate-400">{busy?(ren?"Loading…":"جارٍ التحميل…"):(ren?"No returns recorded.":"لا توجد مرتجعات مسجلة.")}</td></tr>}</tbody>
+          </tr>)}{!shownRows.length&&<tr><td colSpan={7} className="p-8 text-center text-slate-400">{busy?(ren?"Loading…":"جارٍ التحميل…"):rows.length?(ren?"No matching returns.":"لا توجد نتائج مطابقة."):(ren?"No returns recorded.":"لا توجد مرتجعات مسجلة.")}</td></tr>}</tbody>
         </table>
       </div>
     </div>}

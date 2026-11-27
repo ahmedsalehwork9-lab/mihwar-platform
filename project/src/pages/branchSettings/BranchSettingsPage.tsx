@@ -13,6 +13,7 @@ import type { GLAccount } from "../lib/accountingDb";
 import { printHTML } from "../sales/salesInvoicePrint";
 import { fetchPrintOrg, type PrintOrg } from "../sales/salesInvoiceApi";
 import { DOC_KINDS, buildDocHTML, sampleDoc, type DocKind } from "../print/docTemplates";
+import BranchTreasuryCard from "./BranchTreasuryCard";
 import * as API from "./branchApi";
 import {
   ROLES, branchOverride, defaultsToClear, dirtyFields, effective, filterShops, kpisOf, orgDefault, patchOf, planMap, toForm, typeLabel, validateBasic, whValidate,
@@ -211,7 +212,8 @@ export default function BranchSettingsPage() {
                   <div className="md:col-span-2"><label className={LBL}>{t("This branch uses", "هذا الفرع يستخدم")}</label>
                     <select value={cur} onChange={(e) => setSel((s) => ({ ...s, [r.role]: e.target.value ? Number(e.target.value) : "" }))} className={INP} data-testid={`map-sel-${r.role}`}><option value="">{t("— company default —", "— افتراضي الشركة —")}</option>{accOpts(r.type).map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}</select>
                     <div className="mt-1 text-[11px] text-slate-400">{t("Effective", "الفعّال")}: <b data-testid={`map-eff-${r.role}`}>{accName(eff)}</b>{sh && effective(map, sh.id, r.role) == null && cur === "" && <span className="text-amber-300"> · {t("not configured", "غير مُعدّ")}</span>}</div></div></div>); })}
-              <div className="flex justify-end"><button type="button" onClick={() => void saveMap()} disabled={!mapOps.length || busy} className={BTN_BLUE} data-testid="map-save"><Save size={15} />{t("Save link", "حفظ الربط")}</button></div></div>}
+              <div className="flex justify-end"><button type="button" onClick={() => void saveMap()} disabled={!mapOps.length || busy} className={BTN_BLUE} data-testid="map-save"><Save size={15} />{t("Save link", "حفظ الربط")}</button></div>
+              {sh && org && <BranchTreasuryCard orgId={org.id} branchId={sh.id} branchName={sh.shop_name} accounts={accounts} t={t} INP={INP} LBL={LBL} BTN={BTN_BLUE} onMsg={setMsg} />}</div>}
 
             {tab === "users" && <div className={`${CARD} p-4`} data-testid="bs-panel-users"><h3 className="font-bold mb-1">{t("Users of this branch", "مستخدمو هذا الفرع")}</h3>
               <p className="text-[11px] text-slate-500 mb-3">{t("Read-only. Add users and set permissions from the Users page.", "عرض فقط. إضافة المستخدمين وضبط الصلاحيات من صفحة المستخدمين.")}{!isAdmin && ` ${t("You may only see your own account here.", "قد لا يظهر لك هنا إلا حسابك.")}`}</p>

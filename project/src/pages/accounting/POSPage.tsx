@@ -4,6 +4,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useOrgConfig } from "../../context/OrgConfigContext";
 import { useLang } from "../../context/LanguageContext";
 import * as DB from "../lib/accountingDb";
+import { cashBankOptions } from "../lib/cashAccounts";
 import type { GLAccount, GLParty, GLTreasury, POSProduct, SalesItem, ShopInfo } from "../lib/accountingDb";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -96,13 +97,12 @@ export default function POSPage() {
         setProducts(prods); setAccounts(accs); setTreasuries(treas); setParties(pps); setShop(sh);
         const rev = accs.find((a) => a.type === "revenue" && !a.is_group);
         const vat = accs.find((a) => a.type === "liability" && !a.is_group && /ضريبة|مخرجات|vat|tax/i.test(a.name));
-        const withAcc = treas.filter((tr) => tr.account_id);
-        const branchCash = withAcc.filter((tr) => tr.kind === "cash" && (tr.branch_id == null || tr.branch_id === Number(ownedShopId)));
-        const bankT = withAcc.filter((tr) => tr.kind === "bank" || /شبكة|مدى|mada|visa|بنك|card/i.test(tr.name));
+        // خزنة/بنك الفرع: الخزن المربوطة بالفرع + حسابات الصندوق/البنك غير التجميعية في الدليل (القيمة = رقم الحساب)
+        const cb = cashBankOptions(accs, treas.filter((tr) => tr.branch_id == null || tr.branch_id === Number(ownedShopId)));
         setRevAcc(rev?.id ?? "");
         setVatAcc(vat?.id ?? "");
-        setCashTreas((branchCash[0] ?? withAcc.find((tr) => tr.kind === "cash"))?.id ?? "");
-        setCardTreas(bankT[0]?.id ?? "");
+        setCashTreas(cb.find((o) => o.kind === "cash")?.id ?? "");
+        setCardTreas(cb.find((o) => o.kind === "bank")?.id ?? "");
       } else { setProducts([]); setAccounts([]); setTreasuries([]); setParties([]); }
       setLoading(false);
     })();
@@ -200,10 +200,11 @@ export default function POSPage() {
   const custParty = custId === "" ? undefined : parties.find((x) => x.id === Number(custId));
   const creditDays = Number(custParty?.credit_days ?? 0);
   const dueDate = useMemo(() => { const d = new Date(); d.setDate(d.getDate() + creditDays); return d.toISOString().slice(0, 10); }, [creditDays]);
-  const withAccT = useMemo(() => treasuries.filter((x) => x.account_id), [treasuries]);
-  const cashOptions = useMemo(() => { const bc = withAccT.filter((x) => x.kind === "cash" && (x.branch_id == null || x.branch_id === Number(ownedShopId))); return bc.length ? bc : withAccT.filter((x) => x.kind === "cash"); }, [withAccT, ownedShopId]);
-  const cardOptions = useMemo(() => withAccT.filter((x) => x.kind === "bank" || /شبكة|مدى|mada|visa|بنك|card/i.test(x.name)), [withAccT]);
-  const treasAccOf = (id: number | "") => (id === "" ? null : treasuries.find((x) => x.id === Number(id))?.account_id ?? null);
+  // الحساب التجميعي لا يظهر؛ الصندوق/البنك غير التجميعي يظهر — كل القيم أرقام حسابات في الدليل.
+  const cashBank = useMemo(() => cashBankOptions(accounts, treasuries.filter((x) => x.branch_id == null || x.branch_id === Number(ownedShopId))), [accounts, treasuries, ownedShopId]);
+  const cashOptions = useMemo(() => cashBank.filter((o) => o.kind === "cash"), [cashBank]);
+  const cardOptions = useMemo(() => cashBank.filter((o) => o.kind === "bank"), [cashBank]);
+  const treasAccOf = (id: number | ""): number | null => (id === "" ? null : Number(id));
 
   const checkout = async () => {
     if (!org || !cart.length || saving) return;

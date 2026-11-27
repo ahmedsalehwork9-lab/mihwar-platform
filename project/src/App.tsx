@@ -1,4 +1,5 @@
-import { useState, lazy, Suspense } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
+import { pushRecent } from './pages/home/recentPages';
 import { BrandSplash } from './components/brand/BrandLogo';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 
@@ -94,6 +95,7 @@ function AppContent() {
 
   const [page, setPage] = useState<Page>('dashboard');
   const [accSection, setAccSection] = useState<string>('dashboard'); // القسم النشط داخل الحسابات (يتحكم به الشريط الجانبي)
+  useEffect(() => { pushRecent(page); }, [page]); // آخر الصفحات للرئيسية
   const [showLanding, setShowLanding] = useState(true);
 
   if (loading) {
@@ -129,7 +131,7 @@ function AppContent() {
         <Suspense fallback={<PageLoader />}>
 
           {/* USER PAGES */}
-          {page === 'dashboard' && <DashboardPage />}
+          {page === 'dashboard' && <DashboardPage onNavigate={setPage} onSection={setAccSection} />}
           {page === 'search' && <SearchPage />}
           {page === 'inventory' && <InventoryPage onNavigate={setPage} />}
           {page === 'stock-adjustments' && <StockAdjustmentsPage />}

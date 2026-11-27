@@ -7,6 +7,7 @@ import {
 } from "react";
 
 import { supabase } from "../pages/lib/supabase";
+import { canDo, sanitize, type Action, type ActionMap } from "../pages/lib/permModel";
 
 import {
   Session,
@@ -24,6 +25,8 @@ type AuthType = {
   role: string | null;
   isAdmin: boolean;
   permissions: string[] | null; // null = وصول كامل لكل الصفحات؛ قائمة = الصفحات المسموحة فقط
+  actionPermissions: ActionMap | null; // null = كل الإجراءات على الصفحات المسموحة (الحسابات القديمة)
+  can: (page: string, action: Action) => boolean; // تطبيق على مستوى الواجهة
   loading: boolean;
   signOut: () => Promise<void>;
 };
@@ -39,6 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [permissions, setPermissions] = useState<string[] | null>(null);
+  const [actionPermissions, setActionPermissions] = useState<ActionMap | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -57,6 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setRole(null);
           setIsAdmin(false);
           setPermissions(null);
+          setActionPermissions(null);
         }
       }
     );
@@ -107,6 +112,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsAdmin(admin);
       const perms = (prof as any)?.page_permissions;
       setPermissions(Array.isArray(perms) && perms.length > 0 ? perms : null);
+      // صلاحيات الإجراءات: عمود اختياري (قد لا يكون SQL طُبّق بعد) — أي خطأ = بلا قيود إجراءات (سلوك قديم)
+      try {
+        const { data: ap, error: apErr } = await supabase.from("profiles").select("action_permissions").eq("id", userId).single();
+        setActionPermissions(!apErr ? sanitize(null, (ap as any)?.action_permissions).actions : null);
+      } catch { setActionPermissions(null); }
 
       // 2) قائمة الفروع — المصدر الأساسي دالة RPC محصّنة ضد RLS
       let list: Branch[] = [];
@@ -148,6 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setRole(null);
       setIsAdmin(false);
       setPermissions(null);
+      setActionPermissions(null);
       window.location.reload();
     } catch (err) {
       console.error(err);
@@ -158,7 +169,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider
       value={{
         user, session, ownedShopId, branches, setActiveBranchId,
-        role, isAdmin, permissions, loading, signOut,
+        role, isAdmin, permissions, actionPermissions, loading, signOut,
+        can: (page: string, action: Action) => canDo({ pages: permissions, actions: actionPermissions, isAdmin }, page, action),
       }}
     >
       {children}

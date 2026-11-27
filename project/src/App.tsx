@@ -164,7 +164,7 @@ function AppContent() {
 
           {/* ADMIN */}
           {page === 'admin' &&
-            (isAdmin ? <AdminDashboardPage /> : <AccessDenied />)}
+            (isAdmin ? <AdminDashboardPage onNavigate={(p) => setPage(p as Page)} /> : <AccessDenied />)}
 
           {page === 'shops' &&
             (isAdmin ? <ShopsPage /> : <AccessDenied />)}

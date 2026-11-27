@@ -1,6 +1,9 @@
 ﻿import { useEffect, useState } from 'react';
 import { supabase } from './lib/supabase';
-import PagePermissionsModal from "../components/PagePermissionsModal";
+import UserAccessModal from "../components/UserAccessModal";
+import { useAuth } from "../context/AuthContext";
+import { loadUsers, loadTemplates, type UserRow, type ShopLite } from "./admin/permApi";
+import type { Template } from "./lib/permModel";
 import CreateUserModal from "../components/CreateUserModal";
 import { 
   Users, 
@@ -41,7 +44,20 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [editingUser, setEditingUser] = useState<Profile | null>(null);
-  const [permUser, setPermUser] = useState<Profile | null>(null);
+  const { user: authUser } = useAuth();
+  const [accessCtx, setAccessCtx] = useState<{ user: UserRow; shops: ShopLite[]; custom: Template[]; actionsSupported: boolean } | null>(null);
+  const [accessErr, setAccessErr] = useState<string | null>(null);
+  const [accessBusy, setAccessBusy] = useState<string | null>(null);
+  const openAccess = async (id: string) => {
+    setAccessBusy(id); setAccessErr(null);
+    try {
+      const [u, tp] = await Promise.all([loadUsers(), loadTemplates()]);
+      const row = u.users.find((x) => x.id === id);
+      if (!row) throw new Error('المستخدم غير موجود');
+      setAccessCtx({ user: row, shops: u.shops, custom: tp.templates, actionsSupported: u.actionsSupported });
+    } catch (e) { setAccessErr(e instanceof Error ? e.message : String(e)); }
+    setAccessBusy(null);
+  };
   const [showCreate, setShowCreate] = useState(false);
   const [newEmail, setNewEmail] = useState('');
   const [savingEmail, setSavingEmail] = useState(false);
@@ -345,7 +361,7 @@ export default function UsersPage() {
                       </span>
                     </td>
                     <td className="px-6 py-5 text-center">
-                      <button type="button" onClick={() => setPermUser(user)} title="صلاحيات الصفحات" className="inline-flex items-center justify-center p-2 rounded-xl bg-slate-800 hover:bg-emerald-600/20 text-slate-400 hover:text-emerald-400 border border-slate-700/60 hover:border-emerald-500/30 transition-all mr-1">
+                      <button type="button" onClick={() => void openAccess(user.id)} disabled={accessBusy === user.id} title="الصلاحيات (صفحات وإجراءات وفروع)" aria-label="الصلاحيات" className="inline-flex items-center justify-center p-2 rounded-xl bg-slate-800 hover:bg-emerald-600/20 text-slate-400 hover:text-emerald-400 border border-slate-700/60 hover:border-emerald-500/30 transition-all mr-1">
                         <KeyRound size={16} />
                       </button>
                       <button
@@ -450,14 +466,12 @@ export default function UsersPage() {
           مجموع السجلات المعروضة: {filteredUsers.length} من أصل {users.length}
         </div>
       </div>
-      {permUser && (
-        <PagePermissionsModal
-          userId={permUser.id}
-          userName={permUser.full_name || permUser.email}
-          initial={permUser.page_permissions ?? null}
-          isAr={true}
-          onClose={() => setPermUser(null)}
-          onSaved={(perms) => setUsers((us) => us.map((u) => (u.id === permUser.id ? { ...u, page_permissions: perms } : u)))}
+      {accessErr && <div role="alert" className="fixed bottom-4 start-4 z-50 rounded-xl border border-red-500/30 bg-red-950 px-4 py-3 text-xs text-red-200">{accessErr}</div>}
+      {accessCtx && (
+        <UserAccessModal
+          user={accessCtx.user} shops={accessCtx.shops} customTemplates={accessCtx.custom} actionsSupported={accessCtx.actionsSupported} selfId={authUser?.id ?? null}
+          onClose={() => setAccessCtx(null)}
+          onSaved={(u) => { setUsers((us) => us.map((x) => (x.id === u.id ? { ...x, page_permissions: u.access.pages, role: u.role, is_active: u.is_active } : x))); setAccessCtx(null); }}
         />
       )}
       {showCreate && (

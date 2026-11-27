@@ -1,0 +1,77 @@
+warning: in the working copy of 'project/src/components/Layout.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'project/src/pages/lib/orgConfig.ts', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/project/src/components/Layout.tsx b/project/src/components/Layout.tsx[m
+[1mindex 04f828f..e28da51 100644[m
+[1m--- a/project/src/components/Layout.tsx[m
+[1m+++ b/project/src/components/Layout.tsx[m
+[36m@@ -38,6 +38,7 @@[m [mimport { useAuth } from '../context/AuthContext';[m
+ import { useLang } from '../context/LanguageContext';[m
+ import { ThemeToggle } from './ThemeToggle';[m
+ import BranchSwitcher from './BranchSwitcher';[m
+[32m+[m[32mimport TrialBanner from './TrialBanner';[m
+ [m
+ // ══════════════════════════════════════════════════════════════════════[m
+ // PAGE TYPE[m
+[36m@@ -868,6 +869,7 @@[m [mexport default function Layout({ page, setPage, accSection, setAccSection, child[m
+ [m
+         {/* Main content */}[m
+         <main className="flex-1 overflow-y-auto p-4 lg:p-6 pb-20 lg:pb-6">[m
+[32m+[m[32m          <TrialBanner />[m
+           {children}[m
+         </main>[m
+ [m
+[1mdiff --git a/project/src/pages/lib/orgConfig.ts b/project/src/pages/lib/orgConfig.ts[m
+[1mindex 61b6407..8dd85eb 100644[m
+[1m--- a/project/src/pages/lib/orgConfig.ts[m
+[1m+++ b/project/src/pages/lib/orgConfig.ts[m
+[36m@@ -3,6 +3,7 @@[m
+ // طبقة إعدادات الشركة (الدولة/العملة/التوقيت/اللغة/الضريبة) + مُنسّقات مركزية.[m
+ // العملة طبقة عرض فقط — لا تُغيَّر أي قيمة مخزّنة.[m
+ // حامل عملة عالمي (ACTIVE) يقرأه reportingKit.money ليتبع عملة الشركة النشطة.[m
+[32m+[m[32m// p27: أُضيف subscription_status + trial_ends_at لعرض لافتة الفترة التجريبية للعميل.[m
+ // =============================================================[m
+ import { supabase } from "./supabase";[m
+ [m
+[36m@@ -17,6 +18,8 @@[m [mexport type OrgConfig = {[m
+   number_format: "en" | "ar";[m
+   fiscal_year_start: number;[m
+   is_internal: boolean;[m
+[32m+[m[32m  subscription_status: string;      // trial | active | suspended | expired[m
+[32m+[m[32m  trial_ends_at: string | null;     // ISO date | null[m
+ };[m
+ [m
+ export const COUNTRY_PRESETS: Record<string, Partial<OrgConfig> & { en: string; ar: string }> = {[m
+[36m@@ -29,6 +32,7 @@[m [mexport const COUNTRY_PRESETS: Record<string, Partial<OrgConfig> & { en: string;[m
+ export const DEFAULT_CONFIG: OrgConfig = {[m
+   orgId: 0, country: "SA", currency: "SAR", currency_symbol: "ر.س", timezone: "Asia/Riyadh",[m
+   default_language: "ar", default_tax_rate: 15, number_format: "en", fiscal_year_start: 1, is_internal: false,[m
+[32m+[m[32m  subscription_status: "active", trial_ends_at: null,[m
+ };[m
+ [m
+ // ── حامل العملة النشطة (عالمي) ───────────────────────────────────────────────[m
+[36m@@ -48,7 +52,7 @@[m [mexport async function fetchOrgConfig(orgId: number): Promise<OrgConfig> {[m
+   try {[m
+     const { data, error } = await supabase[m
+       .from("organizations")[m
+[31m-      .select("id, country, currency, currency_symbol, timezone, default_language, default_tax_rate, number_format, fiscal_year_start, is_internal")[m
+[32m+[m[32m      .select("id, country, currency, currency_symbol, timezone, default_language, default_tax_rate, number_format, fiscal_year_start, is_internal, subscription_status, trial_ends_at")[m
+       .eq("id", orgId).maybeSingle();[m
+     if (error || !data) return { ...DEFAULT_CONFIG, orgId };[m
+     const d = data as any;[m
+[36m@@ -63,6 +67,8 @@[m [mexport async function fetchOrgConfig(orgId: number): Promise<OrgConfig> {[m
+       number_format: (d.number_format as any) ?? DEFAULT_CONFIG.number_format,[m
+       fiscal_year_start: d.fiscal_year_start != null ? Number(d.fiscal_year_start) : 1,[m
+       is_internal: !!d.is_internal,[m
+[32m+[m[32m      subscription_status: d.subscription_status ?? DEFAULT_CONFIG.subscription_status,[m
+[32m+[m[32m      trial_ends_at: d.trial_ends_at ?? null,[m
+     };[m
+   } catch {[m
+     return { ...DEFAULT_CONFIG, orgId };[m
+[36m@@ -70,6 +76,7 @@[m [mexport async function fetchOrgConfig(orgId: number): Promise<OrgConfig> {[m
+ }[m
+ [m
+ export async function saveOrgConfig(orgId: number, patch: Partial<OrgConfig>): Promise<{ ok: boolean; error?: string }> {[m
+[32m+[m[32m  // ملاحظة: subscription_status و trial_ends_at لا يُحفظان من محرّر الإعدادات (تُدار عبر الأونبوردنج).[m
+   const row: Record<string, any> = {};[m
+   for (const k of ["country", "currency", "currency_symbol", "timezone", "default_language", "default_tax_rate", "number_format", "fiscal_year_start", "is_internal"] as const) {[m
+     if (patch[k] !== undefined) row[k] = patch[k];[m

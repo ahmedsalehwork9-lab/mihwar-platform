@@ -1264,3 +1264,15 @@ html.light [data-rpt] .text-amber-300 { color:#78350f !important; }
 html.light [data-rpt] .text-slate-100 { color:#0B1F44 !important; }
 [data-rpt] .bg-emerald-600.text-white,
 html.light [data-rpt] .bg-emerald-600.text-white { background-color:#047857 !important; color:#fff !important; }
+
+/* ── مركز الصلاحيات + لوحة المنصة: ألوان الحالة الفاتحة في الثيم الفاتح (محصورة بـ [data-rpt]) ── */
+html.light [data-rpt] .text-emerald-300 { color:#065f46 !important; }
+html.light [data-rpt] .text-cyan-300 { color:#155e75 !important; }
+html.light [data-rpt] .text-purple-300 { color:#5b21b6 !important; }
+html.light [data-rpt] .text-violet-300 { color:#5b21b6 !important; }
+html.light [data-rpt] .text-cyan-400 { color:#0e7490 !important; }
+html.light [data-rpt] .text-teal-400 { color:#0f766e !important; }
+html.light [data-rpt] .text-orange-400 { color:#9a3412 !important; }
+html.light [data-rpt] .text-fuchsia-400,
+html.light [data-rpt] .text-pink-400 { color:#a21caf !important; }
+html.light [data-rpt] .text-violet-400 { color:#6d28d9 !important; }

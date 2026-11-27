@@ -3,7 +3,7 @@
 // نافذة حركة حساب (أو مجموعة) من داخل القائمة المالية — من الذاكرة بلا استعلام جديد،
 // مع مطابقة صافي الحركة لرقم السطر في القائمة.
 // =============================================================
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import * as XLSX from "xlsx";
 import { Download, FileText, Printer, X } from "lucide-react";
 import type { GLAccount } from "../../lib/accountingDb";
@@ -15,12 +15,13 @@ import { buildReportHTML, openPrint, type ReportCol } from "../shared/printRepor
 const fmt = (n: number): string => (Math.round(n * 100) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const BTN = "inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-slate-300 hover:text-white font-bold text-xs transition-colors disabled:opacity-50";
 
-export type DrillData = { title: string; code: string; rows: DrillRow[]; totalDebit: number; totalCredit: number; net: number; expected: number; periodTxt: string; cash: boolean; multi: boolean };
+export type DrillData = { title: string; code: string; rows: DrillRow[]; totalDebit: number; totalCredit: number; net: number; expected: number; periodTxt: string; cash: boolean; multi: boolean; from?: string; to?: string };
 export type PrintHead = { orgName: string; taxNumber?: string | null; logoUrl?: string | null; address?: string | null };
-type Props = { head?: PrintHead; data: DrillData; accById: Map<number, GLAccount>; typeLabel: (k: string | null) => string; nameOf: (a: GLAccount) => string; onClose: () => void };
+type Props = { detail?: { label: string; node: ReactNode }; head?: PrintHead; data: DrillData; accById: Map<number, GLAccount>; typeLabel: (k: string | null) => string; nameOf: (a: GLAccount) => string; onClose: () => void };
 
-export default function AccountDrill({ head, data, accById, typeLabel, nameOf, onClose }: Props) {
+export default function AccountDrill({ detail, head, data, accById, typeLabel, nameOf, onClose }: Props) {
   const { t, lang, isRTL } = useLang();
+  const [showDetail, setShowDetail] = useState(false);
   const matches = Math.abs(data.net - data.expected) < 0.01;
   useEffect(() => { const h = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); onClose(); } }; window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h); }, [onClose]);
   const th = "text-[10px] px-2 py-2.5 bg-slate-950 text-slate-400 whitespace-nowrap border-b border-slate-700 font-bold sticky top-0 z-10";
@@ -46,7 +47,8 @@ export default function AccountDrill({ head, data, accById, typeLabel, nameOf, o
           <FileText size={17} className="text-blue-400" />
           <div className="min-w-0"><div className="text-sm font-bold text-white truncate" data-testid="drill-title"><span className="font-mono text-slate-400 me-2" dir="ltr">{data.code}</span>{data.title}</div>
             <div className="text-[10px] text-slate-500 font-mono" dir="ltr">{data.periodTxt}{data.cash ? ` · ${t("entries touching cash only", "القيود التي تمس النقدية فقط")}` : ""}</div></div>
-          <button type="button" onClick={exportX} disabled={!data.rows.length} className={`${BTN} ms-auto`} data-testid="drill-export"><Download size={13} /> Excel</button>
+          {detail && <button type="button" onClick={() => setShowDetail((v) => !v)} className={`${BTN} ms-auto ${showDetail ? "!bg-blue-600 !text-white" : ""}`} data-testid="drill-detail-toggle">{showDetail ? t("Entries", "القيود") : detail.label}</button>}
+          <button type="button" onClick={exportX} disabled={!data.rows.length || showDetail} className={`${BTN} ${detail ? "" : "ms-auto"}`} data-testid="drill-export"><Download size={13} /> Excel</button>
           <button type="button" onClick={printX} disabled={!data.rows.length} className={BTN} data-testid="drill-print"><Printer size={13} /> {t("Print", "طباعة")}</button>
           <button type="button" onClick={onClose} aria-label={t("Close", "إغلاق")} data-testid="drill-close" className="w-8 h-8 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center"><X size={15} /></button>
         </div>
@@ -56,7 +58,7 @@ export default function AccountDrill({ head, data, accById, typeLabel, nameOf, o
           <span className={matches ? "text-emerald-400" : "text-amber-400"} data-testid="drill-match">{matches ? t("Matches the statement ✓", "يطابق القائمة ✓") : t("Differs from the statement", "لا يطابق القائمة")}</span>
           <span className="text-slate-500 ms-auto" data-testid="drill-count">{data.rows.length} {t("movements", "حركة")}</span>
         </div>
-        <div className="overflow-auto">
+        {showDetail && detail ? <div className="overflow-auto p-3" data-testid="drill-detail">{detail.node}</div> : <div className="overflow-auto">
           <table className="w-full border-collapse" style={{ minWidth: 640 }}>
             <thead><tr>{heads.map((h, i) => <th key={i} dir={i >= numFrom ? "ltr" : undefined} className={`${th} ${i >= numFrom ? "text-end" : "text-start"}`}>{h}</th>)}</tr></thead>
             <tbody>
@@ -76,7 +78,7 @@ export default function AccountDrill({ head, data, accById, typeLabel, nameOf, o
             {data.rows.length > 0 && <tfoot><tr className="bg-slate-950 font-bold"><td colSpan={heads.length - 3} className="px-2 py-2.5 text-xs text-slate-200 border-t border-slate-600 text-start">{t("Totals", "الإجماليات")}</td>
               <td className="px-2 py-2.5 text-end font-mono text-xs text-emerald-400 border-t border-slate-600" dir="ltr">{fmt(data.totalDebit)}</td><td className="px-2 py-2.5 text-end font-mono text-xs text-amber-400 border-t border-slate-600" dir="ltr">{fmt(data.totalCredit)}</td><td className="px-2 py-2.5 text-end font-mono text-xs text-white border-t border-slate-600" dir="ltr">{fmt(data.net)}</td></tr></tfoot>}
           </table>
-        </div>
+        </div>}
       </div>
     </div>
   );

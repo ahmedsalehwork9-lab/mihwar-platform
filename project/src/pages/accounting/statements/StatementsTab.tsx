@@ -14,6 +14,7 @@ import { normalizeText, splitHighlight } from "../chart/chartLogic";
 import AccountCombo from "../ledger/AccountCombo";
 import { ENTRY_TYPE_EN, PRESET_KEYS, datePreset, presetOf, type PresetKey } from "../ledger/ledgerLogic";
 import AccountDrill, { type DrillData } from "./AccountDrill";
+import SalesItemsReport from "../salesItems/SalesItemsReport";
 import StatementCharts, { type ChartSpec } from "./StatementCharts";
 import {
   accountMovements, activityOf, buildBalance, buildCashFlow, buildIncome, buildIndirectFlow, buildTreeRows, cashEntryIds, changePct, detectCashAccounts, filterTreeRows,
@@ -233,7 +234,7 @@ export default function StatementsTab({ org, accounts, branches, shop }: Props) 
     const single = r.leafIds.length === 1 && r.account.id === r.leafIds[0];
     // في غير المباشرة تقاس حركة الأصل بإشارة معكوسة مقابل رقم السطر
     const expected = mode === "plain" && d.sign === -1 ? -r.value : r.value;
-    setDrill({ title: nameOf(r.account), code: r.account.code, rows: mv.rows, totalDebit: mv.totalDebit, totalCredit: mv.totalCredit, net: mv.net, expected, periodTxt: d.from ? `${d.from} → ${to}` : `${t("up to", "حتى")} ${to}`, cash: mode === "cash", multi: !single });
+    setDrill({ title: nameOf(r.account), code: r.account.code, rows: mv.rows, totalDebit: mv.totalDebit, totalCredit: mv.totalCredit, net: mv.net, expected, periodTxt: d.from ? `${d.from} → ${to}` : `${t("up to", "حتى")} ${to}`, cash: mode === "cash", multi: !single, from: d.from || undefined, to });
   };
 
   // ── التصدير والطباعة ──
@@ -439,7 +440,7 @@ export default function StatementsTab({ org, accounts, branches, shop }: Props) 
           </div>
         </>
       )}
-      {drill && <AccountDrill head={{ orgName, taxNumber: shop?.tax_number, logoUrl: shop?.logo_url, address: shop?.address }} data={drill} accById={accById} typeLabel={typeLabel} nameOf={nameOf} onClose={() => setDrill(null)} />}
+      {drill && <AccountDrill detail={drill.code.startsWith("51") ? { label: t("Item details", "تفاصيل الأصناف"), node: <SalesItemsReport embedded org={org} branches={branches} from={drill.from || `${(drill.to || "").slice(0, 4)}-01-01`} to={drill.to} branchId={branchId} head={{ taxNumber: shop?.tax_number, logoUrl: shop?.logo_url, address: shop?.address }} /> } : undefined} head={{ orgName, taxNumber: shop?.tax_number, logoUrl: shop?.logo_url, address: shop?.address }} data={drill} accById={accById} typeLabel={typeLabel} nameOf={nameOf} onClose={() => setDrill(null)} />}
     </div>
   );
 }

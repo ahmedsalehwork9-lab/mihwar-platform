@@ -25,6 +25,7 @@ import ChartTab from "./chart/ChartTab";
 import LedgerTab from "./ledger/LedgerTab";
 import PartiesTab from "./parties/PartiesTab";
 import StatementsTab from "./statements/StatementsTab";
+import SalesItemsReport from "./salesItems/SalesItemsReport";
 import AssetsTab from "./assets/AssetsTab";
 import { buildReportHTML, openPrint } from "./shared/printReport";
 import { useLang } from "../../context/LanguageContext";
@@ -49,7 +50,7 @@ const BTN_SUCCESS = "inline-flex items-center justify-center gap-1.5 px-5 py-2.5
 const BTN_GHOST_EM = "inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-xs transition-colors disabled:opacity-50 hover:bg-emerald-500/20";
 const BTN_GHOST_BL = "inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-300 font-bold text-xs transition-colors disabled:opacity-50 hover:bg-blue-500/20";
 
-type Tab = "dashboard" | "chart" | "opening" | "journal" | "sales" | "sales-returns" | "ledger" | "trial" | "statements" | "assets" | "treasury" | "parties";
+type Tab = "dashboard" | "chart" | "opening" | "journal" | "sales" | "sales-returns" | "sales-items" | "ledger" | "trial" | "statements" | "assets" | "treasury" | "parties";
 const TYPE_OPTS: AccType[] = ["asset", "liability", "equity", "revenue", "expense"];
 const TABS: { k: Tab; label: string; icon: any }[] = [
   { k: "dashboard", label: "لوحة التحكم", icon: LayoutDashboard },
@@ -58,6 +59,7 @@ const TABS: { k: Tab; label: string; icon: any }[] = [
   { k: "journal", label: "القيود اليومية", icon: BookOpen },
   { k: "sales", label: "المبيعات", icon: ShoppingCart },
   { k: "sales-returns", label: "مرتجعات المبيعات", icon: RotateCcw },
+  { k: "sales-items", label: "المبيعات بالأصناف", icon: ShoppingCart },
   { k: "treasury", label: "الخزن والبنوك", icon: Wallet },
   { k: "parties", label: "العملاء والموردين", icon: Users },
   { k: "ledger", label: "كشف حساب", icon: FileText },
@@ -66,7 +68,7 @@ const TABS: { k: Tab; label: string; icon: any }[] = [
   { k: "assets", label: "الأصول", icon: Building2 },
 ];
 
-const TAB_EN: Record<Tab, string> = { dashboard: "Dashboard", chart: "Chart of Accounts", opening: "Opening Balances", journal: "Journal Entries", sales: "Sales", "sales-returns": "Sales Returns", treasury: "Treasury & Banks", parties: "Customers & Suppliers", ledger: "Account Statement", trial: "Trial Balance", statements: "Financial Statements", assets: "Assets" };
+const TAB_EN: Record<Tab, string> = { dashboard: "Dashboard", chart: "Chart of Accounts", opening: "Opening Balances", journal: "Journal Entries", sales: "Sales", "sales-returns": "Sales Returns", "sales-items": "Sales by Items", treasury: "Treasury & Banks", parties: "Customers & Suppliers", ledger: "Account Statement", trial: "Trial Balance", statements: "Financial Statements", assets: "Assets" };
 
 function SectionHead({ icon: Icon, title, extra }: { icon: any; title: string; extra?: any }) {
   return (
@@ -405,6 +407,7 @@ export default function AccountingPage({ section, onSection, onNavigate }: { sec
       {tab === "sales" && <SalesTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} parties={parties} onPartiesChange={refreshParties} shop={shopInfo} onNavigate={onNavigate} />}
       {tab === "ledger" && <LedgerTab org={org} accounts={accounts} branches={branches} shop={shopInfo} parties={parties} printStatement={printStatement} />}
       {tab === "trial" && <TrialTab shop={shopInfo} org={org} accById={accById} postable={postable} branches={branches} />}
+      {tab === "sales-items" && org && <SalesItemsReport org={org} branches={branches || []} head={{ taxNumber: shopInfo?.tax_number, logoUrl: shopInfo?.logo_url, address: shopInfo?.address }} />}
       {tab === "statements" && <StatementsTab org={org} accounts={accounts} branches={branches} shop={shopInfo} />}
       {tab === "assets" && <AssetsTab org={org} accounts={accounts} postable={postable} branches={branches} shop={shopInfo} />}
       {tab === "parties" && <PartiesTab org={org} accounts={accounts} postable={postable} accById={accById} branches={branches} shop={shopInfo} printStatement={printStatement} />}

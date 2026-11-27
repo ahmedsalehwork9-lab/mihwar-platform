@@ -28,6 +28,7 @@ import StatementsTab from "./statements/StatementsTab";
 import SalesItemsReport from "./salesItems/SalesItemsReport";
 import AssetsTab from "./assets/AssetsTab";
 import { buildReportHTML, openPrint } from "./shared/printReport";
+import * as XLSX from "xlsx";
 import { useLang } from "../../context/LanguageContext";
 import JournalCenter from "./journal/JournalCenter";
 import AccountingDashboard from "./dash/AccountingDashboard";
@@ -836,7 +837,7 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, shop,
         </div>
       </div>}
 
-      <SalesReturnsPanel returnsMode={returnsMode} org={org} invoices={invoices} parties={parties} postable={postable} treasuryAccounts={treasuryAccounts} branchName={branchName} reloadInvoices={reload} open={showReturnForm} setOpen={setShowReturnForm} />
+      <SalesReturnsPanel returnsMode={returnsMode} org={org} invoices={invoices} parties={parties} postable={postable} treasuryAccounts={treasuryAccounts} branchName={branchName} shop={shop} reloadInvoices={reload} open={showReturnForm} setOpen={setShowReturnForm} />
 
     </div>
   );
@@ -854,7 +855,8 @@ function isDedicatedSalesReturnsAccount(account: GLAccount) {
 }
 
 // ══════════════ مرتجعات المبيعات — مستند مستقل SR ══════════════
-function SalesReturnsPanel({ org, invoices, parties, postable, treasuryAccounts, branchName, reloadInvoices, open, setOpen, returnsMode = false }: any) {
+function SalesReturnsPanel({ org, invoices, parties, postable, treasuryAccounts, branchName, reloadInvoices, open, setOpen, returnsMode = false, shop }: any) {
+  const { lang: rl } = useLang(); const ren = rl === "en";
   const [rows, setRows] = useState<DB.GLSalesReturn[]>([]);
   const [busy, setBusy] = useState(false);
   const [invoiceId, setInvoiceId] = useState("");
@@ -951,18 +953,32 @@ function SalesReturnsPanel({ org, invoices, parties, postable, treasuryAccounts,
     alert(`تم إنشاء مرتجع ${result.returnLabel} وربطه بالفاتورة ${selected.invoice_no}.` + (result.warning ? `\n\nتنبيه: لم يُعَد المخزون/التكلفة: ${result.warning}` : ""));
     setOpen(false); await reload(); await reloadInvoices?.();
   };
+  const retNo = (r: DB.GLSalesReturn) => `SR-${r.return_year}-${String(r.return_no).padStart(4, "0")}`;
+  const retHeads = ren ? ["Return no.", "Date", "Original invoice", "Customer", "Settlement", "Total", "Entry"] : ["رقم المرتجع", "التاريخ", "الفاتورة الأصلية", "العميل", "طريقة التسوية", "الإجمالي", "القيد"];
+  const retRows = () => rows.map((r) => [retNo(r), r.date, `${r.original_invoice_no}/${r.original_invoice_year}`, r.customer_name || "—", r.refund_mode === "cash" ? (ren ? "Cash refund" : "رد نقدي") : (ren ? "Credit note" : "إشعار دائن"), Number(r.total) || 0, r.entry_id ? String(r.entry_id) : "—"]);
+  const retTotal = () => rows.reduce((a, r) => a + (Number(r.total) || 0), 0);
+  const exportReturns = () => {
+    const ws = XLSX.utils.aoa_to_sheet([[ren ? "Sales returns" : "مرتجعات المبيعات", org.name], [], retHeads, ...retRows(), [], [ren ? "Total" : "الإجمالي", "", "", "", "", retTotal(), ""]]);
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Returns"); XLSX.writeFile(wb, `sales_returns_${today()}.xlsx`);
+  };
+  const printReturns = () => {
+    const ok = openPrint(buildReportHTML({ title: ren ? "Sales returns" : "مرتجعات المبيعات", subtitle: branchName ? String(branchName) : undefined, orgName: shop?.shop_name || org.name, taxNumber: shop?.tax_number, logoUrl: shop?.logo_url, address: shop?.address, dir: ren ? "ltr" : "rtl", lang: ren ? "en" : "ar",
+      cols: retHeads.map((h, i) => ({ label: h, mono: i === 0 || i === 1, align: i === 5 ? "end" as const : "start" as const })),
+      rows: retRows().map((r) => r.map((v, i) => (i === 5 ? fmt(Number(v)) : v as any))), totals: [ren ? "Total" : "الإجمالي", "", "", "", "", fmt(retTotal()), ""] }));
+    if (!ok) alert(ren ? "Allow pop-ups to print." : "اسمح بالنوافذ المنبثقة للطباعة.");
+  };
   return <>
     {!open && <div className={`${CARD} overflow-hidden ${returnsMode ? "" : "mt-4"}`} data-testid="returns-list">
-      <SectionHead icon={ArrowDownCircle} title="مرتجعات المبيعات" extra={<span className="text-[11px] text-slate-500">مستندات المرتجعات المرتبطة بفواتير المبيعات</span>} />
+      <SectionHead icon={ArrowDownCircle} title={ren ? "Sales returns" : "مرتجعات المبيعات"} extra={<div className="flex items-center gap-2"><span className="hidden text-[11px] text-slate-400 md:inline">{ren ? "Return documents linked to sales invoices" : "مستندات المرتجعات المرتبطة بفواتير المبيعات"}</span><button onClick={exportReturns} disabled={!rows.length} data-testid="returns-excel" className={BTN_GHOST_EM}><Download size={14} /> Excel</button><button onClick={printReturns} disabled={!rows.length} data-testid="returns-print" className={BTN_GHOST_EM}><Printer size={14} /> {ren ? "Print" : "طباعة"}</button></div>} />
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
-          <thead className="bg-slate-950 text-slate-500"><tr>{["رقم المرتجع","التاريخ","الفاتورة الأصلية","العميل","طريقة التسوية","الإجمالي","القيد"].map(h=><th key={h} className="p-3">{h}</th>)}</tr></thead>
+          <thead className="bg-slate-950 text-slate-300 font-bold"><tr>{retHeads.map(h=><th key={h} className="p-3">{h}</th>)}</tr></thead>
           <tbody>{rows.map(r=><tr key={r.id} className="border-t border-slate-800 hover:bg-slate-800/40">
-            <td className="p-3 text-center font-mono text-emerald-300">SR-{r.return_year}-{String(r.return_no).padStart(4,"0")}</td>
-            <td className="p-3 text-center">{r.date}</td><td className="p-3 text-center">{r.original_invoice_no}/{r.original_invoice_year}</td>
-            <td className="p-3">{r.customer_name||"—"}</td><td className="p-3 text-center">{r.refund_mode==="cash"?"رد نقدي":"إشعار دائن"}</td>
-            <td className="p-3 text-center font-mono text-emerald-300">{fmt(r.total)}</td><td className="p-3 text-center">{r.entry_id||"—"}</td>
-          </tr>)}{!rows.length&&<tr><td colSpan={7} className="p-8 text-center text-slate-500">{busy?"جارٍ التحميل…":"لا توجد مرتجعات مسجلة."}</td></tr>}</tbody>
+            <td className="p-3 text-center font-mono font-bold text-emerald-400">{retNo(r)}</td>
+            <td className="p-3 text-center text-slate-200">{r.date}</td><td className="p-3 text-center text-slate-200">{r.original_invoice_no}/{r.original_invoice_year}</td>
+            <td className="p-3 text-slate-200">{r.customer_name||"—"}</td><td className="p-3 text-center text-slate-200">{r.refund_mode==="cash"?(ren?"Cash refund":"رد نقدي"):(ren?"Credit note":"إشعار دائن")}</td>
+            <td className="p-3 text-center font-mono font-bold text-emerald-400">{fmt(r.total)}</td><td className="p-3 text-center text-slate-300">{r.entry_id||"—"}</td>
+          </tr>)}{!rows.length&&<tr><td colSpan={7} className="p-8 text-center text-slate-400">{busy?(ren?"Loading…":"جارٍ التحميل…"):(ren?"No returns recorded.":"لا توجد مرتجعات مسجلة.")}</td></tr>}</tbody>
         </table>
       </div>
     </div>}

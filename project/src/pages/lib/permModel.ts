@@ -28,7 +28,7 @@ export const PERM_GROUPS: PermGroup[] = [
     P("orders", "الطلبات", "Orders", ["create", "edit", "delete", "approve", "export"]) ] },
   { id: "sales", ar: "المبيعات", en: "Sales", pages: [
     P("pos", "نقاط البيع", "POS", ["create", "export"]), P("sales-invoice", "فاتورة مبيعات", "Sales invoice", ["create", "edit", "delete", "approve", "export"]),
-    P("quotation", "عروض الأسعار", "Quotations", ["create", "edit", "delete", "export"]), P("sales-reconciliation", "تسوية المبيعات", "Sales reconciliation", ["create", "edit", "delete", "approve", "export"]) ] },
+    P("quotation", "عروض الأسعار", "Quotations", ["create", "edit", "delete", "export"]), P("sales-returns", "مرتجعات المبيعات", "Sales returns", ["create", "export"]), P("sales-items", "المبيعات بالأصناف", "Sales by items", ["export"]), P("sales-reconciliation", "تسوية المبيعات", "Sales reconciliation", ["create", "edit", "delete", "approve", "export"]) ] },
   { id: "purch", ar: "المشتريات", en: "Purchases", pages: [
     P("purchases", "المشتريات", "Purchases"), P("purchase-invoices", "فواتير المشتريات", "Purchase invoices"), P("purchase-orders", "أوامر الشراء", "Purchase orders"),
     P("purchase-returns", "مرتجعات المشتريات", "Purchase returns"), P("supplier-payments", "سداد الموردين", "Supplier payments"), P("fixed-expenses", "المصروفات الثابتة", "Fixed expenses") ] },
@@ -42,6 +42,23 @@ export const PERM_PAGES: PermPage[] = PERM_GROUPS.flatMap((g) => g.pages);
 export const PAGE_IDS: string[] = PERM_PAGES.map((p) => p.id);
 const PAGE_BY_ID = new Map(PERM_PAGES.map((p) => [p.id, p]));
 export const pageDef = (id: string): PermPage | undefined => PAGE_BY_ID.get(id);
+
+/**
+ * تسجيل تلقائي: أي صفحة جديدة تُضاف إلى القائمة الجانبية تظهر هنا في نافذة الصلاحيات دون تعديل هذا الملف.
+ * تُستدعى من Layout عند التحميل. الصفحات المعرّفة يدويًا أعلاه تحتفظ بإجراءاتها؛ غير المعرّفة تأخذ كل الإجراءات.
+ * مجموعة غير معروفة تُنشأ تلقائيًا بعنوان القسم الجانبي. (تطبيق على مستوى الواجهة كبقية النموذج.)
+ */
+export type NavPageInput = { id: string; ar: string; en: string; group: string; groupAr?: string; groupEn?: string };
+export function registerNavPages(list: NavPageInput[]): string[] {
+  const added: string[] = [];
+  for (const it of list) {
+    if (!it.id || PAGE_BY_ID.has(it.id)) continue;
+    let g = PERM_GROUPS.find((x) => x.id === it.group);
+    if (!g) { g = { id: it.group, ar: it.groupAr || it.group, en: it.groupEn || it.group, pages: [] }; PERM_GROUPS.push(g); }
+    const def = P(it.id, it.ar, it.en); g.pages.push(def); PERM_PAGES.push(def); PAGE_IDS.push(it.id); PAGE_BY_ID.set(it.id, def); added.push(it.id);
+  }
+  return added;
+}
 
 export type ActionMap = Record<string, Action[]>;
 export type Access = { pages: string[] | null; actions: ActionMap | null };

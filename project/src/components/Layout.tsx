@@ -41,6 +41,7 @@ import { useLang } from '../context/LanguageContext';
 import { ThemeToggle } from './ThemeToggle';
 import BranchSwitcher from './BranchSwitcher';
 import TrialBanner from './TrialBanner';
+import { registerNavPages, type NavPageInput } from '../pages/lib/permModel';
 
 // ══════════════════════════════════════════════════════════════════════
 // PAGE TYPE
@@ -215,7 +216,7 @@ const navSections: NavSection[] = [
 // ══════════════════════════════════════════════════════════════════════
 // OPERATIONS NAV (مجموعات قابلة للتوسّع لغير الأدمن)
 // ══════════════════════════════════════════════════════════════════════
-type OpChild = { labelEn: string; labelAr: string; page?: Page; section?: string; placeholder?: boolean };
+type OpChild = { labelEn: string; labelAr: string; page?: Page; section?: string; placeholder?: boolean; /** معرّف صلاحية مستقل لقسم داخل الحسابات (يظهر في نافذة الصلاحيات) */ perm?: string };
 type OpEntry =
   | { type: 'item'; id: Page; icon: React.ReactNode; labelEn: string; labelAr: string }
   | { type: 'group'; key: string; icon: React.ReactNode; labelEn: string; labelAr: string; homePage?: Page; homeSection?: string; children: OpChild[] };
@@ -236,8 +237,8 @@ const OPERATIONS: OpEntry[] = [
     { labelEn: 'POS',                  labelAr: 'نقاط البيع',     page: 'pos' },
     { labelEn: 'Sales Reconciliation', labelAr: 'تسوية المبيعات', page: 'sales-reconciliation' },
     { labelEn: 'Quotation',            labelAr: 'عرض سعر',        page: 'quotation' },
-    { labelEn: 'Sales Returns',        labelAr: 'مرتجعات المبيعات', section: 'sales-returns' },
-    { labelEn: 'Sales by Items', labelAr: 'المبيعات بالأصناف', section: 'sales-items' },
+    { labelEn: 'Sales Returns',        labelAr: 'مرتجعات المبيعات', section: 'sales-returns', perm: 'sales-returns' },
+    { labelEn: 'Sales by Items', labelAr: 'المبيعات بالأصناف', section: 'sales-items', perm: 'sales-items' },
   ] },
 
   { type: 'group', key: 'purchases', icon: <ShoppingBag size={17} />, labelEn: 'Purchases', labelAr: 'المشتريات', homePage: 'purchase-invoices', children: [
@@ -422,6 +423,23 @@ const PERM_ALIASES: Record<string, string[]> = {
 const hasPerm = (perms: string[] | null, id: string): boolean =>
   !perms || perms.includes(id) || (PERM_ALIASES[id] || []).some((a) => perms.includes(a));
 
+// قسم داخل الحسابات له صلاحية مستقلة: يلزم وجود معرّفه صراحةً (لا يكفي «الحسابات»)
+const SECTION_PERM: Record<string, string> = Object.fromEntries(
+  OPERATIONS.flatMap((e) => (e.type === 'group' ? e.children.filter((c) => c.perm && c.section).map((c) => [c.section!, c.perm!]) : [])),
+);
+const sectionAllowed = (perms: string[] | null, section: string): boolean => !SECTION_PERM[section] || !perms || perms.includes(SECTION_PERM[section]);
+
+// تسجيل تلقائي لكل صفحة في القائمة الجانبية داخل نموذج الصلاحيات (صفحة جديدة = صف جديد تلقائيًا)
+const NAV_GROUP_MAP: Record<string, string> = { inventory: 'ops', sales: 'sales', purchases: 'purch', reports: 'fin', accounting: 'fin' };
+registerNavPages(OPERATIONS.flatMap((e): NavPageInput[] => {
+  if (e.type === 'item') return [{ id: e.id, ar: e.labelAr, en: e.labelEn, group: 'ops' }];
+  const g = NAV_GROUP_MAP[e.key] || e.key;
+  return e.children.flatMap((c): NavPageInput[] => {
+    const id = c.perm || (c.page && !c.placeholder ? c.page : '');
+    return id ? [{ id, ar: c.labelAr, en: c.labelEn, group: g, groupAr: e.labelAr, groupEn: e.labelEn }] : [];
+  });
+}));
+
 export default function Layout({ page, setPage, accSection, setAccSection, children }: LayoutProps) {
   const { signOut, isAdmin, ownedShopId, permissions, branches } = useAuth();
   const { lang, setLang, t, isRTL }       = useLang();
@@ -469,7 +487,7 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
           const accOk = !permissions || permissions.includes('accounting');
           entry.children.forEach((c) => {
             if (c.section) {
-              if (!accOk) return;
+              if (c.perm ? (permissions && !permissions.includes(c.perm)) : !accOk) return;
               out.push({ id: `${entry.key}:${c.section}`, labelAr: c.labelAr, labelEn: c.labelEn, group: entry.labelAr, run: () => { setAccSection?.(c.section!); setPage('accounting'); setSidebarOpen(false); } });
             } else {
               const ok = c.placeholder || hasPerm(permissions, c.page!);
@@ -499,10 +517,16 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
   }, [ownedShopId]);
 
   useEffect(() => {
-    if (!isAdmin && permissions && !hasPerm(permissions, page) && !PLACEHOLDER_PAGES.includes(page)) {
+    if (isAdmin || !permissions) return;
+    if (page === 'accounting' && SECTION_PERM[accSection || '']) {
+      // قسم بصلاحية مستقلة: يُسمح به بمعرّفه فقط، وإلا يُعاد لأول قسم متاح
+      if (!sectionAllowed(permissions, accSection!)) { if (permissions.includes('accounting')) setAccSection?.('dashboard'); else if (permissions[0]) setPage(permissions[0] as Page); }
+      return;
+    }
+    if (!hasPerm(permissions, page) && !PLACEHOLDER_PAGES.includes(page)) {
       if (permissions[0]) setPage(permissions[0] as Page);
     }
-  }, [permissions, isAdmin, page]);
+  }, [permissions, isAdmin, page, accSection]);
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
   const bottomItems = isAdmin ? adminBottomItems : shopBottomItems;
@@ -572,7 +596,7 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
                   // مجموعة قابلة للتوسّع
                   const isAcc = !!entry.homeSection;
                   const accOk = !permissions || permissions.includes('accounting');     // صلاحية الوصول للأقسام الداخلية للحسابات
-                  const anyRealChild = entry.children.some((c) => c.page && !c.placeholder && hasPerm(permissions, c.page));
+                  const anyRealChild = entry.children.some((c) => (c.perm && c.section ? !!permissions?.includes(c.perm) : false) || (c.page && !c.placeholder && hasPerm(permissions, c.page)));
                   const groupVisible = isAcc ? (accOk || anyRealChild) : anyRealChild;
                   if (!groupVisible) return null;
 
@@ -580,7 +604,7 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
                     c.section ? (page === 'accounting' && (accSection || 'journal') === c.section) : (page === c.page);
                   const groupActive = entry.children.some(childActive);
                   const childVisible = (c: OpChild) =>
-                    c.section ? accOk : (c.placeholder ? true : hasPerm(permissions, c.page!));
+                    c.section ? (c.perm ? (!permissions || permissions.includes(c.perm)) : accOk) : (c.placeholder ? true : hasPerm(permissions, c.page!));
                   const onParent = () => {
                     if (entry.homeSection) { setAccSection?.(entry.homeSection); setPage('accounting'); }
                     else if (entry.homePage) { setPage(entry.homePage); }

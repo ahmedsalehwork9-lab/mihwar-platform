@@ -23,7 +23,7 @@ export function cashBankOptions(accounts: GLAccount[], treasuries: GLTreasury[],
     if (!t.account_id || t.is_active === false) continue;
     const acc = byId.get(t.account_id);
     if (!acc || acc.is_group || acc.is_active === false) continue;
-    const kind: "cash" | "bank" = t.kind === "bank" || isBankLike(t.name) ? "bank" : "cash";
+    const kind: "cash" | "bank" = t.kind === "bank" || (t.kind as string) === "pos" || isBankLike(t.name) ? "bank" : "cash";
     if (!out.has(acc.id)) out.set(acc.id, { id: acc.id, name: t.name, kind });
   }
   // 2) حسابات الصندوق/البنك غير التجميعية في الدليل (حتى لو لم تُنشأ لها خزنة)

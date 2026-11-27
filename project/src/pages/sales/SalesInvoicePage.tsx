@@ -14,6 +14,7 @@ import { useOrgConfig } from "../../context/OrgConfigContext";
 import { useLang } from "../../context/LanguageContext";
 import * as DB from "../lib/accountingDb";
 import type { GLAccount, GLParty, GLSalesInvoice, GLTreasury } from "../lib/accountingDb";
+import { cashBankOptions } from "../lib/cashAccounts";
 import * as API from "./salesInvoiceApi";
 import type { DraftRow, MapRow, SaleProduct, WarehouseRow } from "./salesInvoiceApi";
 import { addDays, buildTenders, computeInvoice, computeMargin, clampPct, daysBetween, r2, validateLines } from "./salesInvoiceCalc";
@@ -23,7 +24,6 @@ import { buildInvoiceHTML, printHTML } from "./salesInvoicePrint";
 const today = (): string => new Date().toISOString().slice(0, 10);
 const monthStart = (): string => `${today().slice(0, 8)}01`;
 const fmt = (n: number): string => (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const KIND_OF: Record<PayMethod, string> = { cash: "cash", bank_transfer: "bank", pos: "pos" };
 
 type Props = { onNavigate?: (p: string) => void; onSection?: (s: string) => void };
 
@@ -94,7 +94,7 @@ export default function SalesInvoicePage({ onNavigate, onSection }: Props) {
   const searchSeq = useRef(0);
   const searchRef = useRef<HTMLInputElement>(null);
   const custRef = useRef<HTMLInputElement>(null);
-  const saleTypeRef = useRef<HTMLSelectElement>(null);
+  const saleTypeRef = useRef<HTMLButtonElement>(null);
   const whRef = useRef<HTMLSelectElement>(null);
   const focusAfterAdd = useRef<number | null>(null);
 
@@ -151,17 +151,23 @@ export default function SalesInvoicePage({ onNavigate, onSection }: Props) {
 
   const wh = useMemo(() => (warehouseId === "" ? null : warehouses.find((w) => w.id === warehouseId) ?? null), [warehouseId, warehouses]);
 
-  // خزائن/بنوك/شبكات الفرع حسب طريقة الدفع (لا خلط بين الأنواع)
-  const methodTreasuries = useMemo(
-    () => treasuries.filter((x) => x.is_active && x.account_id && x.kind === KIND_OF[payMethod] && (x.branch_id == null || x.branch_id === branchId)),
-    [treasuries, branchId, payMethod],
-  );
-  const methodAvailable = useCallback((m: PayMethod): boolean =>
-    treasuries.some((x) => x.is_active && x.account_id && x.kind === KIND_OF[m] && (x.branch_id == null || x.branch_id === branchId)), [treasuries, branchId]);
+  // نفس منطق فاتورة المشتريات: أزرار (آجل/نقدي/جزئي/شبكة) + قائمة واحدة «الخزنة/البنك»
+  // الحساب التجميعي لا يظهر، والصندوق/البنك غير التجميعي يظهر — القيمة = رقم الحساب في الدليل.
+  const payMode: "credit" | "cash" | "partial" | "card" = saleType === "credit" ? "credit" : saleType === "partial_credit" ? "partial" : payMethod === "pos" ? "card" : "cash";
+  const branchTreasuries = useMemo(() => treasuries.filter((x) => x.branch_id == null || x.branch_id === branchId), [treasuries, branchId]);
+  const cashBank = useMemo(() => cashBankOptions(accounts, branchTreasuries), [accounts, branchTreasuries]);
+  const payOptions = useMemo(() => (payMode === "card" ? cashBank.filter((o) => o.kind === "bank") : cashBank), [cashBank, payMode]);
   useEffect(() => {
-    if (treasuryId !== "" && !methodTreasuries.some((x) => x.id === treasuryId)) setTreasuryId("");
-    if (treasuryId === "" && methodTreasuries.length === 1) setTreasuryId(methodTreasuries[0].id);
-  }, [methodTreasuries, treasuryId]);
+    if (treasuryId !== "" && !payOptions.some((o) => o.id === treasuryId)) { setTreasuryId(""); return; }
+    if (treasuryId === "" && saleType !== "credit" && payOptions.length) setTreasuryId(payOptions[0].id);
+  }, [payOptions, treasuryId, saleType]);
+  const payOpt = useMemo(() => (treasuryId === "" ? null : payOptions.find((o) => o.id === treasuryId) ?? null), [treasuryId, payOptions]);
+  // طريقة الدفع الفعلية تُستنتج: شبكة → pos، وإلا بنك → تحويل، وإلا نقدي
+  const effMethod: PayMethod = payMode === "card" ? "pos" : payOpt?.kind === "bank" ? "bank_transfer" : "cash";
+  const setPayMode = (m: "credit" | "cash" | "partial" | "card"): void => {
+    setSaleType(m === "credit" ? "credit" : m === "partial" ? "partial_credit" : "cash");
+    setPayMethod(m === "card" ? "pos" : "cash"); setPaidNow("");
+  };
 
   const revAcc = useMemo(() => API.resolveMapped(accMap, branchId, "revenue"), [accMap, branchId]);
   const taxAcc = useMemo(() => API.resolveMapped(accMap, branchId, "output_vat"), [accMap, branchId]);
@@ -170,7 +176,6 @@ export default function SalesInvoicePage({ onNavigate, onSection }: Props) {
   const customer = useMemo(() => (partyId === "" ? null : parties.find((p) => p.id === partyId) ?? null), [partyId, parties]);
   const receivableAcc = useMemo(() => API.receivableAccountOf(customer, parties), [customer, parties]);
   const creditDays = Number(customer?.credit_days) || 0;
-  const treasury = useMemo(() => (treasuryId === "" ? null : methodTreasuries.find((x) => x.id === treasuryId) ?? null), [treasuryId, methodTreasuries]);
   const isCredit = saleType !== "cash";
 
   useEffect(() => {
@@ -338,7 +343,7 @@ export default function SalesInvoicePage({ onNavigate, onSection }: Props) {
       if (creditDays <= 0 && !dueDate) { setMsg({ kind: "err", text: t("Set the customer's credit days or a due date.", "حدّد مدة ائتمان العميل أو تاريخ استحقاق.") }); return; }
       if (dueDate && daysBetween(date, dueDate) < 0) { setMsg({ kind: "err", text: t("Due date is before the invoice date.", "تاريخ الاستحقاق قبل تاريخ الفاتورة.") }); return; }
     }
-    const tn = buildTenders({ saleType, total: totals.total, paidNow: paidValue, method: payMethod, paymentAccountId: treasury?.account_id ?? null, receivableAccountId: receivableAcc });
+    const tn = buildTenders({ saleType, total: totals.total, paidNow: paidValue, method: effMethod, paymentAccountId: payOpt?.id ?? null, receivableAccountId: receivableAcc });
     if (!tn.ok) {
       const text = tn.error === "treasury" ? t("Select the payment treasury/bank/POS account.", "اختر حساب الدفع (خزنة/بنك/شبكة).") : tn.error === "receivable" ? t("Customer receivable account is missing.", "حساب ذمة العميل غير موجود.") : t("Partial payment must be greater than 0 and less than the invoice total.", "الدفعة الجزئية يجب أن تكون أكبر من صفر وأقل من إجمالي الفاتورة.");
       setMsg({ kind: "err", text }); return;
@@ -393,11 +398,11 @@ export default function SalesInvoicePage({ onNavigate, onSection }: Props) {
     const info = await API.fetchPrintOrg(org.id, branchId);
     const pseudo = {
       id: 0, organization_id: org.id, branch_id: branchId, invoice_no: 0, invoice_year: Number(date.slice(0, 4)), date, party_id: customer?.id ?? null,
-      customer_name: customer?.name ?? null, payment_type: saleType === "cash" ? payMethod : saleType === "credit" ? "credit" : "partial", treasury_account_id: null, paid_amount: paidValue, subtotal: totals.subtotal, tax_rate: taxRate,
+      customer_name: customer?.name ?? null, payment_type: saleType === "cash" ? effMethod : saleType === "credit" ? "credit" : "partial", treasury_account_id: null, paid_amount: paidValue, subtotal: totals.subtotal, tax_rate: taxRate,
       tax_amount: totals.tax, tax_inclusive: taxInclusive, total: totals.total, notes: notes || null, entry_id: null, status: "draft",
       items: totals.lines.map((l) => ({ description: l.name, product_code: l.code, qty: l.qty, unit_price: l.unitPrice, line_total: l.net, discount_pct: l.discountPct, discount_amount: l.discount, list_price: l.unitPrice })),
     } as unknown as GLSalesInvoice;
-    printHTML(buildInvoiceHTML(pseudo, info, { dueDate: dueDate || null, customerRef: customerRef || null, salesperson: salesperson || null, discountTotal: totals.discount, paymentLabel: payLabel(saleType === "cash" ? payMethod : saleType === "credit" ? "credit" : "partial"), currency }, lang === "ar" ? "ar" : "en"));
+    printHTML(buildInvoiceHTML(pseudo, info, { dueDate: dueDate || null, customerRef: customerRef || null, salesperson: salesperson || null, discountTotal: totals.discount, paymentLabel: payLabel(saleType === "cash" ? effMethod : saleType === "credit" ? "credit" : "partial"), currency }, lang === "ar" ? "ar" : "en"));
   };
 
   const goReturns = (): void => { onSection?.("sales-returns"); onNavigate?.("accounting"); };
@@ -493,13 +498,14 @@ export default function SalesInvoicePage({ onNavigate, onSection }: Props) {
           <div className={`${cardCls} p-4 grid gap-3 md:grid-cols-3 xl:grid-cols-6`}>
             <div><label className={labelCls}>{t("Invoice no.", "رقم الفاتورة")}</label><input className={inputCls} disabled value={t("Auto on posting", "تلقائي عند الترحيل")} /></div>
             <div><label className={labelCls}>{t("Invoice date", "تاريخ الفاتورة")} *</label><input type="date" className={inputCls} value={date} onChange={(e) => setDate(e.target.value)} data-testid="inv-date" /></div>
-            <div>
-              <label className={labelCls}>{t("Sale type", "نوع البيع")} * <span className={kbd}>F3</span></label>
-              <select ref={saleTypeRef} className={inputCls} value={saleType} onChange={(e) => { setSaleType(e.target.value as SaleType); setPaidNow(""); }} data-testid="sale-type">
-                <option value="cash">{t("Cash sale", "بيع نقدي")}</option>
-                <option value="credit">{t("Credit sale", "بيع آجل")}</option>
-                <option value="partial_credit">{t("Credit — partially paid", "آجل — مدفوع جزئيًا")}</option>
-              </select>
+            <div className="md:col-span-2">
+              <label className={labelCls}>{t("Payment type", "نوع البيع / الدفع")} * <span className={kbd}>F3</span></label>
+              <div className="grid grid-cols-4 gap-1.5" role="group" data-testid="sale-type">
+                {([["credit", "Credit", "آجل"], ["cash", "Cash", "نقدي"], ["partial", "Partial", "جزئي"], ["card", "Card", "شبكة"]] as const).map(([k, en, ar]) => (
+                  <button key={k} type="button" ref={k === "cash" ? saleTypeRef : undefined} onClick={() => setPayMode(k)} aria-pressed={payMode === k} data-testid={`pay-mode-${k}`}
+                    className={`rounded-lg px-2 py-2 text-sm font-bold border transition-colors ${payMode === k ? "bg-blue-600 border-blue-500 text-white" : "bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500"}`}>{t(en, ar)}</button>
+                ))}
+              </div>
             </div>
             <div className="md:col-span-2 relative">
               <label className={labelCls}>{t("Customer", "العميل")} {isCredit ? "*" : ""} <span className={kbd}>F2</span></label>
@@ -544,18 +550,10 @@ export default function SalesInvoicePage({ onNavigate, onSection }: Props) {
             <div><label className={labelCls}>{t("Due date", "تاريخ الاستحقاق")}</label><input type="date" className={inputCls} value={dueDate} disabled={!isCredit} onChange={(e) => { setDueDate(e.target.value); setDueTouched(true); }} data-testid="due-date" /></div>
             <div><label className={labelCls}>{t("Credit period (days)", "مدة الائتمان (يوم)")}</label><input className={inputCls} disabled dir="ltr" value={isCredit ? (customer ? String(creditDays) : "—") : "—"} /></div>
             <div>
-              <label className={labelCls}>{t("Payment method", "طريقة الدفع")} {saleType !== "credit" ? "*" : ""}</label>
-              <select className={inputCls} value={payMethod} disabled={saleType === "credit"} onChange={(e) => setPayMethod(e.target.value as PayMethod)} data-testid="pay-method">
-                <option value="cash">{t("Cash / Cashbox", "نقدي / صندوق")}{methodAvailable("cash") ? "" : ` — ${t("not configured", "غير مهيأ")}`}</option>
-                <option value="bank_transfer" disabled={!methodAvailable("bank_transfer")}>{t("Bank transfer", "تحويل بنكي")}{methodAvailable("bank_transfer") ? "" : ` — ${t("not configured", "غير مهيأ")}`}</option>
-                <option value="pos" disabled={!methodAvailable("pos")}>{t("POS / Mada / Card network", "شبكة / مدى / بطاقة")}{methodAvailable("pos") ? "" : ` — ${t("not configured", "غير مهيأ")}`}</option>
-              </select>
-            </div>
-            <div>
-              <label className={labelCls}>{t("Payment account", "حساب الدفع")} {saleType !== "credit" ? "*" : ""}</label>
+              <label className={labelCls}>{payMode === "card" ? t("Bank / terminal", "البنك/الشبكة") : t("Treasury / bank", "الخزنة/البنك")} {saleType !== "credit" ? "*" : ""}</label>
               <select className={inputCls} value={treasuryId} disabled={saleType === "credit"} onChange={(e) => setTreasuryId(e.target.value === "" ? "" : Number(e.target.value))} data-testid="treasury">
-                <option value="">{t("Select…", "اختر…")}</option>
-                {methodTreasuries.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                <option value="">{t("— choose —", "— اختر —")}</option>
+                {payOptions.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
               </select>
             </div>
             <div><label className={labelCls}>{t("Salesperson", "مندوب المبيعات")}</label><input className={inputCls} value={salesperson} onChange={(e) => setSalesperson(e.target.value)} /></div>
@@ -679,7 +677,7 @@ export default function SalesInvoicePage({ onNavigate, onSection }: Props) {
                   <div className={totals.tax > 0 && taxAcc == null ? "text-red-300" : "text-slate-300"}>{t("Output VAT", "ضريبة المخرجات")}: <b>{accName(taxAcc)}</b></div>
                   <div className={wh?.inventory_account_id == null ? "text-amber-300" : "text-slate-300"} data-testid="inv-acc">{t("Warehouse inventory account", "حساب مخزون المستودع")}: <b>{accName(wh?.inventory_account_id ?? null)}</b></div>
                   <div className="text-slate-300">{t("Receivable", "الذمم")}: <b>{isCredit ? accName(receivableAcc) : "—"}</b></div>
-                  <div className="text-slate-300">{t("Payment account", "حساب الدفع")}: <b>{saleType === "credit" ? "—" : accName(treasury?.account_id ?? null)}</b></div>
+                  <div className="text-slate-300">{t("Payment account", "حساب الدفع")}: <b>{saleType === "credit" ? "—" : accName(payOpt?.id ?? null)}</b></div>
                 </div>
               </details>
             </div>

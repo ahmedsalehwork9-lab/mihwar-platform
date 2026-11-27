@@ -945,7 +945,7 @@ function SalesReturnsPanel({ org, invoices, parties, postable, treasuryAccounts,
     const result = await DB.createSalesReturn(org.id, { original_invoice: selected, date: returnDate, items: picked, subtotal: totals.subtotal, tax_amount: totals.tax, total: totals.total, notes: reason.trim() || null, refund_mode: refundMode, refund_account_id: refundMode === "cash" ? Number(refundAccount) : null, entry_lines: lines });
     setSaving(false);
     if (!result.ok) { alert("تعذّر إنشاء المرتجع: " + (result.error || "")); return; }
-    alert(`تم إنشاء مرتجع ${result.returnLabel} وربطه بالفاتورة ${selected.invoice_no}.`);
+    alert(`تم إنشاء مرتجع ${result.returnLabel} وربطه بالفاتورة ${selected.invoice_no}.` + (result.warning ? `\n\nتنبيه: لم يُعَد المخزون/التكلفة: ${result.warning}` : ""));
     setOpen(false); await reload(); await reloadInvoices?.();
   };
   return <>

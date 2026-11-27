@@ -229,10 +229,10 @@ export default function POSPage() {
     });
     if (t2.invDisc > 0) items.push({ description: t("Invoice discount", "خصم على الفاتورة"), qty: 1, unit_price: -t2.invDisc, line_total: -t2.invDisc });
 
-    const finish = async (res: { ok: boolean; error?: string; invoiceNo?: number }) => {
+    const finish = async (res: { ok: boolean; error?: string; invoiceNo?: number; warning?: string }) => {
       if (!res.ok) { setSaving(false); setPostErr(t("Could not issue the invoice: ", "تعذّر إصدار الفاتورة: ") + (res.error || "")); return; }
-      // Inventory is deducted by the invoice service from the branch default warehouse.
-      setSaving(false); setPostErr("");
+      // الجرد المستمر: الخصم من المخزون وقيد التكلفة يتمان في الخادم (apply_sale_inventory)؛ وإن تعذّرا يظهر تحذير صريح.
+      setSaving(false); setPostErr(res.warning ? t("Invoice issued, but stock/cost was NOT recorded: ", "صدرت الفاتورة لكن لم يُسجَّل المخزون/التكلفة: ") + res.warning : "");
       printReceipt(res.invoiceNo || 0, items);
       clearCart(); await reloadProducts(); if (showToday) await loadToday();
     };

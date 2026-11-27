@@ -1711,7 +1711,7 @@ export async function markQuotationConverted(id: number, invoiceId: number): Pro
 
 
 
-export type SalesItem = { description: string; qty: number; unit_price: number; line_total: number };
+export type SalesItem = { description: string; qty: number; unit_price: number; line_total: number; product_id?: number };
 
 export type SalesPayType = "cash" | "credit" | "partial" | "card" | "split";
 
@@ -1891,6 +1891,18 @@ export async function convertQuotationToInvoice(args: {
   };
 }
 
+/** الجرد المستمر: خصم المخزون + قيد تكلفة المبيعات بعد إنشاء الفاتورة (RPC apply_sale_inventory). يعيد تحذيرًا نصيًا إن لم يكتمل. */
+export async function applySaleInventory(orgId: number, invoiceId: number, items: SalesItem[]): Promise<string | undefined> {
+  if (!items.some((i) => i.product_id != null)) return undefined;
+  const { error } = await supabase.rpc("apply_sale_inventory", { p_org: orgId, p_invoice: invoiceId });
+  return error ? error.message : undefined;
+}
+/** عكس المخزون والتكلفة بعد مرتجع المبيعات (RPC apply_sale_return_inventory). */
+export async function applySaleReturnInventory(orgId: number, returnId: number): Promise<string | undefined> {
+  const { error } = await supabase.rpc("apply_sale_return_inventory", { p_org: orgId, p_return: returnId });
+  return error ? error.message : undefined;
+}
+
 export async function createSalesInvoice(orgId: number, inv: {
 
   branch_id: number | null; date: string;
@@ -2025,7 +2037,7 @@ export async function fetchSalesReturns(orgId: number): Promise<GLSalesReturn[]>
 export async function createSalesReturn(orgId: number, args: {
   original_invoice: GLSalesInvoice; date: string; items: SalesReturnItem[]; subtotal: number; tax_amount: number; total: number;
   notes: string | null; refund_mode: "cash" | "credit"; refund_account_id: number | null; entry_lines: GLLine[];
-}): Promise<{ ok: boolean; error?: string; id?: number; returnNo?: number; returnYear?: number; returnLabel?: string }> {
+}): Promise<{ ok: boolean; error?: string; id?: number; returnNo?: number; returnYear?: number; returnLabel?: string; warning?: string }> {
   const inv = args.original_invoice;
   if (!args.items.length || args.total <= 0) return { ok: false, error: "لا توجد أصناف أو قيمة صالحة للمرتجع." };
   const year = Number(args.date.slice(0, 4));
@@ -2052,7 +2064,8 @@ export async function createSalesReturn(orgId: number, args: {
     console.error("createSalesReturn", error);
     return { ok: false, error: error.message };
   }
-  return { ok: true, id: Number((data as any).id), returnNo, returnYear: year, returnLabel: `SR-${year}-${String(returnNo).padStart(4,"0")}` };
+  const warning = await applySaleReturnInventory(orgId, Number((data as any).id));
+  return { ok: true, id: Number((data as any).id), returnNo, returnYear: year, warning, returnLabel: `SR-${year}-${String(returnNo).padStart(4,"0")}` };
 }
 
 export async function deleteSalesInvoice(inv: GLSalesInvoice): Promise<{ ok: boolean; error?: string }> {
@@ -2133,7 +2146,7 @@ export async function createSalesInvoiceMulti(orgId: number, inv: {
   revenue_account_id: number; tax_account_id: number | null;
   tax_rate: number; tax_inclusive: boolean;
   items: SalesItem[]; notes: string | null; shift_id?: number | null; source?: string | null;
-}, tenders: SalesTender[]): Promise<{ ok: boolean; error?: string; id?: number; entryId?: number; invoiceNo?: number }> {
+}, tenders: SalesTender[]): Promise<{ ok: boolean; error?: string; id?: number; entryId?: number; invoiceNo?: number; warning?: string }> {
   const t = invoiceTotals(inv.items, inv.tax_rate, inv.tax_inclusive);
   if (t.total <= 0) return { ok: false, error: "إجمالي الفاتورة صفر — أضف أصنافًا بقيمة." };
   const valid = tenders.filter((x) => (Number(x.amount) || 0) > 0);
@@ -2179,7 +2192,8 @@ export async function createSalesInvoiceMulti(orgId: number, inv: {
     amount: Math.round(Number(x.amount) * 100) / 100,
   }));
   await supabase.from("gl_sales_payments").insert(rows);
-  return { ok: true, id: invId, entryId: res.id, invoiceNo: invoice_no };
+  const warning = await applySaleInventory(orgId, invId, inv.items);
+  return { ok: true, id: invId, entryId: res.id, invoiceNo: invoice_no, warning };
 }
 
 // ══════════════ الورديات والصندوق ══════════════

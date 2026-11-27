@@ -523,6 +523,28 @@ function OpeningTab({ org, accounts, postable, branches }: any) {
 
   const natureById = useMemo(() => new Map(accounts.map((a: GLAccount) => [a.id, DB.natureOf(a.type)] as const)), [accounts]);
 
+  // قيمة المخزون الفعلية من وحدة المخزون (الكمية × التكلفة) — صفحة المخزون لا تُنشئ قيودًا، فلا تظهر في الميزانية إلا عبر حساب المخزون.
+  const { ownedShopId: ownShop } = (useAuth() as any) ?? {};
+  const [stock, setStock] = useState<{ value: number; items: number } | null>(null);
+  const invAcc = useMemo(() => postable.find((x: GLAccount) => x.code === "1104") ?? postable.find((x: GLAccount) => x.type === "asset" && /مخزون|inventory/i.test(x.name)), [postable]);
+  useEffect(() => {
+    let off = false;
+    (async () => {
+      const ids = Array.from(new Set([...(branches || []).map((b: any) => Number(b.id)), ...(ownShop ? [Number(ownShop)] : [])].filter((n) => Number.isFinite(n))));
+      if (!ids.length) { setStock({ value: 0, items: 0 }); return; }
+      let value = 0, items = 0;
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await supabase.from("products").select("id,quantity,price").in("shop_id", ids).order("id").range(from, from + 999);
+        if (error || off) { if (!off) setStock(null); return; }
+        const rows = (data as any[]) || [];
+        rows.forEach((r) => { const q = Number(r.quantity) || 0; if (q > 0) { value += q * (Number(r.price) || 0); items++; } });
+        if (rows.length < 1000) break;
+      }
+      if (!off) setStock({ value: Math.round(value * 100) / 100, items });
+    })();
+    return () => { off = true; };
+  }, [branches, ownShop]);
+
   const load = useCallback(async () => {
     setLoading(true);
     const entries = await DB.fetchOpeningEntries(org.id);
@@ -583,6 +605,18 @@ function OpeningTab({ org, accounts, postable, branches }: any) {
             <div className={`text-xs font-bold ${balanced ? "text-emerald-400" : "text-amber-400"}`}>{balanced ? "✓ متوازن" : `فرق سيُقفَل في الموازنة: ${fmt(totals.diff)}`}</div>
           </div>
         </div>
+        {invAcc && stock && stock.value > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2" data-testid="open-stock-hint">
+            <p className="text-[11px] text-amber-200 flex-1 min-w-[220px]">
+              قيمة المخزون في وحدة المخزون: <b className="[direction:ltr] inline-block">{fmt(stock.value)}</b> ({stock.items} صنف بالتكلفة). صفحة المخزون لا تُنشئ قيودًا محاسبية، لذلك لا تظهر في الميزانية إلا إذا سُجّلت في حساب «{invAcc.name}» ({invAcc.code}).
+              {Number(balances[invAcc.id]) === stock.value ? " ✓ مطابقة لما هو مُدخل." : Number(balances[invAcc.id]) ? ` المُدخل حاليًا ${fmt(Number(balances[invAcc.id]))}.` : ""}
+              {" "}لا تستخدمها إن كانت مشتريات المخزون مُسجّلة محاسبيًا فعلًا (تفاديًا للازدواج).
+            </p>
+            <button type="button" data-testid="open-stock-fill" onClick={() => setBalances((p) => ({ ...p, [invAcc.id]: String(stock.value) }))} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500/20 border border-amber-500/40 text-amber-100 hover:bg-amber-500/30">
+              تعبئة حساب المخزون بهذه القيمة
+            </button>
+          </div>
+        )}
         {existing && <p className="text-[11px] text-blue-300/80 mt-2">يوجد قيد افتتاحي محفوظ — القيم معبّأة أدناه. التعديل والحفظ يستبدلانه بالكامل (لا ازدواج).</p>}
       </div>
 

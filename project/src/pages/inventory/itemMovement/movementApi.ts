@@ -4,6 +4,7 @@
 // =============================================================
 import { supabase } from "../../lib/supabase";
 import type { Move } from "./movementLogic";
+import { orgProductsFilter } from "../../lib/orgProducts";
 
 export type ItemRow = {
   id: number; product_code: string | null; product_name: string; brand: string | null; model: string | null; barcode: string | null; category: string | null;
@@ -14,14 +15,14 @@ const clean = (s: string): string => s.replace(/[%,()*\\]/g, " ").trim();
 
 export async function searchItems(orgId: number, query: string, limit = 25): Promise<ItemRow[]> {
   const q = clean(query);
-  let b = supabase.from("products").select(COLS).eq("organization_id", orgId);
+  let b = supabase.from("products").select(COLS).or(await orgProductsFilter(orgId));
   if (q) b = b.or(`product_name.ilike.%${q}%,product_code.ilike.%${q}%,barcode.ilike.%${q}%,brand.ilike.%${q}%`);
   const { data, error } = await b.order("product_name", { ascending: true }).limit(limit);
   if (error) { console.error("searchItems", error); return []; }
   return (data as ItemRow[]) || [];
 }
 export async function fetchItem(orgId: number, id: number): Promise<ItemRow | null> {
-  const { data, error } = await supabase.from("products").select(COLS).eq("organization_id", orgId).eq("id", id).maybeSingle();
+  const { data, error } = await supabase.from("products").select(COLS).or(await orgProductsFilter(orgId)).eq("id", id).maybeSingle();
   if (error) { console.error("fetchItem", error); return null; }
   return (data as ItemRow) || null;
 }

@@ -4,6 +4,7 @@
 // لا كتابة ولا RPC جديد. السقف الأعلى يُعاد كـ truncated لتظهر للمستخدم رسالة واضحة.
 // =============================================================
 import { supabase } from "../../lib/supabase";
+import { orgProductsFilter } from "../../lib/orgProducts";
 import type { DocLine, Mv, Prod, PurchDoc, SaleDoc } from "./analyticsLogic";
 
 const PAGE = 1000;
@@ -26,9 +27,10 @@ async function paged(build: (from: number, to: number) => PromiseLike<{ data: un
 }
 
 export async function fetchProducts(orgId: number): Promise<Paged<Prod>> {
+  const scope = await orgProductsFilter(orgId);
   const r = await paged((a, b) => supabase.from("products")
     .select("id, product_code, product_name, brand, category, quantity, price, selling_price, min_quantity, reorder_level, shop_id, warehouse_id, created_at")
-    .eq("organization_id", orgId).order("id", { ascending: true }).range(a, b), 100000);
+    .or(scope).order("id", { ascending: true }).range(a, b), 100000);
   return { ...r, rows: r.rows.map((x): Prod => ({
     id: num(x.id), code: str(x.product_code), name: String(x.product_name ?? ""), brand: str(x.brand), category: str(x.category),
     qty: num(x.quantity), cost: num(x.price), sell: numOrNull(x.selling_price), minQty: numOrNull(x.min_quantity), reorder: numOrNull(x.reorder_level),

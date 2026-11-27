@@ -4,6 +4,7 @@ import * as DB from "./lib/accountingDb";
 import { useAuth } from "../context/AuthContext";
 import { useLang } from "../context/LanguageContext";
 import CategoryField from "./inventory/CategoryField";
+import UnitField from "./inventory/UnitField";
 import {
   Package, Plus, Search, RefreshCw, Trash2,
   Edit2, X, Save, AlertCircle, ChevronLeft,
@@ -76,6 +77,7 @@ type FormState = {
   reorder_level: string;
   max_quantity: string;
   warehouse_id: string;
+  unit: string;
 };
 
 type ShopOption = {
@@ -104,6 +106,7 @@ const EMPTY_FORM: FormState = {
   reorder_level: '',
   max_quantity: '',
   warehouse_id: '',
+  unit: '',
 };
 
 const PAGE_SIZE   = 12;
@@ -1031,7 +1034,7 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
         min_quantity:     form.min_quantity === '' ? null : Number(form.min_quantity),
         reorder_level:    form.reorder_level === '' ? null : Number(form.reorder_level),
         max_quantity:     form.max_quantity === '' ? null : Number(form.max_quantity),
-        attributes:       Object.fromEntries(attrRows.filter(r => r.key.trim() !== '').map(r => [r.key.trim(), r.value])),
+        attributes:       { ...Object.fromEntries(attrRows.filter(r => r.key.trim() !== '' && r.key.trim() !== 'unit').map(r => [r.key.trim(), r.value])), ...(form.unit.trim() ? { unit: form.unit.trim() } : {}) },
         warehouse_id:     form.warehouse_id === '' ? null : Number(form.warehouse_id),
       };
 
@@ -1565,7 +1568,7 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
 
   const openAdd = useCallback(() => {
     setEditItem(null);
-    setForm({ ...EMPTY_FORM, warehouse_id: mainWarehouseId != null ? String(mainWarehouseId) : '' });
+    setForm({ ...EMPTY_FORM, unit: '', warehouse_id: mainWarehouseId != null ? String(mainWarehouseId) : '' });
     setAttrRows([]);
     setAllowedShopIds([]);
     setFormError(null);
@@ -1577,8 +1580,9 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
 
   const openEdit = useCallback(async (p: Product) => {
     setEditItem(p);
-    setAttrRows(p.attributes && typeof p.attributes === 'object' ? Object.entries(p.attributes).map(([k, v]) => ({ key: k, value: String(v ?? '') })) : []);
+    setAttrRows(p.attributes && typeof p.attributes === 'object' ? Object.entries(p.attributes).filter(([k]) => k !== 'unit').map(([k, v]) => ({ key: k, value: String(v ?? '') })) : []);
     setForm({
+      unit:               typeof p.attributes?.unit === 'string' ? p.attributes.unit : '',
       product_code:        p.product_code,
       product_name:          p.product_name,
       brand:              p.brand,
@@ -2642,6 +2646,11 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
                     <option value="">{t('— None —', '— بدون —')}</option>
                     {warehouses.map(w => <option key={w.id} value={String(w.id)}>{w.name}</option>)}
                   </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Unit of measure', 'وحدة القياس')}</label>
+                  <UnitField value={form.unit} onChange={v => setForm(f => ({ ...f, unit: v }))} lang={isRTL ? 'ar' : 'en'} t={t}
+                    inputClass="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-emerald-500 focus:outline-none transition-colors text-sm" />
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Reorder Level', 'حد إعادة الطلب')}</label>

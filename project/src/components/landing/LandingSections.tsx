@@ -6,6 +6,7 @@ import { BrandLogo } from "../brand/BrandLogo";
 import { CAPABILITIES, MODULES, NEW_FEATURES, BRANCH_POINTS, REPORT_POINTS, DEMO_TABS, PLAN_CARDS, FAQS } from "./landingContent";
 import { Ico, IconTile, Section, Heading, CheckList, BrowserFrame, btnPrimary, btnGhostDark } from "./ui";
 import type { PlanId } from "./subscriptionLogic";
+import { ErpDashboardMock, ErpBranchesMock, ErpReportsMock } from "./ErpMock";
 
 const img = (n: string) => `/landing/${n}.webp`;
 type OnPlan = (p?: PlanId) => void;
@@ -64,8 +65,8 @@ export function Hero({ onJoin }: { onJoin: OnPlan }) {
           </div>
         </div>
         <div className="relative">
-          <BrowserFrame src={img("dashboard")} alt={t("MIHWAR financial dashboard (sample data)", "لوحة القوائم المالية في محور (بيانات تجريبية)")} eager />
-          <p className="mt-3 text-center text-xs text-[#9fb2d6]">{t("Screenshot from the system — sample data", "لقطة من النظام — بيانات تجريبية")}</p>
+          <ErpDashboardMock />
+          <p className="mt-8 text-center text-xs text-[#9fb2d6]">{t("Illustrative interface — sample data", "واجهة توضيحية — بيانات تجريبية")}</p>
         </div>
       </div>
     </section>
@@ -137,7 +138,7 @@ export function BranchSection() {
           <Heading center={false} eyebrow={t("Branches & central control", "إدارة الفروع والتحكم المركزي")} title={t("Many branches, one control centre", "فروع متعددة.. وتحكم مركزي واحد")} sub={t("Set company-wide defaults once, then tailor each branch where it differs.", "اضبط افتراضيات الشركة مرة واحدة ثم خصّص كل فرع حيث يختلف.")} />
           <CheckList items={BRANCH_POINTS.map((p) => t(p.en, p.ar))} />
         </div>
-        <BrowserFrame src={img("branches")} alt={t("Company and branch settings (sample data)", "إعدادات الشركة والفروع (بيانات تجريبية)")} />
+        <ErpBranchesMock />
       </div>
     </Section>
   );
@@ -148,7 +149,7 @@ export function ReportsSection() {
   return (
     <Section id="reports" tone="navy">
       <div className="grid items-center gap-12 lg:grid-cols-2">
-        <BrowserFrame src={img("dashboard")} alt={t("Financial reports (sample data)", "التقارير المالية (بيانات تجريبية)")} className="lg:order-first" />
+        <ErpReportsMock />
         <div>
           <Heading dark center={false} eyebrow={t("Reports & analytics", "التقارير والتحليلات")} title={t("Numbers that lead to decisions", "أرقام تقودك إلى القرار")} sub={t("See where you stand today and how it compares with the previous period.", "اعرف موقفك اليوم وكيف يقارن بالفترة السابقة.")} />
           <CheckList dark items={REPORT_POINTS.map((p) => t(p.en, p.ar))} />
@@ -230,7 +231,7 @@ export function FinalCta({ onJoin }: { onJoin: OnPlan }) {
     <section className="bg-[#0B1F44] py-16 text-center" style={{ background: "linear-gradient(135deg,#0B1F44,#0A3A7A)" }}>
       <div className="mx-auto max-w-3xl px-4">
         <h2 className="text-3xl font-black text-[#ffffff] sm:text-4xl">{t("Ready to bring your business into one Mihwar?", "جاهز لتجمع أعمالك في محور واحد؟")}</h2>
-        <p className="mt-3 text-[#c9d6ee]">{t("Launch offer: 3 free months, no setup fee, no credit card.", "عرض الإطلاق: 3 أشهر مجانية، بدون رسوم تأسيس أو بطاقة ائتمانية.")}</p>
+        <p className="mt-3 text-[#c9d6ee]">{t("Free trial with no setup fee and no credit card. Trial length is agreed with our team.", "تجربة مجانية بدون رسوم تأسيس أو بطاقة ائتمانية. مدة التجربة يتفق عليها فريقنا معك.")}</p>
         <button type="button" onClick={() => onJoin("trial")} className={`${btnPrimary} mt-7`} data-testid="final-cta">{t("Start your free trial", "ابدأ تجربتك المجانية")}</button>
       </div>
     </section>

@@ -4,6 +4,7 @@ import { Inbox, Loader2, RefreshCw, Search, Phone, Mail } from "lucide-react";
 import { useLang } from "../../context/LanguageContext";
 import { fetchRequests, updateRequest, STATUSES, SubRequest, SubStatus } from "../../components/landing/subscriptionApi";
 import { ACTIVITIES, PLANS } from "../../components/landing/subscriptionLogic";
+import { findCountry, cityLabel } from "../../components/landing/countries";
 
 const ST: Record<SubStatus, { en: string; ar: string; cls: string }> = {
   new: { en: "New", ar: "جديد", cls: "bg-blue-500/15 text-blue-300 border-blue-500/30" },
@@ -95,7 +96,7 @@ export default function SubscriptionRequestsPage() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h3 className="text-white font-extrabold">{r.business_name}</h3>
-                    <p className="text-slate-400 text-sm">{r.contact_name} · {activityLabel(r.activity, lang)} · {t("Branches", "الفروع")}: {r.branches_count}</p>
+                    <p className="text-slate-400 text-sm">{r.contact_name} · {activityLabel(r.activity, lang)} · {t("Branches", "الفروع")}: {r.branches_count}{r.country ? ` · ${findCountry(r.country)?.[lang] ?? r.country}${r.city ? " – " + cityLabel(r.country, r.city, lang) : ""}` : ""}</p>
                   </div>
                   <span className={`rounded-full border px-3 py-1 text-xs font-bold ${ST[r.status].cls}`}>{t(ST[r.status].en, ST[r.status].ar)}</span>
                 </div>

@@ -5,6 +5,7 @@ import { useLang } from "../../context/LanguageContext";
 import { ACTIVITIES, PLANS, EMPTY_FORM, SubForm, SubErr, PlanId, validateSub, buildPayload, normalizePhone, inCooldown, cooldownKey, newKey } from "./subscriptionLogic";
 import { submitSubscription } from "./subscriptionApi";
 import { BRAND_NAME_FALLBACK } from "./constants";
+import { COUNTRIES, OTHER_CITY, findCountry } from "./countries";
 
 type Props = { open: boolean; plan?: PlanId; onClose: () => void };
 type Phase = "form" | "sending" | "done" | "error";
@@ -36,7 +37,7 @@ export default function SubscriptionModal({ open, plan = "trial", onClose }: Pro
     if (f.website.trim()) { setPhase("done"); return; } // honeypot: روبوت — نُظهر نجاحًا شكليًا ولا نحفظ
     const v = validateSub(f); setErrs(v);
     if (Object.keys(v).length) { setMsg(t("Please fix the highlighted fields.", "يرجى تصحيح الحقول المظللة.")); return; }
-    const phone = normalizePhone(f.phone) as string;
+    const phone = normalizePhone(f.phone, findCountry(f.country)?.dial ?? "966") as string;
     let raw: string | null = null; try { raw = localStorage.getItem(cooldownKey); } catch { /* ignore */ }
     if (inCooldown(raw, Date.now(), phone)) { setPhase("done"); return; } // طلب مكرر حديث لنفس الجوال
     sending.current = true; setPhase("sending"); setMsg("");
@@ -74,6 +75,28 @@ export default function SubscriptionModal({ open, plan = "trial", onClose }: Pro
         ) : (
           <form onSubmit={submit} noValidate className="grid gap-4 px-5 py-5 sm:grid-cols-2">
             <div>
+              <label className={lbl} htmlFor="sr-country">{t("Country", "الدولة")} *</label>
+              <select id="sr-country" className={inp(errs.country)} value={f.country} onChange={(e) => { set("country", e.target.value); set("city", ""); set("city_other", ""); }}>
+                {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.flag} {t(c.en, c.ar)} (+{c.dial})</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={lbl} htmlFor="sr-city">{t("City", "المدينة")} *</label>
+              <select id="sr-city" className={inp(errs.city)} value={f.city} onChange={(e) => set("city", e.target.value)}>
+                <option value="">{t("Select…", "اختر…")}</option>
+                {(findCountry(f.country)?.cities ?? []).map((c) => <option key={c.id} value={c.id}>{t(c.en, c.ar)}</option>)}
+                <option value={OTHER_CITY}>{t("Other…", "مدينة أخرى…")}</option>
+              </select>
+              <Err k="city" text={t("Select the city", "اختر المدينة")} />
+            </div>
+            {f.city === OTHER_CITY && (
+              <div className="sm:col-span-2">
+                <label className={lbl} htmlFor="sr-city-other">{t("City name", "اسم المدينة")} *</label>
+                <input id="sr-city-other" className={inp(errs.city_other)} value={f.city_other} onChange={(e) => set("city_other", e.target.value)} maxLength={80} />
+                <Err k="city_other" text={t("Enter the city name", "أدخل اسم المدينة")} />
+              </div>
+            )}
+            <div>
               <label className={lbl} htmlFor="sr-biz">{t("Business name", "اسم المنشأة")} *</label>
               <input id="sr-biz" ref={firstRef} className={inp(errs.business_name)} value={f.business_name} onChange={(e) => set("business_name", e.target.value)} maxLength={120} autoComplete="organization" />
               <Err k="business_name" text={t("Enter the business name (2+ characters)", "أدخل اسم المنشأة (حرفان على الأقل)")} />
@@ -85,7 +108,10 @@ export default function SubscriptionModal({ open, plan = "trial", onClose }: Pro
             </div>
             <div>
               <label className={lbl} htmlFor="sr-phone">{t("Mobile number", "رقم الجوال")} *</label>
-              <input id="sr-phone" dir="ltr" inputMode="tel" placeholder="05xxxxxxxx" className={`${inp(errs.phone)} ${isRTL ? "text-right" : ""}`} value={f.phone} onChange={(e) => set("phone", e.target.value)} autoComplete="tel" />
+              <div className="flex" dir="ltr">
+                <span className="inline-flex shrink-0 items-center rounded-s-xl border border-e-0 border-[#d5dae5] bg-[#F4F6FA] px-3 text-sm font-bold text-[#0B1F44]" data-testid="dial-code">+{findCountry(f.country)?.dial ?? "966"}</span>
+                <input id="sr-phone" dir="ltr" inputMode="tel" placeholder={f.country === "SA" ? "5xxxxxxxx" : t("Mobile number", "رقم الجوال")} className={`${inp(errs.phone)} rounded-s-none`} value={f.phone} onChange={(e) => set("phone", e.target.value)} autoComplete="tel-national" />
+              </div>
               <Err k="phone" text={t("Enter a valid mobile number", "أدخل رقم جوال صحيحًا")} />
             </div>
             <div>

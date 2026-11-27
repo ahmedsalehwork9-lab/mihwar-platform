@@ -6,6 +6,8 @@
 create table if not exists public.subscription_requests (
   id              bigint generated always as identity primary key,
   created_at      timestamptz not null default now(),
+  country         text check (country is null or country ~ '^[A-Z]{2}$'),
+  city            text check (city is null or char_length(city) between 2 and 100),
   business_name   text not null check (char_length(btrim(business_name)) between 2 and 120),
   contact_name    text not null check (char_length(btrim(contact_name)) between 2 and 120),
   phone           text not null check (phone ~ '^\+[0-9]{8,15}$'),
@@ -21,6 +23,9 @@ create table if not exists public.subscription_requests (
   admin_note      text check (admin_note is null or char_length(admin_note) <= 1000),
   handled_at      timestamptz
 );
+-- لو كان الجدول أُنشئ سابقًا بدون الدولة/المدينة:
+alter table public.subscription_requests add column if not exists country text check (country is null or country ~ '^[A-Z]{2}$');
+alter table public.subscription_requests add column if not exists city text check (city is null or char_length(city) between 2 and 100);
 create index if not exists subscription_requests_status_created_idx on public.subscription_requests (status, created_at desc);
 
 alter table public.subscription_requests enable row level security;

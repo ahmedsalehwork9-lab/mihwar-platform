@@ -8,7 +8,9 @@ import * as DB from "../../lib/accountingDb";
 import { type JEntry, stateOf, sumCents, isReversal } from "./reviewLogic";
 import { fmtCents } from "./money";
 import { AuditList, type PrintInfo, type Tr, PBTN, PBTN_BLUE, PIN, PLBL } from "./JournalPanels";
-import { printTable } from "./exportKit";
+import { buildDocHTML } from "../../print/docTemplates";
+import { fetchPrintOrg, type PrintOrg } from "../../sales/salesInvoiceApi";
+import { printHTML } from "../../sales/salesInvoicePrint";
 import type { Caps } from "./journalApi";
 
 export const stateBadge = (tr: Tr): Record<string, { label: string; cls: string }> => ({
@@ -19,11 +21,16 @@ export const stateBadge = (tr: Tr): Record<string, { label: string; cls: string 
   reversed: { label: tr("Reversed", "معكوس"), cls: "bg-red-500/15 text-red-400" },
 });
 
-export function printEntryDoc(e: { jv: string; date: string; description: string | null; typeLabel: string; stateLabel: string; branch: string; lines: { code: string; name: string; note: string; debit: number; credit: number }[] }, tr: Tr, info: PrintInfo): boolean {
-  const d = e.lines.reduce((s, l) => s + l.debit, 0), c = e.lines.reduce((s, l) => s + l.credit, 0);
-  return printTable({ title: `${tr("Journal entry", "قيد يومية")} ${e.jv}`, subtitle: `${e.date} · ${e.typeLabel} · ${e.stateLabel}${e.branch ? " · " + e.branch : ""}${e.description ? " — " + e.description : ""}`,
-    cols: [{ label: tr("Code", "الكود") }, { label: tr("Account", "الحساب") }, { label: tr("Line description", "البيان التفصيلي") }, { label: tr("Debit", "مدين"), num: true }, { label: tr("Credit", "دائن"), num: true }],
-    rows: e.lines.map((l) => [l.code, l.name, l.note, l.debit, l.credit]), totals: ["", tr("Total", "الإجمالي"), "", d, c] }, info);
+/** طباعة القيد بقالب «قيد يومية» الموحّد (نفس قالب السندات: ترويسة الشركة/الشعار وإعدادات طباعة الفرع: الورق/الاتجاه/اللغة/التوقيع). */
+export function printEntryDoc(e: { jv: string; date: string; description: string | null; typeLabel: string; stateLabel: string; branch: string; branchId?: number | null; notes?: string | null; draft?: boolean; lines: { code: string; name: string; note: string; debit: number; credit: number }[] }, tr: Tr, info: PrintInfo): void {
+  const d = e.lines.reduce((s, l) => s + l.debit, 0);
+  const fallback: PrintOrg = { name: info.orgName, tax_number: info.taxNumber ?? null, commercial_registration: null, phone: null, address: info.address ?? null, logo_url: info.logoUrl ?? null };
+  const shopId = e.branchId ?? info.shopId ?? null;
+  void fetchPrintOrg(info.orgId ?? 0, info.shopId ?? null).catch(() => fallback).then((org) => printHTML(buildDocHTML({
+    kind: "journal_voucher", number: e.jv, date: e.date, partyName: null, total: d, currency: "SAR", description: e.description, notes: e.notes || null, branchId: shopId, draft: e.draft,
+    refs: [[tr("Type", "النوع"), e.typeLabel], [tr("Status", "الحالة"), e.stateLabel], ...(e.branch ? [[tr("Branch", "الفرع"), e.branch] as [string, string]] : [])],
+    lines: e.lines.map((l) => ({ account: `${l.code} ${l.name}`.trim(), debit: l.debit, credit: l.credit, note: l.note || null })),
+  }, org, info.lang)));
 }
 
 export function ReasonDialog({ tr, title, hint, confirmLabel, withDate, onCancel, onConfirm }: { tr: Tr; title: string; hint?: string; confirmLabel: string; withDate?: boolean; onCancel: () => void; onConfirm: (reason: string, date: string) => void }) {

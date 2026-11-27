@@ -18,7 +18,7 @@ export const PBTN = "inline-flex items-center justify-center gap-1.5 px-3 py-2 r
 export const PBTN_BLUE = "inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-[#0a58ca] hover:bg-[#084298] text-[#fff] font-bold text-xs transition-colors disabled:opacity-50";
 export const PBTN_PURPLE = "inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-[#fff] font-bold text-xs transition-colors disabled:opacity-50";
 
-export type PrintInfo = { orgName: string; taxNumber?: string | null; logoUrl?: string | null; address?: string | null; dir: "rtl" | "ltr"; lang: "ar" | "en" };
+export type PrintInfo = { orgName: string; taxNumber?: string | null; logoUrl?: string | null; address?: string | null; dir: "rtl" | "ltr"; lang: "ar" | "en"; orgId?: number; shopId?: number | null };
 type Common = { tr: Tr; lang: "ar" | "en"; entries: JEntry[]; jv: (e: JEntry) => string; userName: (id?: string | null) => string; branchName: (id: number) => string; printInfo: PrintInfo };
 
 export const ToolBar = ({ spec, file, info, tr }: { spec: TableSpec; file: string; info: PrintInfo; tr: Tr }) => (

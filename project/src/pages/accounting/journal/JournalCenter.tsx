@@ -15,7 +15,7 @@ import { fmtCents } from "./money";
 import * as API from "./journalApi";
 
 type TabKey = "journal" | "reports" | "trial" | "ledger" | "review" | "recurring" | "templates" | "settings";
-type Props = { org: { id: number; name: string }; postable: GLAccount[]; accById: Map<number, GLAccount>; branches: { id: number; name: string }[]; branchName: (id: number) => string; parties: DB.GLParty[]; ui: JUi; onSection?: (s: string) => void; shopInfo: { shop_name?: string; logo_url?: string; address?: string; commercial_registration?: string } | null; isAdmin: boolean };
+type Props = { org: { id: number; name: string }; postable: GLAccount[]; accById: Map<number, GLAccount>; branches: { id: number; name: string }[]; branchName: (id: number) => string; parties: DB.GLParty[]; ui: JUi; onSection?: (s: string) => void; shopInfo: { id?: number; shop_name?: string; logo_url?: string; address?: string; commercial_registration?: string } | null; isAdmin: boolean };
 const monthStart = (): string => { const d = new Date(); return new Date(Date.UTC(d.getFullYear(), d.getMonth(), 1)).toISOString().slice(0, 10); };
 const todayS = (): string => new Date().toISOString().slice(0, 10);
 
@@ -39,7 +39,7 @@ export default function JournalCenter(P: Props) {
   const typeOpts = useMemo(() => DB.ENTRY_TYPE_OPTS.map((t) => ({ value: t as string, label: typeLabel(t) })), [typeLabel]);
   const accName = useCallback((id: number): string => { const a = P.accById.get(id); return a ? `${a.code} — ${ar ? a.name : a.name_en || a.name}` : String(id); }, [P.accById, ar]);
   const renderAccount = useCallback((v: number | "", on: (v: number | "") => void) => <ui.AccountPicker value={v} onChange={on} options={postable} size="sm" />, [ui, postable]);
-  const printInfo: PrintInfo = { orgName: P.shopInfo?.shop_name || org.name, taxNumber: P.shopInfo?.commercial_registration || null, logoUrl: P.shopInfo?.logo_url || null, address: P.shopInfo?.address || null, dir, lang };
+  const printInfo: PrintInfo = { orgName: P.shopInfo?.shop_name || org.name, taxNumber: P.shopInfo?.commercial_registration || null, logoUrl: P.shopInfo?.logo_url || null, address: P.shopInfo?.address || null, dir, lang, orgId: org.id, shopId: P.shopInfo?.id ?? null };
 
   const KPIS: { key: string; label: string; value: string; status?: StatusFilter; tone: string; testid: string }[] = [
     { key: "total", label: tr("Total entries", "إجمالي القيود"), value: String(kp.total), status: "", tone: "text-blue-400", testid: "kpi-total" },

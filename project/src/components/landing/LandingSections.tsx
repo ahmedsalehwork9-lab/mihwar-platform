@@ -3,8 +3,8 @@ import { useState } from "react";
 import { Menu, X, Languages, ArrowLeft, ArrowRight, Mail } from "lucide-react";
 import { useLang } from "../../context/LanguageContext";
 import { BrandLogo } from "../brand/BrandLogo";
-import { CAPABILITIES, MODULES, NEW_FEATURES, BRANCH_POINTS, REPORT_POINTS, DEMO_TABS, PLAN_CARDS, FAQS } from "./landingContent";
-import { Ico, IconTile, Section, Heading, CheckList, BrowserFrame, btnPrimary, btnGhostDark } from "./ui";
+import { CAPABILITIES, MODULES, NEW_FEATURES, BRANCH_POINTS, REPORT_POINTS, DEMO_TABS, PLAN_CARDS, FAQS, PRINT_DOCS, PRINT_STAGES, PRINT_POINTS } from "./landingContent";
+import { Ico, IconTile, Section, Heading, CheckList, BrowserFrame, ZoomImg, btnPrimary, btnGhostDark } from "./ui";
 import type { PlanId } from "./subscriptionLogic";
 import { ErpDashboardMock, ErpBranchesMock, ErpReportsMock } from "./ErpMock";
 
@@ -16,7 +16,7 @@ export function LandingTopNav({ onLogin, onJoin }: { onLogin: () => void; onJoin
   const [open, setOpen] = useState(false);
   const links = [
     { h: "#modules", l: t("Modules", "الوحدات") }, { h: "#new", l: t("What's new", "الجديد") }, { h: "#branches", l: t("Branches", "الفروع") },
-    { h: "#reports", l: t("Reports", "التقارير") }, { h: "#demo", l: t("Demo", "تجربة النظام") }, { h: "#pricing", l: t("Plans", "الاشتراكات") }, { h: "#faq", l: t("FAQ", "الأسئلة") },
+    { h: "#reports", l: t("Reports", "التقارير") }, { h: "#demo", l: t("Demo", "تجربة النظام") }, { h: "#print", l: t("Printing", "الطباعة") }, { h: "#pricing", l: t("Plans", "الاشتراكات") }, { h: "#faq", l: t("FAQ", "الأسئلة") },
   ];
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b border-[#ffffff1a] bg-[#0B1F44]/90 backdrop-blur-md">
@@ -171,10 +171,46 @@ export function DemoSection({ onJoin }: { onJoin: OnPlan }) {
           <button key={x.id} role="tab" aria-selected={x.id === id} onClick={() => setId(x.id)} data-testid={`demo-tab-${x.id}`} className={`rounded-full px-4 py-2 text-sm font-bold transition ${x.id === id ? "bg-[#0B1F44] text-[#ffffff]" : "bg-[#ffffff] text-[#0B1F44] ring-1 ring-[#d5dae5] hover:ring-[#007BFF]"}`}>{t(x.label.en, x.label.ar)}</button>
         ))}
       </div>
-      <div className="mx-auto max-w-5xl">
-        <BrowserFrame src={img(cur.img)} alt={t(cur.caption.en, cur.caption.ar)} />
+      <div className="mx-auto max-w-6xl">
+        <BrowserFrame src={img(cur.img)} alt={t(cur.caption.en, cur.caption.ar)} zoomLabel={t("Click to enlarge", "اضغط للتكبير")} />
         <p className="mt-4 text-center text-sm font-semibold text-[#4b5b78]" data-testid="demo-caption">{t(cur.caption.en, cur.caption.ar)}</p>
         <div className="mt-6 text-center"><button type="button" onClick={() => onJoin("trial")} className={btnPrimary}>{t("Start your free trial", "ابدأ تجربتك المجانية")}</button></div>
+      </div>
+    </Section>
+  );
+}
+
+export function PrintSection({ onJoin }: { onJoin: OnPlan }) {
+  const { t } = useLang();
+  const [kind, setKind] = useState(PRINT_DOCS[1].kind);
+  const cur = PRINT_DOCS.find((d) => d.kind === kind) ?? PRINT_DOCS[0];
+  return (
+    <Section id="print">
+      <Heading eyebrow={t("Document-cycle printing", "نماذج الطباعة للدورة المستندية")} title={t("Professional documents, ready to print", "مستندات احترافية جاهزة للطباعة")} sub={t("Nine templates covering the sales and purchases cycles — quotation to journal voucher.", "تسعة نماذج تغطي دورتي المبيعات والمشتريات — من عرض السعر إلى قيد اليومية.")} />
+      <div className="grid items-start gap-8 lg:grid-cols-[320px_1fr]">
+        <div className="space-y-5">
+          {PRINT_STAGES.map((st) => (
+            <div key={st.id}>
+              <div className="mb-2 text-xs font-extrabold uppercase tracking-wide text-[#007BFF]">{t(st.t.en, st.t.ar)}</div>
+              <div className="space-y-1.5">
+                {PRINT_DOCS.filter((d) => d.stage === st.id).map((d, i) => (
+                  <button key={d.kind} type="button" onClick={() => setKind(d.kind)} data-testid={`print-${d.kind}`} aria-pressed={d.kind === kind}
+                    className={`flex w-full items-center gap-3 rounded-xl border px-3.5 py-2.5 text-start text-sm font-bold transition ${d.kind === kind ? "border-[#0B1F44] bg-[#0B1F44] text-[#ffffff]" : "border-[#E6E8ED] bg-[#ffffff] text-[#0B1F44] hover:border-[#007BFF]"}`}>
+                    <span className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs ${d.kind === kind ? "bg-[#00C2FF] text-[#0B1F44]" : "bg-[#007BFF14] text-[#007BFF]"}`}>{i + 1}</span>{t(d.t.en, d.t.ar)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+          <div className="rounded-xl bg-[#F4F6FA] p-4"><CheckList items={PRINT_POINTS.map((p) => t(p.en, p.ar))} /></div>
+        </div>
+        <div>
+          <div className="overflow-hidden rounded-2xl border border-[#E6E8ED] bg-[#ffffff] shadow-[0_30px_80px_-20px_rgba(11,31,68,0.35)]">
+            <ZoomImg key={cur.kind} src={`/landing/print/${cur.kind}.webp`} alt={t(cur.t.en, cur.t.ar)} label={t("Click to enlarge", "اضغط للتكبير")} />
+          </div>
+          <p className="mt-3 text-center text-sm font-semibold text-[#4b5b78]" data-testid="print-caption">{t(cur.t.en, cur.t.ar)} — {t("sample data, bilingual layout", "بيانات توضيحية، تخطيط ثنائي اللغة")}</p>
+          <div className="mt-5 text-center"><button type="button" onClick={() => onJoin("trial")} className={btnPrimary}>{t("Start your free trial", "ابدأ تجربتك المجانية")}</button></div>
+        </div>
       </div>
     </Section>
   );

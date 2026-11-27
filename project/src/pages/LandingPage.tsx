@@ -4,7 +4,7 @@
  */
 import { useCallback, useState } from "react";
 import { useLang } from "../context/LanguageContext";
-import { LandingTopNav, Hero, CapabilityStrip, ModulesSection, NewFeaturesSection, BranchSection, ReportsSection, DemoSection, PricingSection2, FaqSection2, FinalCta, LandingFooter2 } from "../components/landing/LandingSections";
+import { LandingTopNav, Hero, CapabilityStrip, ModulesSection, NewFeaturesSection, BranchSection, ReportsSection, DemoSection, PrintSection, PricingSection2, FaqSection2, FinalCta, LandingFooter2 } from "../components/landing/LandingSections";
 import SubscriptionModal from "../components/landing/SubscriptionModal";
 import type { PlanId } from "../components/landing/subscriptionLogic";
 
@@ -27,6 +27,7 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
         <BranchSection />
         <ReportsSection />
         <DemoSection onJoin={join} />
+        <PrintSection onJoin={join} />
         <PricingSection2 onJoin={join} />
         <FaqSection2 />
         <FinalCta onJoin={join} />

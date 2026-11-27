@@ -75,3 +75,25 @@ export const FAQS: { q: Bi; a: Bi }[] = [
   { q: b("Can I export my reports?", "هل يمكنني تصدير التقارير؟"), a: b("Yes, reports can be printed or exported to Excel.", "نعم، يمكن طباعة التقارير أو تصديرها إلى Excel.") },
   { q: b("Who can see my data?", "من يستطيع رؤية بياناتي؟"), a: b("Access is controlled by user roles and page permissions; each company's data is separated from other companies.", "الوصول مضبوط بأدوار المستخدمين وصلاحيات الصفحات، وبيانات كل شركة منفصلة عن غيرها.") },
 ];
+
+export type PrintDoc = { kind: string; stage: "sales" | "purchases" | "accounting"; t: Bi };
+export const PRINT_STAGES: { id: PrintDoc["stage"]; t: Bi }[] = [
+  { id: "sales", t: b("Sales cycle", "دورة المبيعات") }, { id: "purchases", t: b("Purchases cycle", "دورة المشتريات") }, { id: "accounting", t: b("Accounting", "المحاسبة") },
+];
+export const PRINT_DOCS: PrintDoc[] = [
+  { kind: "quotation", stage: "sales", t: b("Quotation", "عرض سعر") },
+  { kind: "sales_invoice", stage: "sales", t: b("Sales tax invoice", "فاتورة ضريبية — مبيعات") },
+  { kind: "receipt_voucher", stage: "sales", t: b("Receipt voucher", "سند قبض") },
+  { kind: "sales_return", stage: "sales", t: b("Credit note (sales return)", "إشعار دائن — مرتجع مبيعات") },
+  { kind: "purchase_order", stage: "purchases", t: b("Purchase order", "أمر شراء") },
+  { kind: "purchase_invoice", stage: "purchases", t: b("Purchase tax invoice", "فاتورة ضريبية — مشتريات") },
+  { kind: "payment_voucher", stage: "purchases", t: b("Payment voucher", "سند صرف") },
+  { kind: "purchase_return", stage: "purchases", t: b("Debit note (purchase return)", "إشعار مدين — مرتجع مشتريات") },
+  { kind: "journal_voucher", stage: "accounting", t: b("Journal voucher", "قيد يومية") },
+];
+export const PRINT_POINTS: Bi[] = [
+  b("Arabic, English or bilingual documents", "مستندات بالعربية أو الإنجليزية أو ثنائية اللغة"),
+  b("Your logo beside MIHWAR CLOUD ERP (each can be switched off)", "شعار منشأتك بجانب شعار MIHWAR CLOUD ERP (ويمكن إيقاف أيٍّ منهما)"),
+  b("A4, A5 or 80mm receipt paper, set per branch", "ورق A4 أو A5 أو إيصال 80مم، يُضبط لكل فرع"),
+  b("Company data and VAT number printed automatically", "بيانات الشركة والرقم الضريبي تُطبع تلقائيًا"),
+];

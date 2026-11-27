@@ -10,6 +10,8 @@ export const PERM_PAGES: PermPage[] = [
   { id: "dashboard", ar: "الرئيسية", en: "Dashboard" },
   { id: "search", ar: "المنتجات", en: "Products" },
   { id: "inventory", ar: "المخزون", en: "Inventory" },
+  { id: "item-movement", ar: "حركة الصنف", en: "Item Movement" },
+  { id: "inventory-analytics", ar: "تقارير المخزون", en: "Inventory Reports" },
   { id: "orders", ar: "الطلبات", en: "Orders" },
   { id: "reports", ar: "التقارير", en: "Reports" },
   { id: "sales-reconciliation", ar: "تسوية المبيعات", en: "Sales Reconciliation" },

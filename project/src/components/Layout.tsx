@@ -32,6 +32,7 @@ import {
   ClipboardCheck,
   Boxes,
   Inbox,
+  BarChart3,
 } from 'lucide-react';
 
 import { supabase } from '../pages/lib/supabase';
@@ -53,6 +54,7 @@ export type Page =
   | 'inventory'
   | 'stock-adjustments'
   | 'item-movement'
+  | 'inventory-analytics'
   | 'orders'
   | 'reports'
   | 'sales'
@@ -96,6 +98,7 @@ const pageTitles: Record<Page, { en: string; ar: string }> = {
   'inventory':       { en: 'Inventory',        ar: 'المخزون'         },
   'stock-adjustments': { en: 'Stock Adjustments', ar: 'الجرد والتسويات' },
   'item-movement':   { en: 'Item Movement',    ar: 'حركة الصنف'      },
+  'inventory-analytics': { en: 'Inventory & Products Analytics', ar: 'مركز تقارير المخزون والأصناف' },
   'orders':          { en: 'Orders',           ar: 'الطلبات'         },
   'reports':         { en: 'Reports',          ar: 'التقارير'        },
   'sales':           { en: 'Sales',            ar: 'المبيعات'        },
@@ -225,6 +228,7 @@ const OPERATIONS: OpEntry[] = [
   { type: 'item', id: 'inventory', icon: <Package size={17} />,         labelEn: 'Inventory', labelAr: 'المخزون' },
   { type: 'item', id: 'stock-adjustments', icon: <ClipboardCheck size={17} />, labelEn: 'Stock Count', labelAr: 'الجرد والتسويات' },
   { type: 'item', id: 'item-movement', icon: <Boxes size={17} />, labelEn: 'Item Movement', labelAr: 'حركة الصنف' },
+  { type: 'item', id: 'inventory-analytics', icon: <BarChart3 size={17} />, labelEn: 'Inventory Reports', labelAr: 'تقارير المخزون' },
   { type: 'item', id: 'orders',    icon: <ShoppingCart size={17} />,    labelEn: 'Orders',    labelAr: 'الطلبات' },
 
   { type: 'group', key: 'sales', icon: <TrendingUp size={17} />, labelEn: 'Sales', labelAr: 'المبيعات', homePage: 'sales-reconciliation', children: [
@@ -246,6 +250,7 @@ const OPERATIONS: OpEntry[] = [
 
   { type: 'group', key: 'reports', icon: <FileBarChart size={17} />, labelEn: 'Reports', labelAr: 'التقارير', homePage: 'reports-center', children: [
     { labelEn: 'Reports Center',   labelAr: 'مركز التقارير',  page: 'reports-center' },
+    { labelEn: 'Inventory Reports', labelAr: 'تقارير المخزون والأصناف', page: 'inventory-analytics' },
     { labelEn: 'Business Analytics', labelAr: 'تحليلات الأعمال', page: 'business-analytics' },
     { labelEn: 'Monthly Financial', labelAr: 'التقرير المالي الشهري', page: 'monthly-financial' },
     { labelEn: 'Report Builder', labelAr: 'مُنشئ التقارير', page: 'report-builder' },
@@ -409,6 +414,14 @@ function CommandPalette({ commands, onClose, lang }: { commands: Cmd[]; onClose:
 // MAIN LAYOUT
 // ══════════════════════════════════════════════════════════════════════
 
+// صلاحية الصفحة مع الأسماء المرتبطة: الصفحات الجديدة تُمنح تلقائيًا لمن لديه صلاحية صفحة قريبة منها
+const PERM_ALIASES: Record<string, string[]> = {
+  'inventory-analytics': ['inventory', 'item-movement', 'reports-center', 'reports'],
+  'item-movement': ['inventory', 'inventory-analytics'],
+};
+const hasPerm = (perms: string[] | null, id: string): boolean =>
+  !perms || perms.includes(id) || (PERM_ALIASES[id] || []).some((a) => perms.includes(a));
+
 export default function Layout({ page, setPage, accSection, setAccSection, children }: LayoutProps) {
   const { signOut, isAdmin, ownedShopId, permissions, branches } = useAuth();
   const { lang, setLang, t, isRTL }       = useLang();
@@ -440,7 +453,7 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
   // قائمة وجهات البحث العام (صفحات + أقسام الحسابات) حسب الصلاحيات
   const commands: Cmd[] = useMemo(() => {
     const out: Cmd[] = [];
-    const canP = (id: Page) => isAdmin || !permissions || permissions.includes(id);
+    const canP = (id: Page) => isAdmin || hasPerm(permissions, id);
     if (isAdmin) {
       navSections.filter((s) => s.adminOnly).forEach((s) => s.items.filter((i) => i.adminOnly).forEach((i) => {
         out.push({ id: i.id, labelAr: i.labelAr, labelEn: i.label, group: 'الإدارة', run: () => { setPage(i.id); setSidebarOpen(false); } });
@@ -457,7 +470,7 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
               if (!accOk) return;
               out.push({ id: `${entry.key}:${c.section}`, labelAr: c.labelAr, labelEn: c.labelEn, group: entry.labelAr, run: () => { setAccSection?.(c.section!); setPage('accounting'); setSidebarOpen(false); } });
             } else {
-              const ok = c.placeholder || !permissions || permissions.includes(c.page!);
+              const ok = c.placeholder || hasPerm(permissions, c.page!);
               if (!ok) return;
               out.push({ id: c.page!, labelAr: c.labelAr, labelEn: c.labelEn, group: entry.labelAr, run: () => { setPage(c.page!); setSidebarOpen(false); } });
             }
@@ -484,7 +497,7 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
   }, [ownedShopId]);
 
   useEffect(() => {
-    if (!isAdmin && permissions && !permissions.includes(page) && !PLACEHOLDER_PAGES.includes(page)) {
+    if (!isAdmin && permissions && !hasPerm(permissions, page) && !PLACEHOLDER_PAGES.includes(page)) {
       if (permissions[0]) setPage(permissions[0] as Page);
     }
   }, [permissions, isAdmin, page]);
@@ -543,7 +556,7 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
                 {OPERATIONS.map((entry) => {
                   // عنصر مفرد
                   if (entry.type === 'item') {
-                    if (permissions && !permissions.includes(entry.id)) return null;
+                    if (!hasPerm(permissions, entry.id)) return null;
                     return (
                       <NavButton
                         key={entry.id}
@@ -557,7 +570,7 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
                   // مجموعة قابلة للتوسّع
                   const isAcc = !!entry.homeSection;
                   const accOk = !permissions || permissions.includes('accounting');     // صلاحية الوصول للأقسام الداخلية للحسابات
-                  const anyRealChild = entry.children.some((c) => c.page && !c.placeholder && (!permissions || permissions.includes(c.page)));
+                  const anyRealChild = entry.children.some((c) => c.page && !c.placeholder && hasPerm(permissions, c.page));
                   const groupVisible = isAcc ? (accOk || anyRealChild) : anyRealChild;
                   if (!groupVisible) return null;
 
@@ -565,7 +578,7 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
                     c.section ? (page === 'accounting' && (accSection || 'journal') === c.section) : (page === c.page);
                   const groupActive = entry.children.some(childActive);
                   const childVisible = (c: OpChild) =>
-                    c.section ? accOk : (c.placeholder ? true : (!permissions || permissions.includes(c.page!)));
+                    c.section ? accOk : (c.placeholder ? true : hasPerm(permissions, c.page!));
                   const onParent = () => {
                     if (entry.homeSection) { setAccSection?.(entry.homeSection); setPage('accounting'); }
                     else if (entry.homePage) { setPage(entry.homePage); }

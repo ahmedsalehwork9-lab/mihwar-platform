@@ -14,6 +14,7 @@ import { printHTML } from "../sales/salesInvoicePrint";
 import { fetchPrintOrg, type PrintOrg } from "../sales/salesInvoiceApi";
 import { DOC_KINDS, buildDocHTML, sampleDoc, type DocKind } from "../print/docTemplates";
 import BranchTreasuryCard from "./BranchTreasuryCard";
+import { AUTO_ROLES, suggestRoleAccounts } from "../lib/accountRoles";
 import * as API from "./branchApi";
 import {
   ROLES, branchOverride, defaultsToClear, dirtyFields, effective, filterShops, kpisOf, orgDefault, patchOf, planMap, toForm, typeLabel, validateBasic, whValidate,
@@ -125,6 +126,13 @@ export default function BranchSettingsPage() {
   const invAccs = useMemo(() => accounts.filter((a) => !a.is_group && a.type === "asset"), [accounts]);
   const accName = (id: number | null | undefined) => { const a = accounts.find((x) => x.id === id); return a ? `${a.code} · ${a.name}` : "—"; };
   const mapOps = useMemo(() => (sh ? planMap(map, sh.id, sel) : []), [map, sh, sel]);
+  /** يملأ الأدوار الفارغة بحسابات مقترحة من الشجرة (للمراجعة ثم الحفظ) ويملأ حساب المخزون لمستودعات الفرع الناقصة. */
+  const suggestLink = () => {
+    const sug = suggestRoleAccounts(accounts); let n = 0;
+    setSel((cur) => { const nx = { ...cur }; for (const r of AUTO_ROLES) { const a = sug[r]; if (a && (nx[r] === "" || nx[r] == null) && orgDefault(map, r) == null) { nx[r] = a; n++; } } return nx; });
+    if (sug.inventory) setWhDraft((cur) => Object.fromEntries(Object.entries(cur).map(([k, w]) => [k, w.inventory_account_id == null ? { ...w, inventory_account_id: sug.inventory as number } : w])));
+    setMsg({ ok: true, text: Object.keys(sug).length ? t("Suggestions filled in — review, then press Save link (and Save on each warehouse).", "تمت تعبئة الاقتراحات — راجعها ثم اضغط «حفظ الربط» (وحفظ كل مستودع).") : t("No matching accounts found in the chart.", "لم أجد حسابات مطابقة في الشجرة.") });
+  };
   const saveMap = async () => { if (!org || !sh || !mapOps.length) return; setBusy(true); const r = await API.applyMapOps(org.id, sh.id, mapOps); setBusy(false); setMsg(r.ok ? { ok: true, text: t("Accounting link saved.", "تم حفظ الربط المحاسبي.") } : { ok: false, text: r.error }); if (r.ok) await reload(); };
 
   const ppSave = async () => {
@@ -218,7 +226,8 @@ export default function BranchSettingsPage() {
                   <div className="md:col-span-2"><label className={LBL}>{t("This branch uses", "هذا الفرع يستخدم")}</label>
                     <select value={cur} onChange={(e) => setSel((s) => ({ ...s, [r.role]: e.target.value ? Number(e.target.value) : "" }))} className={INP} data-testid={`map-sel-${r.role}`}><option value="">{t("— company default —", "— افتراضي الشركة —")}</option>{accOpts(r.type).map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}</select>
                     <div className="mt-1 text-[11px] text-slate-400">{t("Effective", "الفعّال")}: <b data-testid={`map-eff-${r.role}`}>{accName(eff)}</b>{sh && effective(map, sh.id, r.role) == null && cur === "" && <span className="text-amber-300"> · {t("not configured", "غير مُعدّ")}</span>}</div></div></div>); })}
-              <div className="flex justify-end"><button type="button" onClick={() => void saveMap()} disabled={!mapOps.length || busy} className={BTN_BLUE} data-testid="map-save"><Save size={15} />{t("Save link", "حفظ الربط")}</button></div>
+              <div className="flex flex-wrap justify-between gap-2"><button type="button" onClick={suggestLink} className={BTN_BLUE} data-testid="map-suggest">{t("Suggest links automatically", "اقتراح الربط تلقائيًا")}</button>
+              <button type="button" onClick={() => void saveMap()} disabled={!mapOps.length || busy} className={BTN_BLUE} data-testid="map-save"><Save size={15} />{t("Save link", "حفظ الربط")}</button></div>
               {sh && org && <BranchTreasuryCard orgId={org.id} branchId={sh.id} branchName={sh.shop_name} accounts={accounts} t={t} INP={INP} LBL={LBL} BTN={BTN_BLUE} onMsg={setMsg} />}</div>}
 
             {tab === "users" && <div className={`${CARD} p-4`} data-testid="bs-panel-users"><h3 className="font-bold mb-1">{t("Users of this branch", "مستخدمو هذا الفرع")}</h3>

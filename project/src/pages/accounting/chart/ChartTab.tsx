@@ -165,7 +165,7 @@ export default function ChartTab({ org, shop, accounts, reload, busy, setBusy }:
     if (!window.confirm(msg)) return;
     setBusy(true); const r = await DB.seedStandardChart(org.id, orgCountry); setBusy(false);
     if (!r.ok) { alert(t("Initialization failed: ", "تعذّرت التهيئة: ") + (r.error || "")); return; }
-    await reload(); alert(t(`✓ ${r.added} accounts added`, `✓ تم إضافة ${r.added} حساب`));
+    await reload(); alert(t(`✓ ${r.added} accounts added`, `✓ تم إضافة ${r.added} حساب`) + (r.linked ? t(` · ${r.linked} account links set automatically`, ` · وتم ربط ${r.linked} إعدادًا تلقائيًا (المبيعات/الضريبة/المخزون/التكلفة)`) : "") + (r.linkError ? t(` · Auto-link incomplete: ${r.linkError} — use Branch settings → Accounting link`, ` · تعذّر إكمال الربط التلقائي: ${r.linkError} — استخدم إعدادات الفرع ← الربط المحاسبي`) : ""));
   };
 
   // ── Excel ──

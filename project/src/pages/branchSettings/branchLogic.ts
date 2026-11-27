@@ -65,6 +65,8 @@ export type RoleDef = { role: string; ar: string; en: string; type: string };
 export const ROLES: RoleDef[] = [
   { role: "revenue", ar: "إيرادات المبيعات", en: "Sales revenue", type: "revenue" },
   { role: "output_vat", ar: "ضريبة القيمة المضافة (مخرجات)", en: "Output VAT", type: "liability" },
+  { role: "inventory", ar: "المخزون (احتياطي لحساب المستودع)", en: "Inventory (fallback to warehouse account)", type: "asset" },
+  { role: "cogs", ar: "تكلفة البضاعة المباعة", en: "Cost of goods sold", type: "expense" },
 ];
 export const orgDefault = (rows: MapRow[], role: string): number | null => rows.find((r) => r.role === role && r.branch_id == null)?.account_id ?? null;
 export const branchOverride = (rows: MapRow[], branchId: number, role: string): number | null => rows.find((r) => r.role === role && r.branch_id === branchId)?.account_id ?? null;

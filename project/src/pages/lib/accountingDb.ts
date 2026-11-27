@@ -291,6 +291,7 @@ export const STANDARD_CHART: SeedRow[] = [
   { code: "4102", name: "إيرادات أخرى", type: "revenue", is_group: false, parent: "4" },
 
   { code: "4103", name: "خصومات مكتسبة", type: "revenue", is_group: false, parent: "4" },
+  { code: "4104", name: "مردودات المبيعات", type: "revenue", is_group: false, parent: "4" },
 
   { code: "5", name: "المصروفات", type: "expense", is_group: true, parent: null },
 
@@ -335,7 +336,7 @@ export const STANDARD_CHART: SeedRow[] = [
 export function chartForCountry(country: string | null | undefined): SeedRow[] { return buildCountryChart(STANDARD_CHART, country); }
 
 // country غير مُمرَّر ⇒ الدليل السعودي كما كان سابقاً (توافق رجعي)
-export async function seedStandardChart(orgId: number, country: string | null | undefined = "SA"): Promise<{ ok: boolean; error?: string; added: number }> {
+export async function seedStandardChart(orgId: number, country: string | null | undefined = "SA"): Promise<{ ok: boolean; error?: string; added: number; linked?: number; linkError?: string }> {
 
   const existing = await fetchAccounts(orgId);
 

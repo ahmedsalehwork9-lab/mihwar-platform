@@ -62,7 +62,9 @@ export default function BranchSettingsPage() {
   const errs = useMemo(() => (form ? validateBasic(form) : {}), [form]);
   const kp = useMemo(() => kpisOf(shops, whs, items), [shops, whs, items]);
   const list = useMemo(() => filterShops(shops, q), [shops, q]);
-  const myWhs = useMemo(() => whs.filter((w) => w.branch_id === selId), [whs, selId]);
+  // مخازن الفرع + مخازن الشركة العامة (branch_id فارغ — تُنشأ من صفحة المخزون) ليمكن ربطها بحساب المخزون.
+  // مخازن الفرع + المخازن العامة (بلا فرع) + أي مخزن مرتبط بفرع غير موجود (يتيم) حتى لا «يختفي» مخزن أُضيف من صفحة المخزون.
+  const myWhs = useMemo(() => { const ids = new Set(shops.map((x) => x.id)); return whs.filter((w) => w.branch_id === selId || w.branch_id == null || !ids.has(w.branch_id as number)); }, [whs, selId, shops]);
 
   const load = useCallback(async (o: { id: number }) => {
     setLoading(true); setLoadErr(null);
@@ -190,7 +192,8 @@ export default function BranchSettingsPage() {
               {myWhs.length === 0 && <div className="text-sm text-slate-500 py-6 text-center" data-testid="wh-none">{t("No warehouses are linked to this branch.", "لا توجد مخازن مرتبطة بهذا الفرع.")}</div>}
               {myWhs.map((w) => { const d = whDraft[w.id] ?? w; const ch = d.name !== w.name || (d.code ?? "") !== (w.code ?? "") || d.is_active !== w.is_active || d.is_default !== w.is_default || d.inventory_account_id !== w.inventory_account_id; const m = whMsg[w.id]; return (
                 <div key={w.id} className="rounded-xl border border-slate-800 p-3 grid gap-3 md:grid-cols-4" data-testid="wh-row" data-id={w.id}>
-                  <div><label className={LBL}>{t("Name", "الاسم")}</label><input value={d.name} onChange={(e) => setWhDraft((x) => ({ ...x, [w.id]: { ...d, name: e.target.value } }))} className={INP} data-testid="wh-name" /></div>
+                  {w.branch_id !== selId && <div className="md:col-span-4 text-[11px] text-sky-300" data-testid="wh-shared">{w.branch_id == null ? t("Company-wide warehouse (shared by all branches)", "مخزن عام للشركة (مشترك بين كل الفروع)") : t("Not linked to an existing branch", "غير مرتبط بفرع موجود")}</div>}
+                  <div><label className={LBL}>{t("Name", "الاسم")}{w.branch_id == null && <span className="ms-2 text-[10px] font-bold text-sky-300 bg-sky-500/10 border border-sky-500/30 rounded-full px-2 py-0.5" data-testid="wh-org">{t("Company-wide", "عام للشركة")}</span>}</label><input value={d.name} onChange={(e) => setWhDraft((x) => ({ ...x, [w.id]: { ...d, name: e.target.value } }))} className={INP} data-testid="wh-name" /></div>
                   <div><label className={LBL}>{t("Code", "الكود")}</label><input value={d.code ?? ""} onChange={(e) => setWhDraft((x) => ({ ...x, [w.id]: { ...d, code: e.target.value } }))} dir="ltr" className={INP} data-testid="wh-code" /></div>
                   <div className="md:col-span-2"><label className={LBL}>{t("Inventory account", "حساب المخزون")}</label><select value={d.inventory_account_id ?? ""} onChange={(e) => setWhDraft((x) => ({ ...x, [w.id]: { ...d, inventory_account_id: e.target.value ? Number(e.target.value) : null } }))} className={INP} data-testid="wh-acc"><option value="">{t("— not set —", "— غير محدد —")}</option>{invAccs.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}</select></div>
                   <div className="md:col-span-4 flex flex-wrap items-center justify-between gap-3"><div className="flex gap-4 text-sm">

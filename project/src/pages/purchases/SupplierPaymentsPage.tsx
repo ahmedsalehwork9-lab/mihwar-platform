@@ -4,6 +4,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import * as DB from "../lib/accountingDb";
+import { cashBankOptions } from "../lib/cashAccounts";
 import type { GLAccount, GLTreasury, GLPurchaseInvoice, GLSupplierPayment, SupplierPaymentAlloc } from "../lib/accountingDb";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -66,9 +67,8 @@ export default function SupplierPaymentsPage() {
       && (a.parent_id === supplierParent.id || (a.code.length > pc.length && a.code.startsWith(pc))));
   }, [accounts, supplierParent]);
 
-  const cashTreasuries = useMemo(() => treasuries.filter((t) => t.account_id && t.kind === "cash"), [treasuries]);
-  const bankTreasuries = useMemo(() => treasuries.filter((t) => t.account_id && (t.kind === "bank" || /شبكة|مدى|بنك|card/i.test(t.name))), [treasuries]);
-  const treasuryOptions = useMemo(() => [...cashTreasuries, ...bankTreasuries], [cashTreasuries, bankTreasuries]);
+  // الحساب التجميعي لا يظهر؛ الصندوق/البنك غير التجميعي يظهر — القيمة = رقم الحساب.
+  const treasuryOptions = useMemo(() => cashBankOptions(accounts, treasuries), [accounts, treasuries]);
   useEffect(() => { if (!pTreasury && treasuryOptions[0]) setPTreasury(treasuryOptions[0].id); }, [treasuryOptions, pTreasury]);
 
   // load supplier's open invoices when selected

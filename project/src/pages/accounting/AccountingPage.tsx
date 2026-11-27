@@ -30,6 +30,7 @@ import { buildReportHTML, openPrint } from "./shared/printReport";
 import { useLang } from "../../context/LanguageContext";
 import JournalCenter from "./journal/JournalCenter";
 import AccountingDashboard from "./dash/AccountingDashboard";
+import { cashBankOptions } from "../lib/cashAccounts";
 import type { GLAccount, GLLine, EntryWithLines, AccType } from "../lib/accountingDb";
 
 const fmt = (n: number) => (Math.round(n * 100) / 100).toLocaleString("en-US", { maximumFractionDigits: 2 });
@@ -670,7 +671,8 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, shop,
   useEffect(() => { reload(); }, [reload]);
   useEffect(() => { DB.fetchTreasuries(org.id).then(setTreasuryRows); }, [org.id]);
   const targetBranchId = branch ? Number(branch) : (fBranch ? Number(fBranch) : (branches?.length === 1 ? Number(branches[0].id) : null));
-  const treasuryAccounts = postable.filter((a: GLAccount) => treasuryRows.some((t) => t.is_active && t.account_id === a.id && (t.branch_id == null || targetBranchId == null || t.branch_id === targetBranchId)));
+  // الحساب التجميعي لا يظهر؛ الصندوق/البنك غير التجميعي يظهر (مربوطًا بخزنة أو لا).
+  const treasuryAccounts = (() => { const ids = new Set(cashBankOptions(postable, treasuryRows.filter((t) => t.branch_id == null || targetBranchId == null || t.branch_id === targetBranchId)).map((o) => o.id)); return postable.filter((a: GLAccount) => ids.has(a.id)); })();
 
   // لا نختار حسابات الإيراد أو ضريبة المخرجات تلقائيًا؛ يلزم اعتماد الحساب الصحيح لكل فرع.
 

@@ -8,6 +8,7 @@ import { buildDocHTML } from "../print/docTemplates";
 import * as DB from "../lib/accountingDb";
 import PartyQuickEditor from "../lib/PartyQuickEditor";
 import type { GLAccount, GLParty, GLQuotation, GLTreasury, SalesItem } from "../lib/accountingDb";
+import { cashBankOptions } from "../lib/cashAccounts";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const firstDay = () => `${today().slice(0, 8)}01`;
@@ -185,7 +186,7 @@ export default function QuotationPage() {
       <div className="mb-4 flex justify-between"><h2 className="font-black">تحويل العرض إلى فاتورة</h2><button onClick={()=>setConvertRow(null)}><X/></button></div>
       <p className="mb-4 text-sm text-slate-400">عرض رقم {convertRow.quotation_no} — الإجمالي {money(convertRow.total)} ر.س</p>
       <label className="mb-3 block text-xs text-slate-400">طريقة السداد<select className={`${input} mt-1`} value={payType} onChange={e=>setPayType(e.target.value as DB.SalesPayType)}><option value="cash">نقدي</option><option value="credit">آجل</option><option value="partial">جزئي</option></select></label>
-      {payType!=="credit"&&<label className="mb-3 block text-xs text-slate-400">خزنة التحصيل<select className={`${input} mt-1`} value={treasuryAcc} onChange={e=>setTreasuryAcc(e.target.value)}><option value="">اختر الخزنة</option>{treasuries.filter(t=>t.is_active&&t.account_id).map(t=><option key={t.id} value={t.account_id!}>{t.name}</option>)}</select></label>}
+      {payType!=="credit"&&<label className="mb-3 block text-xs text-slate-400">خزنة التحصيل<select className={`${input} mt-1`} value={treasuryAcc} onChange={e=>setTreasuryAcc(e.target.value)}><option value="">اختر الخزنة</option>{cashBankOptions(accounts,treasuries).map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></label>}
       {payType!=="cash"&&<label className="mb-3 block text-xs text-slate-400">حساب العميل / الذمم<select className={`${input} mt-1`} value={customerAcc} onChange={e=>setCustomerAcc(e.target.value)}><option value="">اختر الحساب</option>{postable.filter(a=>a.type==="asset").map(a=><option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}</select></label>}
       {payType==="partial"&&<label className="mb-3 block text-xs text-slate-400">المبلغ المدفوع<input id="quotation-paid" className={`${input} mt-1`} type="number" min="0" max={convertRow.total} defaultValue="0"/></label>}
       <label className="mb-3 block text-xs text-slate-400">حساب إيراد المبيعات<select className={`${input} mt-1`} value={revenueAcc} onChange={e=>setRevenueAcc(e.target.value)}><option value="">اختر حساب الإيراد</option>{postable.filter(a=>a.type==="revenue").map(a=><option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}</select></label>

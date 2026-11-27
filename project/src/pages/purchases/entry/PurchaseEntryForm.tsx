@@ -10,6 +10,7 @@ import { useLang } from "../../../context/LanguageContext";
 import * as DB from "../../lib/accountingDb";
 import { ACTIVE } from "../../lib/orgConfig";
 import type { GLAccount, GLTreasury, PurchaseKind, PurchasePayType } from "../../lib/accountingDb";
+import { cashBankOptions } from "../../lib/cashAccounts";
 import { fetchPrintOrg, type PrintOrg } from "../../sales/salesInvoiceApi";
 import { printHTML } from "../../sales/salesInvoicePrint";
 import { buildPurchaseInvoiceHTML, type PurchasePrintInv } from "../print/purchasePrint";
@@ -72,10 +73,10 @@ export default function PurchaseEntryForm(p: PurchaseEntryProps) {
     return pc + "01";
   }, [accounts]);
   const debitOptions = useMemo(() => (fKind === "expense" ? accounts.filter((a) => a.type === "expense" && !a.is_group) : accounts.filter((a) => a.type === "asset" && !a.is_group)), [accounts, fKind]);
-  // الخزن/البنوك المربوطة بحساب (القيمة = رقم الحساب في الدليل). إن لم تُنشأ خزنة بعد نعرض حسابات الصندوق/البنك مباشرةً حتى يظهر الرصيد الافتتاحي.
-  const isBankLike = (n: string) => /شبكة|مدى|mada|visa|بنك|bank|card/i.test(n);
-  const bankT = useMemo(() => { const fromT = treasuries.filter((x) => x.account_id && x.is_active !== false && (x.kind === "bank" || isBankLike(x.name))).map((x) => ({ id: x.account_id as number, name: x.name })); if (fromT.length || treasuries.some((x) => x.account_id)) return fromT; return accounts.filter((a) => a.type === "asset" && !a.is_group && (a.code.startsWith("1102") || isBankLike(a.name))).map((a) => ({ id: a.id, name: `${a.code} · ${a.name}` })); }, [treasuries, accounts]);
-  const cashT = useMemo(() => { const fromT = treasuries.filter((x) => x.account_id && x.is_active !== false && x.kind === "cash").map((x) => ({ id: x.account_id as number, name: x.name })); if (fromT.length || treasuries.some((x) => x.account_id)) return fromT; return accounts.filter((a) => a.type === "asset" && !a.is_group && !isBankLike(a.name) && (a.code.startsWith("1101") || /صندوق|خزنة|نقد|cash/i.test(a.name))).map((a) => ({ id: a.id, name: `${a.code} · ${a.name}` })); }, [treasuries, accounts]);
+  // الحساب التجميعي لا يظهر، وغير التجميعي (صندوق/بنك) يظهر — القيمة = رقم الحساب في الدليل.
+  const cashBank = useMemo(() => cashBankOptions(accounts, treasuries), [accounts, treasuries]);
+  const bankT = useMemo(() => cashBank.filter((o) => o.kind === "bank"), [cashBank]);
+  const cashT = useMemo(() => cashBank.filter((o) => o.kind === "cash"), [cashBank]);
   const treasuryOptions = fPay === "card" ? bankT : [...cashT, ...bankT];
   useEffect(() => { setFDebitAcc((fKind === "inventory" ? inventoryAcc?.id : fKind === "expense" ? purchaseExpAcc?.id : debitOptions[0]?.id) ?? ""); }, [fKind, inventoryAcc, purchaseExpAcc, debitOptions]);
   useEffect(() => { setFTaxAcc(inputVatAcc?.id ?? ""); }, [inputVatAcc]);

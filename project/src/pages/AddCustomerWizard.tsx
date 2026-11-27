@@ -5,7 +5,7 @@
 // بأمان من الخادم. لا شركة فعلية تُنشأ إلا عند التأكيد النهائي. مسودة محفوظة بالمتصفح.
 // يتدرّج بأمان: لو الدالة لم تُحدَّث بعد، يُنشأ المحل+المدير ويُنبَّه لضبط الإعدادات لاحقًا.
 // =============================================================
-import { useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import {
   Building2, Globe, UserCog, CreditCard, Check, ChevronRight, ChevronLeft,
   Save, Loader2, CheckCircle2, AlertTriangle, Eye, Plus,
@@ -40,6 +40,24 @@ const DRAFT_KEY = "mihwar_customer_wizard_draft";
 const BUSINESS_TYPES = ["sole_proprietor", "company", "establishment", "other"];
 const TRIAL_OPTS = [15, 30, 45, 60, 90, 120];
 const addDays = (d: string, n: number) => { const t = new Date(d + "T00:00:00"); t.setDate(t.getDate() + n); return t.toISOString().slice(0, 10); };
+
+// ── عناصر الحقول: خارج المكوّن عمداً (تعريفها داخله كان يعيد إنشاءها كل ضغطة فيفقد الحقل التركيز) ──
+const inp = "w-full bg-slate-950 border border-slate-700 rounded-xl text-white px-3 py-2.5 text-sm outline-none focus:border-blue-500";
+const lbl = "text-[11px] text-slate-400 font-bold block mb-1.5";
+type WizCtxValue = { form: any; set: (p: any) => void; errors: Record<string, string | undefined> };
+const WizCtx = createContext<WizCtxValue>({ form: {}, set: () => undefined, errors: {} });
+const Field = ({ k, label, children, req }: any) => {
+  const { errors } = useContext(WizCtx);
+  return (
+    <div><label className={lbl}>{label}{req && <span className="text-red-400"> *</span>}</label>{children}{errors[k] && <p className="text-[11px] text-red-400 mt-1">{errors[k]}</p>}</div>
+  );
+};
+const Txt = ({ k, type = "text", ph }: any) => {
+  const { form, set, errors } = useContext(WizCtx);
+  return (
+    <input type={type} value={(form as any)[k]} onChange={(e) => set({ [k]: e.target.value } as any)} placeholder={ph} className={`${inp} ${errors[k] ? "border-red-500/60" : ""}`} dir={type === "email" || type === "tel" || type === "password" ? "ltr" : undefined} />
+  );
+};
 
 export default function AddCustomerWizard({ onNavigate }: { onNavigate?: (p: any) => void }) {
   const { t, isRTL, lang } = useLang();
@@ -139,15 +157,6 @@ export default function AddCustomerWizard({ onNavigate }: { onNavigate?: (p: any
   const resetAll = () => { setForm(BLANK); setLogoFile(null); setErrors({}); setDone(null); setStep(1); try { localStorage.removeItem(DRAFT_KEY); } catch { /* */ } };
 
   // ── عناصر ──
-  const inp = "w-full bg-slate-950 border border-slate-700 rounded-xl text-white px-3 py-2.5 text-sm outline-none focus:border-blue-500";
-  const lbl = "text-[11px] text-slate-400 font-bold block mb-1.5";
-  const Field = ({ k, label, children, req }: any) => (
-    <div><label className={lbl}>{label}{req && <span className="text-red-400"> *</span>}</label>{children}{errors[k] && <p className="text-[11px] text-red-400 mt-1">{errors[k]}</p>}</div>
-  );
-  const Txt = ({ k, type = "text", ph }: any) => (
-    <input type={type} value={(form as any)[k]} onChange={(e) => set({ [k]: e.target.value } as any)} placeholder={ph} className={`${inp} ${errors[k] ? "border-red-500/60" : ""}`} dir={type === "email" || type === "tel" || type === "password" ? "ltr" : undefined} />
-  );
-
   // ── شاشة النجاح ──
   if (done?.ok) {
     return (
@@ -179,6 +188,7 @@ export default function AddCustomerWizard({ onNavigate }: { onNavigate?: (p: any
   }
 
   return (
+    <WizCtx.Provider value={{ form, set, errors }}>
     <div className="p-4 lg:p-6 min-h-screen" dir={isRTL ? "rtl" : "ltr"}>
       <header className="mb-5">
         <h1 className="text-2xl font-black text-white">{t("Add New Customer", "إنشاء عميل جديد")}</h1>
@@ -312,6 +322,7 @@ export default function AddCustomerWizard({ onNavigate }: { onNavigate?: (p: any
         </aside>
       </div>
     </div>
+    </WizCtx.Provider>
   );
 }
 

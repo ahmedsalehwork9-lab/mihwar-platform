@@ -400,7 +400,7 @@ export default function SalesInvoicePage({ onNavigate, onSection }: Props) {
     printHTML(buildInvoiceHTML(pseudo, info, { dueDate: dueDate || null, customerRef: customerRef || null, salesperson: salesperson || null, discountTotal: totals.discount, paymentLabel: payLabel(saleType === "cash" ? payMethod : saleType === "credit" ? "credit" : "partial"), currency }, lang === "ar" ? "ar" : "en"));
   };
 
-  const goReturns = (): void => { onSection?.("sales"); onNavigate?.("accounting"); };
+  const goReturns = (): void => { onSection?.("sales-returns"); onNavigate?.("accounting"); };
   const goReceipts = (): void => { onSection?.("treasury"); onNavigate?.("accounting"); };
 
   const shownHistory = useMemo(() => {

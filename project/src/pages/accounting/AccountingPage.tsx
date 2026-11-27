@@ -49,7 +49,7 @@ const BTN_SUCCESS = "inline-flex items-center justify-center gap-1.5 px-5 py-2.5
 const BTN_GHOST_EM = "inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-xs transition-colors disabled:opacity-50 hover:bg-emerald-500/20";
 const BTN_GHOST_BL = "inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-300 font-bold text-xs transition-colors disabled:opacity-50 hover:bg-blue-500/20";
 
-type Tab = "dashboard" | "chart" | "opening" | "journal" | "sales" | "ledger" | "trial" | "statements" | "assets" | "treasury" | "parties";
+type Tab = "dashboard" | "chart" | "opening" | "journal" | "sales" | "sales-returns" | "ledger" | "trial" | "statements" | "assets" | "treasury" | "parties";
 const TYPE_OPTS: AccType[] = ["asset", "liability", "equity", "revenue", "expense"];
 const TABS: { k: Tab; label: string; icon: any }[] = [
   { k: "dashboard", label: "لوحة التحكم", icon: LayoutDashboard },
@@ -57,6 +57,7 @@ const TABS: { k: Tab; label: string; icon: any }[] = [
   { k: "opening", label: "الأرصدة الافتتاحية", icon: Landmark },
   { k: "journal", label: "القيود اليومية", icon: BookOpen },
   { k: "sales", label: "المبيعات", icon: ShoppingCart },
+  { k: "sales-returns", label: "مرتجعات المبيعات", icon: RotateCcw },
   { k: "treasury", label: "الخزن والبنوك", icon: Wallet },
   { k: "parties", label: "العملاء والموردين", icon: Users },
   { k: "ledger", label: "كشف حساب", icon: FileText },
@@ -65,7 +66,7 @@ const TABS: { k: Tab; label: string; icon: any }[] = [
   { k: "assets", label: "الأصول", icon: Building2 },
 ];
 
-const TAB_EN: Record<Tab, string> = { dashboard: "Dashboard", chart: "Chart of Accounts", opening: "Opening Balances", journal: "Journal Entries", sales: "Sales", treasury: "Treasury & Banks", parties: "Customers & Suppliers", ledger: "Account Statement", trial: "Trial Balance", statements: "Financial Statements", assets: "Assets" };
+const TAB_EN: Record<Tab, string> = { dashboard: "Dashboard", chart: "Chart of Accounts", opening: "Opening Balances", journal: "Journal Entries", sales: "Sales", "sales-returns": "Sales Returns", treasury: "Treasury & Banks", parties: "Customers & Suppliers", ledger: "Account Statement", trial: "Trial Balance", statements: "Financial Statements", assets: "Assets" };
 
 function SectionHead({ icon: Icon, title, extra }: { icon: any; title: string; extra?: any }) {
   return (
@@ -370,7 +371,7 @@ export default function AccountingPage({ section, onSection, onNavigate }: { sec
       <nav className="flex items-center gap-1.5 text-[11px] text-slate-500 mb-3 flex-wrap">
         <span className="inline-flex items-center gap-1"><Home size={12} /> {tr("Home", "الرئيسية")}</span>
         <ChevronLeft size={12} className="opacity-60" />
-        <span className="text-slate-400 font-bold">{tab === "sales" ? tr("Sales", "المبيعات") : tr("Accounting", "الحسابات")}</span>
+        <span className="text-slate-400 font-bold">{tab === "sales" || tab === "sales-returns" ? tr("Sales", "المبيعات") : tr("Accounting", "الحسابات")}</span>
         <ChevronLeft size={12} className="opacity-60" />
         <span className="text-blue-400 font-bold">{tabLabel}</span>
       </nav>
@@ -381,7 +382,7 @@ export default function AccountingPage({ section, onSection, onNavigate }: { sec
           <span className="w-11 h-11 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-400"><ActiveIcon size={22} /></span>
           <div>
             <h1 className="text-2xl font-black text-white leading-tight">{tabLabel}</h1>
-            <p className="text-slate-500 text-xs mt-0.5">{tab === "sales" ? "إدارة المبيعات والفواتير — مرحّلة للدفتر تلقائيًا" : tr("Accounting — one ledger at organization level", "الحسابات — دفتر موحّد على مستوى المؤسسة")}</p>
+            <p className="text-slate-500 text-xs mt-0.5">{tab === "sales-returns" ? "مرتجعات المبيعات — تُرحَّل للدفتر وتُرجع الكميات للمخزون" : tab === "sales" ? "إدارة المبيعات والفواتير — مرحّلة للدفتر تلقائيًا" : tr("Accounting — one ledger at organization level", "الحسابات — دفتر موحّد على مستوى المؤسسة")}</p>
           </div>
         </div>
         <div className="inline-flex items-center gap-2.5 bg-slate-900 border border-slate-800 rounded-xl px-4 py-2">
@@ -397,6 +398,7 @@ export default function AccountingPage({ section, onSection, onNavigate }: { sec
       {tab === "chart" && <ChartTab org={org} shop={shopInfo} accounts={accounts} reload={reloadAccounts} busy={busy} setBusy={setBusy} />}
       {tab === "opening" && <OpeningTab org={org} accounts={accounts} postable={postable} branches={branches} />}
       {tab === "journal" && <JournalTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} parties={parties} />}
+      {tab === "sales-returns" && <SalesTab returnsMode org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} parties={parties} onPartiesChange={refreshParties} shop={shopInfo} onNavigate={onNavigate} />}
       {tab === "sales" && <SalesTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} parties={parties} onPartiesChange={refreshParties} shop={shopInfo} onNavigate={onNavigate} />}
       {tab === "ledger" && <LedgerTab org={org} accounts={accounts} branches={branches} shop={shopInfo} parties={parties} printStatement={printStatement} />}
       {tab === "trial" && <TrialTab shop={shopInfo} org={org} accById={accById} postable={postable} branches={branches} />}
@@ -1255,9 +1257,9 @@ function LineChart({ data, height = 190 }: { data: { label: string; value: numbe
 }
 
 // ══════════════ فواتير المبيعات (نقدي/آجل/جزئي + ضريبة) ══════════════
-function SalesTab({ org, postable, accById, branches, branchName, parties, shop, onNavigate }: any) {
+function SalesTab({ org, postable, accById, branches, branchName, parties, shop, onNavigate, returnsMode = false }: any) {
   const multiBranch = branches && branches.length > 1;
-  const [from, setFrom] = useState(monthStart());
+  const [from, setFrom] = useState(returnsMode ? new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10) : monthStart()); // المرتجع قد يخص فاتورة أقدم من الشهر الحالي
   const [to, setTo] = useState(today());
   const [fBranch, setFBranch] = useState<string>("");
   const [invoices, setInvoices] = useState<DB.GLSalesInvoice[]>([]);
@@ -1365,16 +1367,17 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, shop,
           <div><label className={LABEL}>من</label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={DATE} /></div>
           <div><label className={LABEL}>إلى</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={DATE} /></div>
           {multiBranch && <div><label className={LABEL}>الفرع</label><select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className={SELECT}><option value="">كل الفروع</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
-          <button onClick={() => onNavigate?.("sales-invoice")} className={BTN_GHOST_EM}><Plus size={14} /> فاتورة جديدة</button>
-          <button onClick={() => setShowReturnForm(true)} disabled={invoices.length === 0} className={BTN_GHOST_BL} title={invoices.length === 0 ? "لا توجد فواتير ضمن الفترة المحددة" : "إنشاء مرتجع مبيعات"}><ArrowDownCircle size={14} /> إنشاء مرتجع</button>
+          {!returnsMode && <button onClick={() => onNavigate?.("sales-invoice")} className={BTN_GHOST_EM}><Plus size={14} /> فاتورة جديدة</button>}
+          <button data-testid="new-return" onClick={() => setShowReturnForm(true)} disabled={invoices.length === 0} className={BTN_GHOST_BL} title={invoices.length === 0 ? "لا توجد فواتير ضمن الفترة المحددة" : "إنشاء مرتجع مبيعات"}><ArrowDownCircle size={14} /> إنشاء مرتجع</button>
+          {returnsMode ? <button onClick={() => onNavigate?.("sales-invoice")} className={BTN_SOFT}><ShoppingCart size={14} /> فواتير المبيعات</button> : <>
           <button onClick={() => onNavigate?.("pos")} className={BTN_GHOST_BL}><ShoppingCart size={14} /> نقاط البيع</button>
-          <button onClick={() => onNavigate?.("reports")} className={BTN_SOFT}><BarChart3 size={14} /> تقارير المبيعات</button>
+          <button onClick={() => onNavigate?.("reports")} className={BTN_SOFT}><BarChart3 size={14} /> تقارير المبيعات</button></>}
           <span className="text-[11px] text-slate-500 mr-auto">{invoices.length} فاتورة · متبقٍّ على العملاء: <span className="font-mono text-amber-300 font-bold">{fmt(tDue)}</span></span>
         </div>
       </div>
 
       {/* مؤشّرات تشغيلية مختصرة */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
+      {!returnsMode && <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
         {[
           { label: "عدد الفواتير", value: String(invoices.length), icon: ShoppingCart, tone: "blue" },
           { label: "إجمالي الفواتير", value: fmt(tTotal), icon: TrendingUp, tone: "emerald" },
@@ -1394,12 +1397,12 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, shop,
             </div>
           );
         })}
-      </div>
+      </div>}
 
       {/* التحليلات والرسوم البيانية في «تقارير المبيعات» — هذه الصفحة تشغيلية */}
 
 
-      <div className={`${CARD} overflow-hidden`}>
+      {!returnsMode && <div className={`${CARD} overflow-hidden`}>
         <SectionHead icon={ShoppingCart} title="فواتير المبيعات" extra={<span className="text-[11px] text-slate-500">الإجمالي: <span className="font-mono text-emerald-400 font-bold">{fmt(tTotal)}</span></span>} />
         <div className="overflow-x-auto">
           <table className="w-full border-collapse" style={{ minWidth: 980 }}>
@@ -1433,9 +1436,9 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, shop,
             )}
           </table>
         </div>
-      </div>
+      </div>}
 
-      <SalesReturnsPanel org={org} invoices={invoices} parties={parties} postable={postable} treasuryAccounts={treasuryAccounts} branchName={branchName} reloadInvoices={reload} open={showReturnForm} setOpen={setShowReturnForm} />
+      <SalesReturnsPanel returnsMode={returnsMode} org={org} invoices={invoices} parties={parties} postable={postable} treasuryAccounts={treasuryAccounts} branchName={branchName} reloadInvoices={reload} open={showReturnForm} setOpen={setShowReturnForm} />
 
     </div>
   );
@@ -1453,7 +1456,7 @@ function isDedicatedSalesReturnsAccount(account: GLAccount) {
 }
 
 // ══════════════ مرتجعات المبيعات — مستند مستقل SR ══════════════
-function SalesReturnsPanel({ org, invoices, parties, postable, treasuryAccounts, branchName, reloadInvoices, open, setOpen }: any) {
+function SalesReturnsPanel({ org, invoices, parties, postable, treasuryAccounts, branchName, reloadInvoices, open, setOpen, returnsMode = false }: any) {
   const [rows, setRows] = useState<DB.GLSalesReturn[]>([]);
   const [busy, setBusy] = useState(false);
   const [invoiceId, setInvoiceId] = useState("");
@@ -1551,7 +1554,7 @@ function SalesReturnsPanel({ org, invoices, parties, postable, treasuryAccounts,
     setOpen(false); await reload(); await reloadInvoices?.();
   };
   return <>
-    {!open && <div className={`${CARD} overflow-hidden mt-4`}>
+    {!open && <div className={`${CARD} overflow-hidden ${returnsMode ? "" : "mt-4"}`} data-testid="returns-list">
       <SectionHead icon={ArrowDownCircle} title="مرتجعات المبيعات" extra={<span className="text-[11px] text-slate-500">مستندات المرتجعات المرتبطة بفواتير المبيعات</span>} />
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
@@ -1572,7 +1575,7 @@ function SalesReturnsPanel({ org, invoices, parties, postable, treasuryAccounts,
             <div className="rounded-xl bg-blue-500/15 p-2.5 text-blue-300"><ArrowDownCircle size={21}/></div>
             <div><div className="text-xs text-sky-300 mb-1">الحسابات　›　المبيعات　›　مرتجع مبيعات</div><h2 className="text-2xl font-extrabold text-white">إنشاء مرتجع مبيعات</h2><p className="mt-1 text-sm text-slate-400">تسجيل مرتجع جزئي أو كلي على فاتورة مبيعات</p></div>
           </div>
-          <button onClick={()=>setOpen(false)} className="inline-flex items-center gap-2 rounded-xl border border-slate-600 bg-slate-800 px-4 py-3 text-sm font-bold text-slate-200 hover:bg-slate-700">العودة إلى المبيعات <ArrowDownCircle size={16}/></button>
+          <button onClick={()=>setOpen(false)} className="inline-flex items-center gap-2 rounded-xl border border-slate-600 bg-slate-800 px-4 py-3 text-sm font-bold text-slate-200 hover:bg-slate-700">{returnsMode ? "العودة إلى المرتجعات" : "العودة إلى المبيعات"} <ArrowDownCircle size={16}/></button>
         </div>
 
         <div className="p-5 md:p-7 space-y-6">

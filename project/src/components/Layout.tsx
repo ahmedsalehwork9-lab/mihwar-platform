@@ -232,6 +232,7 @@ const OPERATIONS: OpEntry[] = [
     { labelEn: 'POS',                  labelAr: 'نقاط البيع',     page: 'pos' },
     { labelEn: 'Sales Reconciliation', labelAr: 'تسوية المبيعات', page: 'sales-reconciliation' },
     { labelEn: 'Quotation',            labelAr: 'عرض سعر',        page: 'quotation' },
+    { labelEn: 'Sales Returns',        labelAr: 'مرتجعات المبيعات', section: 'sales-returns' },
   ] },
 
   { type: 'group', key: 'purchases', icon: <ShoppingBag size={17} />, labelEn: 'Purchases', labelAr: 'المشتريات', homePage: 'purchase-invoices', children: [

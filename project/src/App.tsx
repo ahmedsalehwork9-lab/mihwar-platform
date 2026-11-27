@@ -42,6 +42,7 @@ const PurchaseInvoicesPage = lazy(() => import('./pages/purchases/PurchaseInvoic
 const PurchaseReturnsPage = lazy(() => import('./pages/purchases/PurchaseReturnsPage'));
 const SupplierPaymentsPage = lazy(() => import('./pages/purchases/SupplierPaymentsPage'));
 const StockAdjustmentsPage = lazy(() => import('./pages/inventory/stocktake/StocktakePage'));
+const InventoryAnalyticsPage = lazy(() => import('./pages/inventory/analytics/InventoryAnalyticsPage'));
 const ItemMovementPage = lazy(() => import('./pages/inventory/itemMovement/ItemMovementPage'));
 
 // ── Admin pages ─────────────────────────────────────────────────────────────
@@ -133,6 +134,7 @@ function AppContent() {
           {page === 'inventory' && <InventoryPage onNavigate={setPage} />}
           {page === 'stock-adjustments' && <StockAdjustmentsPage />}
           {page === 'item-movement' && <ItemMovementPage />}
+          {page === 'inventory-analytics' && <InventoryAnalyticsPage onNavigate={setPage} onSection={setAccSection} />}
           {page === 'orders' && <OrdersPage />}
           {page === 'reports' && <ReportsPage />}
           {page === 'alerts' && <AlertsPage onNavigate={(p) => setPage(p as Page)} onSection={setAccSection} />}

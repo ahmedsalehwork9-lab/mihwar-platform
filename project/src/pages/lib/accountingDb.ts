@@ -118,7 +118,7 @@ export const TYPE_LABEL: Record<AccType, string> = {
 
 // أنواع القيود (لتصنيف القيد وتسهيل الفلترة والربط لاحقًا)*
 
-export type EntryType = "general" | "purchases" | "sales" | "settlement" | "receipt" | "payment" | "depreciation" | "opening";
+export type EntryType = "general" | "purchases" | "sales" | "settlement" | "receipt" | "payment" | "depreciation" | "opening" | "accrual" | "prepaid" | "payroll" | "bank" | "closing";
 
 export const ENTRY_TYPE_LABEL: Record<string, string> = {
 
@@ -140,9 +140,16 @@ export const ENTRY_TYPE_LABEL: Record<string, string> = {
 
   opening: "رصيد افتتاحي",
 
+  accrual: "قيد استحقاق",
+  prepaid: "مصروف مقدم",
+  payroll: "قيد رواتب",
+  bank: "قيد بنكي",
+  closing: "قيد إقفال",
+  reversal: "قيد عكسي",
+
 };
 
-export const ENTRY_TYPE_OPTS: EntryType[] = ["general", "purchases", "sales", "settlement", "receipt", "payment", "depreciation", "opening"];
+export const ENTRY_TYPE_OPTS: EntryType[] = ["general", "purchases", "sales", "settlement", "receipt", "payment", "depreciation", "opening", "accrual", "prepaid", "payroll", "bank", "closing"];
 
 
 

@@ -1217,3 +1217,10 @@
    html.light .border-blue-500\/20   { border-color:#93c5fd !important; }
    html.light .border-purple-500\/20 { border-color:#c4b5fd !important; }
    
+/* ── مركز القيود المحاسبية: ألوان نصوص أغمق في الثيم الفاتح لتحقيق تباين AA (محصور في المركز فقط) ── */
+html.light [data-testid="journal-center"] .text-emerald-400{color:#047857 !important;}
+html.light [data-testid="journal-center"] .text-amber-400{color:#92400e !important;}
+html.light [data-testid="journal-center"] .text-blue-400,
+html.light [data-testid="journal-center"] .text-blue-300{color:#1d4ed8 !important;}
+html.light [data-testid="journal-center"] .text-purple-400{color:#6d28d9 !important;}
+html.light [data-testid="journal-center"] .text-red-400{color:#b91c1c !important;}

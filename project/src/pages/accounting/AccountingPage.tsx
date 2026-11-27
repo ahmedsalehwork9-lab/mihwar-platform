@@ -10,12 +10,12 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
-  Home, ChevronLeft, Calculator, Network, BookOpen, FileText, Scale,
-  Plus, Pencil, Trash2, Download, Save, X, Check, Search,
-  Building2, FileCheck2, Send, Layers, Paperclip, ExternalLink,
+  Home, ChevronLeft, Network, BookOpen, FileText, Scale,
+  Plus, Trash2, Download, Save, Check, Search,
+  Building2, Layers,
   Wallet, Landmark, ArrowDownCircle, Users, Printer,
   TrendingDown, TrendingUp, BarChart3, ShoppingCart,
-  LayoutDashboard, RotateCcw, Eye, ArrowUpDown, Banknote, CheckCircle2, FileClock,
+  LayoutDashboard, RotateCcw, Banknote, CheckCircle2, FileClock,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../lib/supabase";
@@ -28,14 +28,12 @@ import StatementsTab from "./statements/StatementsTab";
 import AssetsTab from "./assets/AssetsTab";
 import { buildReportHTML, openPrint } from "./shared/printReport";
 import { useLang } from "../../context/LanguageContext";
+import JournalCenter from "./journal/JournalCenter";
 import type { GLAccount, GLLine, EntryWithLines, AccType } from "../lib/accountingDb";
 
 const fmt = (n: number) => (Math.round(n * 100) / 100).toLocaleString("en-US", { maximumFractionDigits: 2 });
-const num = (v: any) => parseFloat(v) || 0;
 const today = () => new Date().toISOString().slice(0, 10);
 const monthStart = () => new Date().toISOString().slice(0, 8) + "01";
-const yearOf = (d: string) => Number((d || "").slice(0, 4)) || new Date().getFullYear();
-const jvLabel = (year: number, no: number) => `JV-${year}-${String(no).padStart(4, "0")}`;
 
 // ── رموز تنسيق موحّدة (كلاسات قياسية يعيد theme.css تلوينها للثيمين) ──
 const CARD = "bg-slate-900 border border-slate-800 rounded-2xl";
@@ -150,6 +148,8 @@ function printStatement(shop: any, o: {
 function AccountPicker({ value, onChange, options, placeholder = "— اختر حساب", size = "sm" }: {
   value: number | ""; onChange: (v: number | "") => void; options: GLAccount[]; placeholder?: string; size?: "sm" | "md";
 }) {
+  const { lang } = useLang(); const en = lang === "en";
+  const nm = (a: GLAccount) => (en && a.name_en ? a.name_en : a.name);
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -158,7 +158,7 @@ function AccountPicker({ value, onChange, options, placeholder = "— اختر �
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return options;
-    return options.filter((a) => (a.code + " " + a.name).toLowerCase().includes(s));
+    return options.filter((a) => (a.code + " " + a.name + " " + (a.name_en || "")).toLowerCase().includes(s));
   }, [q, options]);
   const openIt = () => {
     const r = btnRef.current?.getBoundingClientRect();
@@ -172,23 +172,23 @@ function AccountPicker({ value, onChange, options, placeholder = "— اختر �
   return (
     <>
       <button ref={btnRef} type="button" onClick={openIt} className={btnCls + " text-right flex items-center gap-1"}>
-        <span className={`flex-1 truncate ${selected ? "" : "text-slate-500"}`}>{selected ? `${selected.code} - ${selected.name}` : placeholder}</span>
+        <span className={`flex-1 truncate ${selected ? "" : "text-slate-500"}`}>{selected ? `${selected.code} - ${nm(selected)}` : placeholder}</span>
         <ChevronLeft size={12} className="text-slate-500 -rotate-90 shrink-0" />
       </button>
       {open && rect && (
         <div className="fixed inset-0 z-[95]" onClick={() => setOpen(false)}>
-          <div className="absolute bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden" style={{ top: rect.top, left: rect.left, width: Math.max(rect.width, 240), maxWidth: "90vw" }} onClick={(e) => e.stopPropagation()} dir="rtl">
+          <div className="absolute bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden" style={{ top: rect.top, left: rect.left, width: Math.max(rect.width, 240), maxWidth: "90vw" }} onClick={(e) => e.stopPropagation()} dir={en ? "ltr" : "rtl"}>
             <div className="flex items-center gap-2 px-2.5 py-2 border-b border-slate-800">
               <Search size={13} className="text-slate-500 shrink-0" />
-              <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (filtered[0]) pick(filtered[0].id); } else if (e.key === "Escape") setOpen(false); }} placeholder="ابحث بالاسم أو الرقم…" className="flex-1 bg-transparent text-white text-xs outline-none placeholder:text-slate-600" />
+              <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (filtered[0]) pick(filtered[0].id); } else if (e.key === "Escape") setOpen(false); }} placeholder={en ? "Search by name or code…" : "ابحث بالاسم أو رقم الحساب…"} className="flex-1 bg-transparent text-white text-xs outline-none placeholder:text-slate-600" />
             </div>
             <div className="max-h-60 overflow-y-auto py-1">
               {placeholder && <button type="button" onClick={() => pick("")} className="w-full text-right px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-800/60">{placeholder}</button>}
-              {filtered.length === 0 ? <div className="px-3 py-3 text-center text-slate-500 text-xs">لا نتائج</div> : (
+              {filtered.length === 0 ? <div className="px-3 py-3 text-center text-slate-500 text-xs">{en ? "No results" : "لا نتائج"}</div> : (
                 filtered.map((a) => (
                   <button key={a.id} type="button" onClick={() => pick(a.id)} className={`w-full flex items-center gap-2 px-3 py-1.5 text-right text-xs hover:bg-slate-800/60 ${a.id === value ? "bg-blue-500/10" : ""}`}>
                     <span className="font-mono text-slate-400 [direction:ltr] shrink-0">{a.code}</span>
-                    <span className="flex-1 text-slate-200 truncate">{a.name}</span>
+                    <span className="flex-1 text-slate-200 truncate">{nm(a)}</span>
                   </button>
                 ))
               )}
@@ -213,6 +213,7 @@ function PartyPicker({ parties, onPick, value, placeholder = "— اختر طر�
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
+  const { lang: pl } = useLang(); const en = pl === "en";
   const [drill, setDrill] = useState<DB.GLParty | null>(null);   // المركز المفتوح لعرض فروعه
   const btnRef = useRef<HTMLButtonElement>(null);
   const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
@@ -241,7 +242,7 @@ function PartyPicker({ parties, onPick, value, placeholder = "— اختر طر�
   return (
     <>
       {compact ? (
-        <button ref={btnRef} type="button" onClick={openIt} title="اختيار عميل/مورد" className="w-8 h-8 shrink-0 rounded-lg bg-blue-500/10 text-blue-300 flex items-center justify-center hover:bg-blue-500/20"><Users size={14} /></button>
+        <button ref={btnRef} type="button" onClick={openIt} title={en ? "Pick customer/supplier" : "اختيار عميل/مورد"} className="w-8 h-8 shrink-0 rounded-lg bg-blue-500/10 text-blue-300 flex items-center justify-center hover:bg-blue-500/20"><Users size={14} /></button>
       ) : (
         <button ref={btnRef} type="button" onClick={openIt} className={(size === "sm" ? "w-full bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs" : "w-full bg-slate-950 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm") + " outline-none focus:border-blue-500 text-right flex items-center gap-1"}>
           <span className={`flex-1 truncate ${selected ? "" : "text-slate-500"}`}>{selected ? selected.name : placeholder}</span>
@@ -253,22 +254,22 @@ function PartyPicker({ parties, onPick, value, placeholder = "— اختر طر�
           <div className="absolute bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden" style={{ top: rect.top, left: compact ? Math.max(8, rect.left - 220) : rect.left, width: compact ? 270 : Math.max(rect.width, 250), maxWidth: "90vw" }} onClick={(e) => e.stopPropagation()} dir="rtl">
             <div className="flex items-center gap-2 px-2.5 py-2 border-b border-slate-800">
               <Search size={13} className="text-slate-500 shrink-0" />
-              <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (searchResults[0]) pick(searchResults[0]); } else if (e.key === "Escape") setOpen(false); }} placeholder="ابحث باسم العميل/المورد…" className="flex-1 bg-transparent text-white text-xs outline-none placeholder:text-slate-600" />
+              <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (searchResults[0]) pick(searchResults[0]); } else if (e.key === "Escape") setOpen(false); }} placeholder={en ? "Search name, phone or tax no…" : "ابحث بالاسم أو الجوال أو الرقم الضريبي…"} className="flex-1 bg-transparent text-white text-xs outline-none placeholder:text-slate-600" />
             </div>
             <div className="max-h-60 overflow-y-auto py-1">
               {searching ? (
                 searchResults.length === 0
-                  ? <div className="px-3 py-3 text-center text-slate-500 text-xs">لا نتائج — أضِف الطرف من «العملاء والموردين»</div>
+                  ? <div className="px-3 py-3 text-center text-slate-500 text-xs">{en ? "No results — add the party in Customers & Suppliers" : "لا نتائج — أضِف الطرف من «العملاء والموردين»"}</div>
                   : searchResults.map((p) => (
                       <button key={p.id} type="button" onClick={() => pick(p)} className={`w-full flex items-center gap-2 px-3 py-1.5 text-right text-xs hover:bg-slate-800/60 ${p.id === value ? "bg-blue-500/10" : ""}`}>
                         <span className="flex-1 text-slate-200 truncate">{p.name}</span>
-                        <span className="text-[9px] text-slate-500">{p.type === "customer" ? "عميل" : "مورد"}</span>
-                        {p.parent_id != null && <span className="text-[9px] text-blue-300/70 truncate">تحت {nameOf(p.parent_id)}</span>}
+                        <span className="text-[9px] text-slate-500">{p.type === "customer" ? (en ? "Customer" : "عميل") : (en ? "Supplier" : "مورد")}</span>
+                        {p.parent_id != null && <span className="text-[9px] text-blue-300/70 truncate">{en ? "Under" : "تحت"} {nameOf(p.parent_id)}</span>}
                       </button>
                     ))
               ) : drill ? (
                 <>
-                  <button type="button" onClick={() => setDrill(null)} className="w-full flex items-center gap-1 px-3 py-1.5 text-right text-[11px] text-blue-300 hover:bg-slate-800/60 border-b border-slate-800"><ChevronLeft size={12} /> رجوع للكل</button>
+                  <button type="button" onClick={() => setDrill(null)} className="w-full flex items-center gap-1 px-3 py-1.5 text-right text-[11px] text-blue-300 hover:bg-slate-800/60 border-b border-slate-800"><ChevronLeft size={12} /> {en ? "Back to all" : "رجوع للكل"}</button>
                   <div className="px-3 py-1 text-[9px] text-slate-500">فروع {drill.name}</div>
                   {drill.account_id ? leaf(drill, "المركز نفسه") : null}
                   {(childrenOf.get(drill.id) || []).map((c) => leaf(c, "فرعي"))}
@@ -299,7 +300,7 @@ function PartyPicker({ parties, onPick, value, placeholder = "— اختر طر�
 }
 
 export default function AccountingPage({ section, onSection, onNavigate }: { section?: string; onSection?: (s: string) => void; onNavigate?: (p: string) => void } = {}) {
-  const { ownedShopId, branches } = (useAuth() as any) ?? {};
+  const { ownedShopId, branches, isAdmin: isAdminFlag } = (useAuth() as any) ?? {};
   const { t: tr, lang: uiLang, isRTL: uiRTL } = useLang();
   const [org, setOrg] = useState<{ id: number; name: string } | null>(null);
   const [orgLoading, setOrgLoading] = useState(true);
@@ -397,7 +398,7 @@ export default function AccountingPage({ section, onSection, onNavigate }: { sec
       {tab === "dashboard" && <DashboardTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} parties={parties} onSection={setTab} onNavigate={onNavigate} />}
       {tab === "chart" && <ChartTab org={org} shop={shopInfo} accounts={accounts} reload={reloadAccounts} busy={busy} setBusy={setBusy} />}
       {tab === "opening" && <OpeningTab org={org} accounts={accounts} postable={postable} branches={branches} />}
-      {tab === "journal" && <JournalTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} parties={parties} />}
+      {tab === "journal" && <JournalCenter org={org} postable={postable} accById={accById} branches={branches || []} branchName={(id: number) => branchName(id)} parties={parties} ui={{ AccountPicker, PartyPicker, resolvePartyAccount }} onSection={onSection ? (k: string) => setTab(k as Tab) : undefined} shopInfo={shopInfo} isAdmin={!!isAdminFlag} />}
       {tab === "sales-returns" && <SalesTab returnsMode org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} parties={parties} onPartiesChange={refreshParties} shop={shopInfo} onNavigate={onNavigate} />}
       {tab === "sales" && <SalesTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} parties={parties} onPartiesChange={refreshParties} shop={shopInfo} onNavigate={onNavigate} />}
       {tab === "ledger" && <LedgerTab org={org} accounts={accounts} branches={branches} shop={shopInfo} parties={parties} printStatement={printStatement} />}
@@ -410,8 +411,6 @@ export default function AccountingPage({ section, onSection, onNavigate }: { sec
 }
 
 // ══════════════ القيود اليومية ══════════════
-type DraftLine = { account_id: number | ""; debit: string; credit: string; branch_id: number | ""; note: string; party_id: number | null };
-const emptyLine = (): DraftLine => ({ account_id: "", debit: "", credit: "", branch_id: "", note: "", party_id: null });
 
 // ══════════════ لوحة التحكم المحاسبية ══════════════
 function DashboardTab({ org, postable, parties, onSection }: any) {
@@ -535,489 +534,6 @@ function DashboardTab({ org, postable, parties, onSection }: any) {
               </div>
             </div>
           ) : <div className="p-8 text-center text-slate-600 text-xs">لا توجد قيود مُرحّلة.</div>}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ══════════════ القيود اليومية ══════════════
-function JournalTab({ org, postable, accById, branches, branchName, parties }: any) {
-  const multiBranch = branches &&branches.length > 1;
-
-  // فلاتر العرض
-  const [from, setFrom] = useState(monthStart());
-  const [to, setTo] = useState(today());
-  const [fBranch, setFBranch] = useState<string>("");
-  const [fType, setFType] = useState<string>("");
-  const [fStatus, setFStatus] = useState<string>("");
-  const [fAccount, setFAccount] = useState<string>("");
-  const [search, setSearch] = useState<string>("");
-  const [sortKey, setSortKey] = useState<"no" | "date" | "debit">("date");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [drawerEntry, setDrawerEntry] = useState<EntryWithLines | null>(null);
-  const [reversing, setReversing] = useState(false);
-  const [entries, setEntries] = useState<EntryWithLines[]>([]);
-
-  // نموذج الإدخال/التعديل
-  const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editingNo, setEditingNo] = useState<string>("");       // JV ثابت عند التعديل
-  const [nextNo, setNextNo] = useState<number>(0);              // JV متوقع عند الإضافة
-  const [saving, setSaving] = useState(false);
-
-  const [date, setDate] = useState(today());
-  const [eType, setEType] = useState<string>("general");
-  const [desc, setDesc] = useState("");
-  const [notes, setNotes] = useState("");
-  const [eBranch, setEBranch] = useState<string>("");          // مركز التكلفة الافتراضي
-  const [lines, setLines] = useState<DraftLine[]>([emptyLine(), emptyLine()]);
-
-  // مرفقات القيد
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);            // ملفات جديدة تُرفع عند الحفظ
-  const [existingAtts, setExistingAtts] = useState<DB.GLAttachment[]>([]); // مرفقات القيد قيد التعديل
-  const [attMap, setAttMap] = useState<Record<number, number>>({});        // عدد مرفقات كل قيد في القائمة
-  const attRef = useRef<HTMLInputElement>(null);
-
-  const reload = useCallback(async () => {
-    const es = await DB.fetchEntries(org.id, from, to, fBranch ? Number(fBranch) : null);
-    setEntries(es);
-    setAttMap(await DB.countAttachments(es.map((e) => e.id)));
-  }, [org.id, from, to, fBranch]);
-  useEffect(() => { reload(); }, [reload]);
-
-  // JV المتوقع عند الإضافة (يتحدّث مع تغيّر السنة)
-  useEffect(() => {
-    if (!showForm || editingId != null) return;
-    let active = true;
-    (async () => { const n = await DB.nextEntryNo(org.id, yearOf(date)); if (active) setNextNo(n); })();
-    return () => { active = false; };
-  }, [showForm, editingId, date, org.id]);
-
-  const sumD = lines.reduce((s, l) => s + num(l.debit), 0);
-  const sumC = lines.reduce((s, l) => s + num(l.credit), 0);
-  const balanced = Math.abs(sumD - sumC) < 0.005 && sumD > 0;
-  const setLine = (i: number, patch: Partial<DraftLine>) => setLines((p) => p.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
-
-  const resetForm = () => { setDate(today()); setEType("general"); setDesc(""); setNotes(""); setEBranch(""); setLines([emptyLine(), emptyLine()]); setPendingFiles([]); setExistingAtts([]); };
-
-  const openNew = () => { setEditingId(null); setEditingNo(""); resetForm(); setShowForm(true); };
-  const closeForm = () => { setShowForm(false); setEditingId(null); setEditingNo(""); resetForm(); };
-
-  const startEdit = (e: EntryWithLines) => {
-    setEditingId(e.id);
-    setEditingNo(jvLabel(e.entry_year, e.entry_no));
-    setDate(e.date);
-    setEType(e.entry_type || "general");
-    setDesc(e.description || "");
-    setNotes(e.notes || "");
-    setEBranch(e.branch_id != null ? String(e.branch_id) : "");
-    const ls: DraftLine[] = (e.lines || []).map((l) => ({
-      account_id: l.account_id, debit: l.debit ? String(l.debit) : "", credit: l.credit ? String(l.credit) : "",
-      branch_id: l.branch_id != null ? Number(l.branch_id) : "", note: l.note || "", party_id: (l as any).party_id ?? null,
-    }));
-    setLines(ls.length >= 2 ? ls : [...ls, emptyLine(), emptyLine()].slice(0, Math.max(2, ls.length)));
-    setPendingFiles([]);
-    setExistingAtts([]);
-    DB.fetchAttachments(e.id).then(setExistingAtts);
-    setShowForm(true);
-    try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { /* noop */ }
-  };
-
-  // ── إدارة المرفقات ──
-  const addFiles = (files: FileList | null) => {
-    if (!files || !files.length) return;
-    const arr = Array.from(files);
-    const tooBig = arr.find((f) => f.size > 10 * 1024 * 1024);
-    if (tooBig) { alert("حجم الملف أكبر من 10 ميجابايت: " + tooBig.name); return; }
-    setPendingFiles((p) => [...p, ...arr]);
-  };
-  const openAtt = async (att: DB.GLAttachment) => {
-    const url = await DB.signedUrl(att.file_path);
-    if (url) window.open(url, "_blank"); else alert("تعذّر فتح المرفق");
-  };
-  const delExisting = async (att: DB.GLAttachment) => {
-    if (!window.confirm(`حذف المرفق «${att.file_name}»؟`)) return;
-    const r = await DB.deleteAttachment(att);
-    if (!r.ok) { alert("تعذّر الحذف: " + (r.error || "")); return; }
-    setExistingAtts((p) => p.filter((a) => a.id !== att.id));
-    await reload();
-  };
-
-  const persist = async (status: "posted" | "draft") => {
-    const valid = lines.filter((l) => l.account_id && (num(l.debit) || num(l.credit)));
-    if (valid.length < 2) { alert("أضف سطرين على الأقل بحساب ومبلغ"); return; }
-    if (status === "posted" && !balanced) { alert("القيد غير متوازن: مجموع المدين يجب أن يساوي مجموع الدائن"); return; }
-    const header: DB.EntryHeader = {
-      date, description: desc || null, branch_id: eBranch ? Number(eBranch) : null,
-      entry_type: eType, notes: notes || null, status,
-    };
-    const glLines: GLLine[] = valid.map((l) => ({
-      account_id: Number(l.account_id), debit: num(l.debit), credit: num(l.credit),
-      branch_id: l.branch_id === "" ? null : Number(l.branch_id), note: l.note || null, party_id: l.party_id ?? null,
-    }));
-    setSaving(true);
-    const r = editingId != null ? await DB.updateEntry(editingId, header, glLines) : await DB.createEntry(org.id, header, glLines);
-    if (!r.ok) { setSaving(false); alert("تعذّر حفظ القيد: " + ((r as any).error || "")); return; }
-    // رفع المرفقات الجديدة بعد تأمين معرّف القيد
-    const entryId = editingId != null ? editingId : (r as any).id;
-    if (entryId && pendingFiles.length) {
-      for (const f of pendingFiles) {
-        const up = await DB.uploadAttachment(org.id, entryId, f);
-        if (!up.ok) alert(`تعذّر رفع «${f.name}»: ${up.error || ""}`);
-      }
-    }
-    setSaving(false);
-    closeForm();
-    await reload();
-  };
-
-  const post = async (id: number) => { const r = await DB.setEntryStatus(id, "posted"); if (r.ok) await reload(); else alert("تعذّر الترحيل: " + (r.error || "")); };
-  const del = async (id: number) => { if (!window.confirm("حذف هذا القيد؟")) return; const r = await DB.deleteEntry(id); if (r.ok) { setDrawerEntry(null); await reload(); } else alert("تعذّر الحذف: " + (r.error || "")); };
-  const reverse = async (e: EntryWithLines) => {
-    if (!window.confirm(`إنشاء قيد عكسي للقيد ${jvLabel(e.entry_year, e.entry_no)}؟ سيُنشأ قيد مُرحّل معاكس ويبقى الأصل كما هو.`)) return;
-    setReversing(true);
-    const r = await DB.reverseEntry(e.id, { date: today() });
-    setReversing(false);
-    if (r.ok) { setDrawerEntry(null); await reload(); alert("تم إنشاء القيد العكسي بنجاح."); }
-    else alert("تعذّر إنشاء القيد العكسي: " + (r.error || ""));
-  };
-  const isPosted = (e: EntryWithLines) => (e.status || "posted") === "posted";
-  const entryDC = (e: EntryWithLines) => {
-    const d = (e.lines || []).reduce((s, l) => s + Number(l.debit || 0), 0);
-    const c = (e.lines || []).reduce((s, l) => s + Number(l.credit || 0), 0);
-    return { d, c };
-  };
-
-  // تصفية العرض (نوع/حالة/بحث)
-  const shown = useMemo(() => entries.filter((e) => {
-    if (fType && (e.entry_type || "general") !== fType) return false;
-    if (fStatus && (e.status || "posted") !== fStatus) return false;
-    if (fAccount && !(e.lines || []).some((l) => String(l.account_id) === fAccount)) return false;
-    if (search.trim()) {
-      const q = search.trim().toLowerCase();
-      const hay = `${e.entry_no} ${e.description || ""} ${e.notes || ""} ${jvLabel(e.entry_year, e.entry_no)}`.toLowerCase();
-      if (!hay.includes(q)) return false;
-    }
-    return true;
-  }), [entries, fType, fStatus, fAccount, search]);
-
-  const sortedShown = useMemo(() => {
-    const arr = [...shown];
-    const dir = sortDir === "asc" ? 1 : -1;
-    arr.sort((a, b) => {
-      if (sortKey === "no") return ((a.entry_year * 1e6 + a.entry_no) - (b.entry_year * 1e6 + b.entry_no)) * dir;
-      if (sortKey === "debit") return (entryDC(a).d - entryDC(b).d) * dir;
-      return ((a.date || "").localeCompare(b.date || "") || (a.entry_no - b.entry_no)) * dir;
-    });
-    return arr;
-  }, [shown, sortKey, sortDir]);
-
-  const toggleSort = (k: "no" | "date" | "debit") => { if (sortKey === k) setSortDir((d) => (d === "asc" ? "desc" : "asc")); else { setSortKey(k); setSortDir("desc"); } };
-
-  const draftCount = entries.filter((e) => (e.status || "posted") === "draft").length;
-
-  return (
-    <div>
-      {/* شريط الفلاتر */}
-      <div className={`${CARD} p-3 mb-4`}>
-        <div className="flex flex-wrap items-end gap-3">
-          <div><label className={LABEL}>من</label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={DATE} /></div>
-          <div><label className={LABEL}>إلى</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={DATE} /></div>
-          {multiBranch && (
-            <div><label className={LABEL}>الفرع</label><select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className={SELECT}><option value="">كل الفروع</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
-          )}
-          <div><label className={LABEL}>النوع</label><select value={fType} onChange={(e) => setFType(e.target.value)} className={SELECT}><option value="">كل الأنواع</option>{DB.ENTRY_TYPE_OPTS.map((t) => <option key={t} value={t}>{DB.ENTRY_TYPE_LABEL[t]}</option>)}</select></div>
-          <div><label className={LABEL}>الحالة</label><select value={fStatus} onChange={(e) => setFStatus(e.target.value)} className={SELECT}><option value="">الكل</option><option value="posted">مُرحّل</option><option value="draft">مسودة</option></select></div>
-          <div><label className={LABEL}>الحساب</label><select value={fAccount} onChange={(e) => setFAccount(e.target.value)} className={SELECT + " max-w-[200px]"}><option value="">كل الحسابات</option>{postable.map((a: any) => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}</select></div>
-          <div className="flex-1 min-w-[160px]"><label className={LABEL}>بحث</label>
-            <div className="relative">
-              <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="رقم / بيان / ملاحظة" className={INPUT + " pr-9"} />
-            </div>
-          </div>
-          <button onClick={openNew} className={BTN_PRIMARY}><Plus size={14} /> قيد جديد</button>
-        </div>
-      </div>
-
-      {/* نموذج الإدخال/التعديل */}
-      {showForm && (
-        <div className={`${CARD} p-4 mb-4`}>
-          {/* بطاقة رقم القيد + النوع + الحالة */}
-          <div className="flex flex-wrap items-center gap-3 mb-4">
-            <div className="inline-flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-blue-500/10 border border-blue-500/20">
-              <FileCheck2 size={18} className="text-blue-400" />
-              <div>
-                <div className="text-[10px] text-blue-300/70 font-bold leading-none mb-1">رقم القيد</div>
-                <div className="font-mono font-black text-blue-300 text-sm [direction:ltr] leading-none">{editingId != null ? editingNo : jvLabel(yearOf(date), nextNo)}</div>
-              </div>
-            </div>
-            <span className="text-sm font-bold text-white">{editingId != null ? "تعديل قيد يومية" : "إدخال قيد يومية جديد"}</span>
-            {editingId != null && <span className="text-[10px] px-2 py-1 rounded-full bg-amber-500/15 text-amber-400 font-bold">وضع التعديل</span>}
-            <button onClick={closeForm} className="mr-auto w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 text-slate-400 hover:text-white flex items-center justify-center"><X size={15} /></button>
-          </div>
-
-          {/* ترويسة القيد */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
-            <div><label className={LABEL}>التاريخ</label><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={DATE} /></div>
-            <div><label className={LABEL}>نوع القيد</label><select value={eType} onChange={(e) => setEType(e.target.value)} className={SELECT}>{DB.ENTRY_TYPE_OPTS.map((t) => <option key={t} value={t}>{DB.ENTRY_TYPE_LABEL[t]}</option>)}</select></div>
-            <div className={multiBranch ? "" : "lg:col-span-2"}><label className={LABEL}>البيان</label><input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="وصف القيد" className={INPUT} /></div>
-            {multiBranch && <div><label className={LABEL}>مركز التكلفة الافتراضي</label><select value={eBranch} onChange={(e) => setEBranch(e.target.value)} className={SELECT}><option value="">— بدون</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
-          </div>
-
-          {/* سطور القيد */}
-          <div className="overflow-x-auto rounded-xl border border-slate-800">
-            <table className="w-full border-collapse" style={{ minWidth: multiBranch ? 760 : 620 }}>
-              <thead>
-                <tr className="bg-slate-950">
-                  {["#", "الحساب", "مدين", "دائن", ...(multiBranch ? ["مركز التكلفة"] : []), "ملاحظة", ""].map((h, i) => (
-                    <th key={i} className="text-right text-[10px] font-bold text-slate-500 px-2 py-2.5">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {lines.map((l, i) => (
-                  <tr key={i} className="border-t border-slate-800">
-                    <td className="px-2 py-1.5 text-center text-[11px] text-slate-600 font-mono">{i + 1}</td>
-                    <td className="px-2 py-1.5"><AccountPicker value={l.account_id} onChange={(v) => setLine(i, { account_id: v })} options={postable} size="sm" /></td>
-                    <td className="px-2 py-1.5"><input type="number" step="0.01" value={l.debit} onChange={(e) => setLine(i, { debit: e.target.value, credit: e.target.value ? "" : l.credit })} placeholder="0" className="w-28 bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr] outline-none focus:border-emerald-500" /></td>
-                    <td className="px-2 py-1.5"><input type="number" step="0.01" value={l.credit} onChange={(e) => setLine(i, { credit: e.target.value, debit: e.target.value ? "" : l.debit })} placeholder="0" className="w-28 bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr] outline-none focus:border-amber-500" /></td>
-                    {multiBranch && <td className="px-2 py-1.5"><select value={l.branch_id} onChange={(e) => setLine(i, { branch_id: e.target.value ? Number(e.target.value) : "" })} className="w-full min-w-[120px] bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs outline-none focus:border-blue-500"><option value="">افتراضي</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></td>}
-                    <td className="px-2 py-1.5"><div className="flex items-center gap-1">
-                      <PartyPicker parties={parties} compact onPick={(p) => { const acc = resolvePartyAccount(p, parties); if (!acc) { alert("هذا الطرف غير مرتبط بحساب ذمة (ولا مركزه). حدّد حساب الذمة في «العملاء والموردين» أولًا."); return; } setLine(i, { account_id: acc, note: p.name, party_id: p.id }); }} />
-                      <input value={l.note} onChange={(e) => setLine(i, { note: e.target.value })} placeholder="— أو اختر طرف" className="w-full min-w-[110px] bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs outline-none focus:border-blue-500" />
-                    </div></td>
-                    <td className="px-2 py-1.5 text-center"><button onClick={() => setLines((p) => (p.length > 2 ? p.filter((_, idx) => idx !== i) : p))} title="حذف السطر" className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400 flex items-center justify-center mx-auto hover:bg-red-500/20"><X size={13} /></button></td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="bg-slate-950 font-bold">
-                  <td className="px-2 py-2.5 text-center" />
-                  <td className="px-2 py-2.5 text-right text-xs text-slate-300">الإجمالي</td>
-                  <td className={`px-2 py-2.5 text-center font-mono text-xs [direction:ltr] ${balanced ? "text-emerald-400" : "text-amber-400"}`}>{fmt(sumD)}</td>
-                  <td className={`px-2 py-2.5 text-center font-mono text-xs [direction:ltr] ${balanced ? "text-emerald-400" : "text-amber-400"}`}>{fmt(sumC)}</td>
-                  <td colSpan={multiBranch ? 3 : 2} className={`px-2 py-2.5 text-xs ${balanced ? "text-emerald-400" : "text-amber-400"}`}>{balanced ? "✓ القيد متوازن" : `الفرق: ${fmt(sumD - sumC)}`}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-
-          {/* ملاحظات عامة */}
-          <div className="mt-3">
-            <label className={LABEL}>ملاحظات عامة (اختياري)</label>
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="ملاحظات إضافية على القيد…" className={INPUT + " resize-y"} />
-          </div>
-
-          {/* المرفقات */}
-          <div className="mt-3">
-            <label className={LABEL}>المرفقات (فواتير/مستندات — PDF أو صورة، حتى 10 ميجابايت)</label>
-            <div className="flex flex-wrap items-center gap-2">
-              <button type="button" onClick={() => attRef.current?.click()} className={BTN_GHOST_BL}><Paperclip size={14} /> إضافة مرفق</button>
-              <input ref={attRef} type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
-              {(existingAtts.length + pendingFiles.length) > 0 && <span className="text-[11px] text-slate-500">{existingAtts.length + pendingFiles.length} مرفق</span>}
-            </div>
-            {(existingAtts.length > 0 || pendingFiles.length > 0) && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {existingAtts.map((a) => (
-                  <div key={a.id} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs">
-                    <FileText size={13} className="text-blue-400 shrink-0" />
-                    <button type="button" onClick={() => openAtt(a)} title="فتح المرفق" className="text-slate-200 hover:text-blue-400 max-w-[170px] truncate inline-flex items-center gap-1">{a.file_name}<ExternalLink size={11} className="opacity-60" /></button>
-                    <button type="button" onClick={() => delExisting(a)} title="حذف المرفق" className="text-red-400 hover:text-red-300 shrink-0"><X size={13} /></button>
-                  </div>
-                ))}
-                {pendingFiles.map((f, i) => (
-                  <div key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs">
-                    <Paperclip size={13} className="text-blue-400 shrink-0" />
-                    <span className="text-blue-200 max-w-[170px] truncate">{f.name}</span>
-                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-500/15 text-blue-300 shrink-0">سيُرفع</span>
-                    <button type="button" onClick={() => setPendingFiles((p) => p.filter((_, idx) => idx !== i))} title="إزالة" className="text-red-400 hover:text-red-300 shrink-0"><X size={13} /></button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* أزرار الحفظ */}
-          <div className="flex items-center gap-2 mt-4 flex-wrap">
-            <button onClick={() => setLines((p) => [...p, emptyLine()])} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600/10 border border-dashed border-blue-500 text-blue-300 font-bold text-xs hover:bg-blue-600/20"><Plus size={13} /> سطر</button>
-            <div className="mr-auto flex items-center gap-2 flex-wrap">
-              <button onClick={() => persist("draft")} disabled={saving} className={BTN_SOFT}><Save size={14} /> حفظ كمسودة</button>
-              <button onClick={() => persist("posted")} disabled={saving || !balanced} className={BTN_SUCCESS}><Check size={16} /> {saving ? "جارٍ…" : editingId != null ? "حفظ وترحيل" : "ترحيل القيد"}</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* دفتر اليومية */}
-      <div className={`${CARD} overflow-hidden`}>
-        <SectionHead icon={BookOpen} title="دفتر اليومية" extra={
-          <div className="flex items-center gap-2 text-[11px]">
-            {draftCount > 0 && <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 font-bold">{draftCount} مسودة</span>}
-            <span className="text-slate-500">{shown.length} قيد</span>
-          </div>
-        } />
-        {sortedShown.length === 0 ? (
-          <div className="p-10 text-center text-slate-500 text-sm">لا توجد قيود مطابقة ضمن هذه الفترة/الفلاتر.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-right border-collapse" style={{ minWidth: 820 }}>
-              <thead>
-                <tr className="bg-slate-950/40 border-b border-slate-800 text-[10px] text-slate-500">
-                  <SortTH label="رقم القيد" active={sortKey === "no"} dir={sortDir} onClick={() => toggleSort("no")} />
-                  <SortTH label="التاريخ" active={sortKey === "date"} dir={sortDir} onClick={() => toggleSort("date")} />
-                  <th className="px-3 py-2.5 font-bold">المصدر</th>
-                  <th className="px-3 py-2.5 font-bold">البيان</th>
-                  {multiBranch && <th className="px-3 py-2.5 font-bold">الفرع</th>}
-                  <SortTH label="مدين" active={sortKey === "debit"} dir={sortDir} onClick={() => toggleSort("debit")} center />
-                  <th className="px-3 py-2.5 font-bold text-center">دائن</th>
-                  <th className="px-3 py-2.5 font-bold text-center">الحالة</th>
-                  <th className="px-3 py-2.5 font-bold text-center">إجراءات</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60">
-                {sortedShown.map((e) => {
-                  const { d, c } = entryDC(e);
-                  const draft = !isPosted(e);
-                  const reversed = (e.notes || "").includes("[REVERSED]");
-                  const isReversal = (e.notes || "").includes("[REVERSAL]");
-                  return (
-                    <tr key={e.id} onClick={() => setDrawerEntry(e)} className="text-xs hover:bg-slate-800/30 cursor-pointer transition-colors">
-                      <td className="px-3 py-2.5 font-mono font-bold text-blue-300 [direction:ltr] whitespace-nowrap">
-                        {jvLabel(e.entry_year, e.entry_no)}
-                        {attMap[e.id] ? <Paperclip size={10} className="inline mr-1 text-slate-500" /> : null}
-                      </td>
-                      <td className="px-3 py-2.5 font-mono text-slate-400 [direction:ltr] whitespace-nowrap">{e.date}</td>
-                      <td className="px-3 py-2.5"><span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-700/40 text-slate-300 whitespace-nowrap">{DB.ENTRY_TYPE_LABEL[e.entry_type || "general"]}</span></td>
-                      <td className="px-3 py-2.5 text-slate-200 max-w-[260px] truncate">
-                        {e.description || "—"}
-                        {reversed && <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-300 mr-1">معكوس</span>}
-                        {isReversal && <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300 mr-1">قيد عكسي</span>}
-                      </td>
-                      {multiBranch && <td className="px-3 py-2.5 text-slate-400 whitespace-nowrap">{e.branch_id != null ? branchName(e.branch_id) : "—"}</td>}
-                      <td className="px-3 py-2.5 text-center font-mono text-emerald-300 [direction:ltr] whitespace-nowrap">{fmt(d)}</td>
-                      <td className="px-3 py-2.5 text-center font-mono text-amber-300 [direction:ltr] whitespace-nowrap">{fmt(c)}</td>
-                      <td className="px-3 py-2.5 text-center"><span className={`text-[10px] px-2 py-0.5 rounded-full font-bold whitespace-nowrap ${draft ? "bg-amber-500/15 text-amber-400" : "bg-emerald-500/15 text-emerald-400"}`}>{draft ? "مسودة" : "مُرحّل"}</span></td>
-                      <td className="px-3 py-2.5" onClick={(ev) => ev.stopPropagation()}>
-                        <div className="flex items-center justify-center gap-1">
-                          <button onClick={() => setDrawerEntry(e)} title="عرض التفاصيل" className="w-7 h-7 rounded-lg bg-slate-700/40 text-slate-300 flex items-center justify-center hover:bg-slate-700"><Eye size={13} /></button>
-                          {draft ? (
-                            <>
-                              <button onClick={() => post(e.id)} title="ترحيل" className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center hover:bg-emerald-500/20"><Send size={13} /></button>
-                              <button onClick={() => startEdit(e)} title="تعديل" className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-300 flex items-center justify-center hover:bg-blue-500/20"><Pencil size={13} /></button>
-                              <button onClick={() => del(e.id)} title="حذف" className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400 flex items-center justify-center hover:bg-red-500/20"><Trash2 size={13} /></button>
-                            </>
-                          ) : (
-                            !reversed && <button onClick={() => reverse(e)} disabled={reversing} title="قيد عكسي (تصحيح)" className="w-7 h-7 rounded-lg bg-purple-500/10 text-purple-300 flex items-center justify-center hover:bg-purple-500/20 disabled:opacity-50"><RotateCcw size={13} /></button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {drawerEntry && (
-        <JournalDrawer
-          entry={drawerEntry} accById={accById} branchName={branchName} attCount={attMap[drawerEntry.id] || 0}
-          onClose={() => setDrawerEntry(null)}
-          onPost={!isPosted(drawerEntry) ? () => post(drawerEntry.id) : undefined}
-          onEdit={!isPosted(drawerEntry) ? () => { startEdit(drawerEntry); setDrawerEntry(null); } : undefined}
-          onDelete={!isPosted(drawerEntry) ? () => del(drawerEntry.id) : undefined}
-          onReverse={isPosted(drawerEntry) && !(drawerEntry.notes || "").includes("[REVERSED]") ? () => reverse(drawerEntry) : undefined}
-          reversing={reversing}
-        />
-      )}
-    </div>
-  );
-}
-
-// رأس عمود قابل للفرز في جدول القيود
-function SortTH({ label, active, dir, onClick, center }: { label: string; active: boolean; dir: "asc" | "desc"; onClick: () => void; center?: boolean }) {
-  return (
-    <th className={`px-3 py-2.5 font-bold cursor-pointer select-none hover:text-slate-300 ${center ? "text-center" : ""}`} onClick={onClick}>
-      <span className="inline-flex items-center gap-1">{label}<ArrowUpDown size={11} className={active ? "text-blue-400" : "text-slate-600"} /></span>
-    </th>
-  );
-}
-
-// لوحة تفاصيل القيد (Drawer) — عرض كامل + إجراءات محكومة بالحالة
-function JournalDrawer({ entry, accById, branchName, attCount, onClose, onPost, onEdit, onDelete, onReverse, reversing }: any) {
-  const e = entry as EntryWithLines;
-  const lines = e.lines || [];
-  const d = lines.reduce((s, l) => s + Number(l.debit || 0), 0);
-  const c = lines.reduce((s, l) => s + Number(l.credit || 0), 0);
-  const draft = (e.status || "posted") === "draft";
-  const reversed = (e.notes || "").includes("[REVERSED]");
-  const Info = ({ label, value }: any) => (
-    <div><div className="text-[10px] text-slate-500 font-bold">{label}</div><div className="text-sm text-slate-200">{value}</div></div>
-  );
-  return (
-    <div className="fixed inset-0 z-50 flex" onClick={onClose}>
-      <div className="flex-1 bg-black/50" />
-      <div dir="rtl" onClick={(ev) => ev.stopPropagation()} className="w-full max-w-md bg-slate-900 border-l border-slate-800 h-full overflow-y-auto shadow-2xl">
-        <div className="sticky top-0 bg-slate-900 border-b border-slate-800 px-4 py-3 flex items-center justify-between z-10">
-          <div className="flex items-center gap-2">
-            <FileCheck2 size={18} className="text-blue-400" />
-            <div>
-              <div className="font-mono font-bold text-blue-300 [direction:ltr]">{jvLabel(e.entry_year, e.entry_no)}</div>
-              <div className="text-[10px] text-slate-500">{DB.ENTRY_TYPE_LABEL[e.entry_type || "general"]}</div>
-            </div>
-          </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-lg bg-slate-800 text-slate-400 flex items-center justify-center hover:text-white"><X size={16} /></button>
-        </div>
-
-        <div className="p-4 space-y-4">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className={`text-[11px] px-2.5 py-1 rounded-full font-bold ${draft ? "bg-amber-500/15 text-amber-400" : "bg-emerald-500/15 text-emerald-400"}`}>{draft ? "مسودة" : "مُرحّل"}</span>
-            {reversed && <span className="text-[11px] px-2.5 py-1 rounded-full bg-red-500/10 text-red-300">معكوس</span>}
-            {attCount > 0 && <span className="text-[11px] px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-300 inline-flex items-center gap-1"><Paperclip size={11} /> {attCount} مرفق</span>}
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <Info label="التاريخ" value={<span className="font-mono [direction:ltr]">{e.date}</span>} />
-            <Info label="الفرع" value={e.branch_id != null ? branchName(e.branch_id) : "—"} />
-            <Info label="البيان" value={e.description || "—"} />
-            <Info label="أُنشئ في" value={<span className="font-mono [direction:ltr] text-xs">{(e as any).created_at ? String((e as any).created_at).slice(0, 16).replace("T", " ") : "—"}</span>} />
-          </div>
-
-          <div className="rounded-xl border border-slate-800 overflow-hidden">
-            <table className="w-full text-xs">
-              <thead><tr className="bg-slate-950/50 text-slate-500 text-[10px]">
-                <th className="px-2 py-2 text-right font-bold">الحساب</th>
-                <th className="px-2 py-2 text-center font-bold w-20">مدين</th>
-                <th className="px-2 py-2 text-center font-bold w-20">دائن</th>
-              </tr></thead>
-              <tbody className="divide-y divide-slate-800/60">
-                {lines.map((l, i) => { const a = accById.get(l.account_id); return (
-                  <tr key={i}>
-                    <td className="px-2 py-2 text-slate-200"><span className="font-mono text-slate-500 [direction:ltr] text-[10px]">{a?.code}</span> {a?.name || l.account_id}{l.note ? <div className="text-[10px] text-slate-500">— {l.note}</div> : null}</td>
-                    <td className="px-2 py-2 text-center font-mono text-emerald-300 [direction:ltr]">{Number(l.debit) ? fmt(Number(l.debit)) : ""}</td>
-                    <td className="px-2 py-2 text-center font-mono text-amber-300 [direction:ltr]">{Number(l.credit) ? fmt(Number(l.credit)) : ""}</td>
-                  </tr>
-                ); })}
-              </tbody>
-              <tfoot><tr className="bg-slate-950/40 font-bold border-t border-slate-800">
-                <td className="px-2 py-2 text-slate-400">الإجمالي</td>
-                <td className="px-2 py-2 text-center font-mono text-emerald-400 [direction:ltr]">{fmt(d)}</td>
-                <td className="px-2 py-2 text-center font-mono text-amber-400 [direction:ltr]">{fmt(c)}</td>
-              </tr></tfoot>
-            </table>
-          </div>
-          {Math.abs(d - c) > 0.009 && <div className="text-[11px] text-amber-400">⚠ القيد غير متوازن — الفرق {fmt(d - c)}</div>}
-          {e.notes ? <div className="text-[11px] text-slate-500 bg-slate-950/40 rounded-lg p-2">📝 {e.notes}</div> : null}
-
-          <div className="flex flex-wrap gap-2 pt-1">
-            {onPost && <button onClick={onPost} className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-500"><Send size={14} /> ترحيل</button>}
-            {onEdit && <button onClick={onEdit} className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-blue-500/10 text-blue-300 text-xs font-bold hover:bg-blue-500/20"><Pencil size={14} /> تعديل</button>}
-            {onDelete && <button onClick={onDelete} className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-red-500/10 text-red-400 text-xs font-bold hover:bg-red-500/20"><Trash2 size={14} /> حذف</button>}
-            {onReverse && <button onClick={onReverse} disabled={reversing} className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-purple-500/10 text-purple-300 text-xs font-bold hover:bg-purple-500/20 disabled:opacity-50"><RotateCcw size={14} /> {reversing ? "جارٍ…" : "قيد عكسي للتصحيح"}</button>}
-          </div>
-          {!draft && !onReverse && reversed && <div className="text-[11px] text-slate-500 text-center">تم عكس هذا القيد مسبقًا.</div>}
         </div>
       </div>
     </div>

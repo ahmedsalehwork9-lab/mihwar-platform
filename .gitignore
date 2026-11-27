@@ -1,0 +1,11 @@
+
+backup_*/
+_backup_*/
+MIHWAR_BACKUP_*/
+**/MIHWAR_BACKUP_*/
+**/_backup_*/
+**/backup_*/
+*.bak.tsx
+*.backup*
+project/results/
+project/tests/

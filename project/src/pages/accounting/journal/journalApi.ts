@@ -106,7 +106,7 @@ export async function generateRecurring(orgId: number, until: string, ar = true)
 export async function fetchEntriesPaged(orgId: number, from: string, to: string, branchId: number | null, cap = 5000): Promise<{ rows: DB.EntryWithLines[]; truncated: boolean; error: string | null }> {
   const PAGE = 500; const rows: DB.EntryWithLines[] = [];
   for (let a = 0; a < cap; a += PAGE) {
-    let q = supabase.from("gl_journal_entries").select("*, lines:gl_journal_lines(*)").eq("organization_id", orgId).gte("date", from).lte("date", to).order("date", { ascending: false }).order("entry_no", { ascending: false }).range(a, a + PAGE - 1);
+    let q = supabase.from("gl_journal_entries").select("*, lines:gl_journal_lines(*)").eq("organization_id", orgId).gte("date", from).lte("date", to).order("date", { ascending: false }).order("entry_no", { ascending: false }).order("id", { ascending: false }).range(a, a + PAGE - 1);
     if (branchId != null) q = q.eq("branch_id", branchId);
     const { data, error } = await q; if (error) return { rows, truncated: false, error: error.message };
     const b = (data as DB.EntryWithLines[]) || []; rows.push(...b); if (b.length < PAGE) return { rows, truncated: false, error: null };

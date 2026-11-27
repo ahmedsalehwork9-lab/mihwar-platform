@@ -1234,3 +1234,33 @@ html.light [data-testid="acc-dashboard"] .text-indigo-400{color:#1d4ed8 !importa
 html.light [data-testid="acc-dashboard"] .text-purple-400{color:#6d28d9 !important;}
 html.light [data-testid="acc-dashboard"] .text-rose-400,
 html.light [data-testid="acc-dashboard"] .text-red-400{color:#b91c1c !important;}
+
+/* ── صفحات مركز التقارير: تباين AA في الثيم الفاتح + مُنتقي التاريخ بحسب الثيم (محصور بـ [data-rpt]) ── */
+[data-rpt] input[type="date"], [data-rpt] input[type="month"]{color-scheme:dark;}
+html.light [data-rpt] input[type="date"], html.light [data-rpt] input[type="month"]{color-scheme:light;}
+html.light [data-rpt] .text-emerald-400{color:#047857 !important;}
+html.light [data-rpt] .text-amber-400{color:#92400e !important;}
+html.light [data-rpt] .text-blue-400,
+html.light [data-rpt] .text-blue-300,
+html.light [data-rpt] .text-sky-400,
+html.light [data-rpt] .text-indigo-400{color:#1d4ed8 !important;}
+html.light [data-rpt] .text-purple-400{color:#6d28d9 !important;}
+html.light [data-rpt] .text-rose-400,
+html.light [data-rpt] .text-red-400{color:#b91c1c !important;}
+html.light [data-rpt] .text-slate-500,
+html.light [data-rpt] .text-slate-600{color:#475569 !important;}
+
+/* تقارير — تباين AA في الثيم الداكن */
+html:not(.light) [data-rpt] .text-slate-500,
+html:not(.light) [data-rpt] .text-slate-600 { color: #94a3b8; }
+
+/* تقارير — أزرار نشطة وشارات (AA في الثيمين) */
+[data-rpt] .bg-blue-600.text-white,
+html.light [data-rpt] .bg-blue-600.text-white { background-color:#1d4ed8 !important; color:#fff !important; }
+html.light [data-rpt] .text-blue-200 { color:#1e3a8a !important; }
+html.light [data-rpt] .text-emerald-200 { color:#065f46 !important; }
+html.light [data-rpt] .text-red-300 { color:#991b1b !important; }
+html.light [data-rpt] .text-amber-300 { color:#78350f !important; }
+html.light [data-rpt] .text-slate-100 { color:#0B1F44 !important; }
+[data-rpt] .bg-emerald-600.text-white,
+html.light [data-rpt] .bg-emerald-600.text-white { background-color:#047857 !important; color:#fff !important; }

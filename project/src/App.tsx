@@ -136,7 +136,7 @@ function AppContent() {
           {page === 'item-movement' && <ItemMovementPage />}
           {page === 'inventory-analytics' && <InventoryAnalyticsPage onNavigate={setPage} onSection={setAccSection} />}
           {page === 'orders' && <OrdersPage />}
-          {page === 'reports' && <ReportsPage />}
+          {page === 'reports' && <ReportsPage onNavigate={setPage} />}
           {page === 'alerts' && <AlertsPage onNavigate={(p) => setPage(p as Page)} onSection={setAccSection} />}
           {page === 'shop-settings' && <ShopSettingsPage />}
           {page === 'sales-reconciliation' && <SalesReconciliationPage />}
@@ -145,7 +145,7 @@ function AppContent() {
           {page === 'financial-report' && <FinancialReportPage />}
           {page === 'reports-center' && <ReportsHubPage setPage={setPage} setAccSection={setAccSection} />}
           {page === 'business-analytics' && <BusinessAnalyticsPage onNavigate={setPage} onSection={setAccSection} />}
-          {page === 'monthly-financial' && <MonthlyFinancialPage onNavigate={setPage} />}
+          {page === 'monthly-financial' && <MonthlyFinancialPage onNavigate={setPage} onSection={setAccSection} />}
           {page === 'report-builder' && <ReportBuilderPage />}
           {page === 'accounting' && <AccountingPage section={accSection} onSection={setAccSection} onNavigate={setPage} />}
 

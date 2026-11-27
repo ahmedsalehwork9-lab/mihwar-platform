@@ -9,14 +9,19 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Search, RefreshCw, Star, Clock, FolderOpen, FileText, Scale, BookOpen,
   TrendingUp, ShoppingCart, Package, Users, Activity, BarChart3, Wallet,
-  FileBarChart, ArrowLeft, ArrowRight, Download, LayoutDashboard, Settings2,
+  FileBarChart, ArrowLeft, ArrowRight, Download, LayoutDashboard, Settings2, DollarSign, Receipt,
 } from "lucide-react";
 import { Page } from "../components/Layout";
 import { useAuth } from "../context/AuthContext";
 import { useLang } from "../context/LanguageContext";
 import { EXPORTERS, exportConsolidated, ExportMode, BranchRef } from "./lib/cafeExports";
 import { BrandMark } from "./reports/brand";
-import { CARD } from "./reports/reportingKit";
+import { CARD, Kpi, Warn, money } from "./reports/reportingKit";
+import * as DB from "./lib/accountingDb";
+import { fetchEntriesPaged } from "./accounting/journal/journalApi";
+import { fetchPurchasesPaged, fetchSalesPaged } from "./reports/reportsApi";
+import { isLiveInvoice, periodIncome } from "./reports/reportsLogic";
+import { changePct } from "./accounting/statements/statementsLogic";
 
 type Props = { setPage: (p: Page) => void; setAccSection?: (s: string) => void };
 
@@ -50,7 +55,9 @@ const REPORTS: Rpt[] = [
   { id: "ap", en: "Accounts Payable", ar: "الذمم الدائنة (الموردون)", dEn: "Outstanding supplier balances", dAr: "أرصدة الموردين المستحقة", cat: "financial", icon: Users, page: "accounting", section: "parties", permKey: "accounting" },
   { id: "monthly-fin", en: "Monthly Financial (Accounting)", ar: "التقرير المالي الشهري (محاسبي)", dEn: "P&L and margins from posted entries + print/PDF", dAr: "قائمة الدخل وهوامش الربح من القيود المُرحّلة + طباعة/PDF", cat: "financial", icon: FileBarChart, page: "monthly-financial", permKey: "monthly-financial" },
   { id: "ops-fin", en: "Operational Report (Delivery)", ar: "التقرير التشغيلي (التوصيل)", dEn: "Operational P&L + delivery channels & commissions + export", dAr: "ربح/خسارة تشغيلي + قنوات التوصيل والعمولات + تصدير", cat: "financial", icon: FileBarChart, page: "financial-report", exportId: "financial-report", permKey: "financial-report" },
-  { id: "cashflow", en: "Cash Flow Statement", ar: "قائمة التدفقات النقدية", dEn: "Operating / investing / financing flows", dAr: "التدفقات التشغيلية/الاستثمارية/التمويلية", cat: "financial", icon: Wallet, soon: true },
+  { id: "cashflow", en: "Cash Flow Statement", ar: "قائمة التدفقات النقدية", dEn: "Operating / investing / financing flows (in Accounting → Statements)", dAr: "التدفقات التشغيلية/الاستثمارية/التمويلية (في الحسابات ← القوائم المالية)", cat: "financial", icon: Wallet, page: "accounting", section: "statements", permKey: "accounting" },
+  { id: "acc-dashboard", en: "Accounting Dashboard", ar: "لوحة تحكم الحسابات", dEn: "Liquidity, receivables, payables, assets and alerts", dAr: "السيولة والذمم والأصول والتنبيهات المحاسبية", cat: "financial", icon: LayoutDashboard, page: "accounting", section: "dashboard", permKey: "accounting" },
+  { id: "journal-center", en: "Journal Entries Center", ar: "مركز القيود المحاسبية", dEn: "Entries, approvals, reversals, recurring and review", dAr: "القيود والاعتماد والعكس والمتكررة والمراجعة", cat: "financial", icon: BookOpen, page: "accounting", section: "journal", permKey: "accounting" },
 
   // Sales
   { id: "sales-recon", en: "Sales Reconciliation", ar: "تسوية المبيعات", dEn: "System vs collection + VAT and channel shares", dAr: "مطابقة السيستم بالتحصيل + الضريبة ونِسَب القنوات", cat: "sales", icon: BarChart3, page: "sales-reconciliation", exportId: "sales-reconciliation", permKey: "sales-reconciliation" },
@@ -88,6 +95,7 @@ function monthBounds(ym: string): { from: string; to: string } {
   const last = new Date(y, m, 0).getDate();
   return { from: `${ym}-01`, to: `${ym}-${String(last).padStart(2, "0")}` };
 }
+const norm = (x: string): string => x.toLowerCase().replace(/[\u064B-\u0652\u0640]/g, "").replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه");
 const loadLS = (k: string): string[] => { try { return JSON.parse(localStorage.getItem(k) || "[]"); } catch { return []; } };
 const saveLS = (k: string, v: string[]) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* noop */ } };
 
@@ -148,10 +156,25 @@ export default function ReportsHubPage({ setPage, setAccSection }: Props) {
     finally { setBusy(""); }
   };
 
+  // ── مؤشرات الفترة (من القيود المُرحّلة + الفواتير) ──
+  const [head, setHead] = useState<{ revenue: number; net: number; prevRevenue: number | null; prevNet: number | null; sales: number; purchases: number; truncated: boolean; error: string | null } | null>(null);
+  const headBranch = multiBranch && chosen.length === 1 ? chosen[0].id : null;
+  useEffect(() => {
+    let alive = true; setHead(null);
+    (async () => {
+      const org = await DB.getOrgForBranch(ownedShopId ?? null); if (!org || !alive) return;
+      const [es, acc, sl, pu] = await Promise.all([fetchEntriesPaged(org.id, "2000-01-01", rangeTo, headBranch), DB.fetchAccounts(org.id), fetchSalesPaged(org.id, rangeFrom, rangeTo, headBranch), fetchPurchasesPaged(org.id, rangeFrom, rangeTo, headBranch)]);
+      if (!alive) return; const inc = periodIncome(es.rows, acc, rangeFrom, rangeTo, headBranch, true);
+      const sum = (rows: { status?: string | null; total?: number | null }[]) => rows.filter((x) => isLiveInvoice(x.status)).reduce((a, x) => a + (Number(x.total) || 0), 0);
+      setHead({ revenue: inc.revenue.total, net: inc.net, prevRevenue: inc.revenue.prevTotal, prevNet: inc.prevNet, sales: sum(sl.rows), purchases: sum(pu.rows), truncated: es.truncated || sl.truncated || pu.truncated, error: es.error || sl.error || pu.error });
+    })();
+    return () => { alive = false; };
+  }, [ownedShopId, rangeFrom, rangeTo, headBranch]);
+
   const visible = useMemo(() => REPORTS.filter((r) => {
     if (!allowed(r.permKey)) return false;
     if (cat !== "all" && r.cat !== cat) return false;
-    if (q.trim()) { const s = q.trim().toLowerCase(); if (!(`${r.en} ${r.ar} ${r.dEn} ${r.dAr}`.toLowerCase().includes(s))) return false; }
+    if (q.trim()) { const s = norm(q.trim()); if (!norm(`${r.en} ${r.ar} ${r.dEn} ${r.dAr}`).includes(s)) return false; }
     return true;
   }), [q, cat, permissions]);
 
@@ -191,7 +214,7 @@ export default function ReportsHubPage({ setPage, setAccSection }: Props) {
   };
 
   return (
-    <div className="p-4 lg:p-6 min-h-screen" dir={isRTL ? "rtl" : "ltr"}>
+    <div className="p-4 lg:p-6 min-h-screen" dir={isRTL ? "rtl" : "ltr"} data-rpt data-testid="hub-page">
       <header className="flex flex-wrap items-center justify-between gap-4 mb-5">
         <div className="flex items-center gap-3 min-w-0">
           <BrandMark size={40} />
@@ -203,19 +226,30 @@ export default function ReportsHubPage({ setPage, setAccSection }: Props) {
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search size={15} className="absolute end-3 top-1/2 -translate-y-1/2 text-slate-500" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Search reports…", "ابحث عن تقرير…")} className="bg-slate-900 border border-slate-800 rounded-xl text-white text-sm pe-9 ps-3 py-2 w-56 outline-none focus:border-blue-500" />
+            <input data-testid="hub-search" aria-label={t("Search reports", "ابحث عن تقرير")} value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Search reports…", "ابحث عن تقرير…")} className="bg-slate-900 border border-slate-800 rounded-xl text-white text-sm pe-9 ps-3 py-2 w-56 outline-none focus:border-blue-500" />
           </div>
-          <button onClick={() => { setQ(""); setCat("all"); setMsg(null); }} title={t("Reset", "تحديث")} className="p-2.5 rounded-xl border border-slate-800 bg-slate-900 text-slate-400 hover:text-white"><RefreshCw size={16} /></button>
+          <button onClick={() => { setQ(""); setCat("all"); setMsg(null); }} title={t("Reset filters", "إعادة ضبط الفلاتر")} aria-label={t("Reset filters", "إعادة ضبط الفلاتر")} data-testid="hub-reset" className="p-2.5 rounded-xl border border-slate-800 bg-slate-900 text-slate-400 hover:text-white"><RefreshCw size={16} /></button>
         </div>
       </header>
 
       <div className={`${CARD} p-3 mb-4 flex flex-wrap items-end gap-3`}>
         <div className="flex flex-col gap-1"><label className="text-[10px] text-slate-500 font-bold">{t("Month", "الشهر")}</label>
-          <input type="month" value={month} onChange={(e) => onMonth(e.target.value)} disabled={custom} className="bg-slate-950 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark] disabled:opacity-40" /></div>
+          <input type="month" value={month} onChange={(e) => onMonth(e.target.value)} disabled={custom} className="bg-slate-950 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm disabled:opacity-40" /></div>
         <label className="flex items-center gap-2 text-xs text-slate-400 font-bold cursor-pointer pb-2.5"><input type="checkbox" checked={custom} onChange={(e) => setCustom(e.target.checked)} className="accent-blue-500 w-4 h-4" /> {t("Custom range", "نطاق مخصّص")}</label>
-        <div className="flex flex-col gap-1"><label className="text-[10px] text-slate-500 font-bold">{t("From", "من")}</label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} disabled={!custom} className="bg-slate-950 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark] disabled:opacity-40" /></div>
-        <div className="flex flex-col gap-1"><label className="text-[10px] text-slate-500 font-bold">{t("To", "إلى")}</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} disabled={!custom} className="bg-slate-950 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark] disabled:opacity-40" /></div>
+        <div className="flex flex-col gap-1"><label className="text-[10px] text-slate-500 font-bold">{t("From", "من")}</label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} disabled={!custom} className="bg-slate-950 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm disabled:opacity-40" /></div>
+        <div className="flex flex-col gap-1"><label className="text-[10px] text-slate-500 font-bold">{t("To", "إلى")}</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} disabled={!custom} className="bg-slate-950 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm disabled:opacity-40" /></div>
         <div className="ms-auto text-[11px] text-slate-500 pb-2.5">{t("Period", "الفترة")}: <b className="text-slate-300 [direction:ltr] inline-block">{rangeFrom} → {rangeTo}</b>{multiBranch && <span className="ms-3">· {chosen.length}/{allBranches.length} {t("branch", "فرع")}</span>}</div>
+      </div>
+
+      <div data-testid="hub-head" className="mb-4">
+        {head?.error && <div className="mb-2"><Warn>{t("Some figures could not be loaded: ", "تعذّر تحميل بعض الأرقام: ")}{head.error}</Warn></div>}
+        {head?.truncated && <div className="mb-2" data-testid="hub-truncated"><Warn>{t("Data volume exceeds the loading limit — headline figures may be incomplete.", "حجم البيانات يتجاوز حدّ التحميل — قد تكون الأرقام ناقصة.")}</Warn></div>}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+          <Kpi id="hk-revenue" label={t("Revenue (ledger)", "الإيراد (الدفتر)")} value={head ? money(head.revenue) : "…"} tone="emerald" icon={DollarSign} deltaPct={head ? changePct(head.revenue, head.prevRevenue) ?? undefined : undefined} onClick={() => { setPage("monthly-financial"); }} />
+          <Kpi id="hk-net" label={t("Net profit (ledger)", "صافي الربح (الدفتر)")} value={head ? money(head.net) : "…"} tone={head && head.net < 0 ? "red" : "blue"} icon={TrendingUp} deltaPct={head ? changePct(head.net, head.prevNet) ?? undefined : undefined} onClick={() => { setPage("monthly-financial"); }} />
+          <Kpi id="hk-sales" label={t("Sales invoices", "فواتير المبيعات")} value={head ? money(head.sales) : "…"} tone="sky" icon={Receipt} onClick={() => { setPage("business-analytics"); }} />
+          <Kpi id="hk-purch" label={t("Purchase invoices", "فواتير المشتريات")} value={head ? money(head.purchases) : "…"} tone="amber" icon={ShoppingCart} onClick={() => { setPage("purchase-invoices"); }} />
+        </div>
       </div>
 
       {msg && <div className={`mb-4 rounded-xl px-4 py-2.5 text-sm font-bold border ${msg.t === "ok" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-300" : "bg-amber-500/10 border-amber-500/20 text-amber-300"}`}>{msg.t === "ok" ? "✓ " : "⚠️ "}{msg.x}</div>}

@@ -344,7 +344,7 @@ export async function seedStandardChart(orgId: number, country: string | null | 
 
   const toAdd = chartForCountry(country).filter((r) => !have.has(r.code));
 
-  if (!toAdd.length) return { ok: true, added: 0 };
+  if (!toAdd.length) { const { autoLinkOrg: link0 } = await import("./accountRoles"); const l0 = await link0(orgId, existing); return { ok: true, added: 0, linked: l0.linked, linkError: l0.ok ? undefined : l0.error }; }
 
   // تمريرة 1: إدراج بدون أب*
 
@@ -378,7 +378,8 @@ export async function seedStandardChart(orgId: number, country: string | null | 
 
   }
 
-  return { ok: true, added: (ins as any[])?.length || toAdd.length };
+  const { autoLinkOrg } = await import("./accountRoles"); const link = await autoLinkOrg(orgId, await fetchAccounts(orgId));
+  return { ok: true, added: (ins as any[])?.length || toAdd.length, linked: link.linked, linkError: link.ok ? undefined : link.error };
 
 }
 
@@ -1920,7 +1921,7 @@ export async function createSalesInvoice(orgId: number, inv: {
 
   items: SalesItem[]; paid_amount: number; notes: string | null; shift_id?: number | null; source?: string | null;
 
-}): Promise<{ ok: boolean; error?: string; id?: number; entryId?: number; invoiceNo?: number }> {
+}): Promise<{ ok: boolean; error?: string; id?: number; entryId?: number; invoiceNo?: number; warning?: string }> {
 
   const t = invoiceTotals(inv.items, inv.tax_rate, inv.tax_inclusive);
 
@@ -1998,7 +1999,8 @@ export async function createSalesInvoice(orgId: number, inv: {
 
   }
 
-  return { ok: true, id: (data as any).id, entryId: res.id, invoiceNo: invoice_no };
+  const warning = await applySaleInventory(orgId, (data as any).id, inv.items);
+  return { ok: true, id: (data as any).id, entryId: res.id, invoiceNo: invoice_no, warning };
 
 }
 

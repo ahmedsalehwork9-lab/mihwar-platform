@@ -310,7 +310,7 @@ export default function ChartTab({ org, shop, accounts, reload, busy, setBusy }:
       {/* الأدوات */}
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <button onClick={() => openNew(null)} className={BTN_GHOST_EM} data-testid="new-account"><Plus size={14} /> {t("New account", "حساب جديد")}</button>
-        {accounts.length === 0 && <button data-testid="chart-seed" onClick={seed} disabled={busy || orgCountry == null} className={BTN_PRIMARY}><Network size={14} /> {busy ? "…" : cInfo.supported ? t(`Initialize ${cName} standard chart`, `تهيئة دليل ${cName} القياسي`) : t("Initialize general chart", "تهيئة الدليل العام")}</button>}
+        <button data-testid="chart-seed" onClick={seed} disabled={busy || orgCountry == null} className={BTN_PRIMARY}><Network size={14} /> {busy ? "…" : accounts.length > 0 ? t("Add missing standard accounts & auto-link", "إضافة المفقود من الدليل القياسي + الربط التلقائي") : cInfo.supported ? t(`Initialize ${cName} standard chart`, `تهيئة دليل ${cName} القياسي`) : t("Initialize general chart", "تهيئة الدليل العام")}</button>
         <button onClick={downloadTemplate} className={BTN_SOFT}><Download size={14} /> {t("Excel template", "نموذج Excel")}</button>
         <button onClick={() => fileRef.current?.click()} disabled={busy} className={BTN_GHOST_BL}><Upload size={14} /> {t("Import chart", "رفع دليل حسابات")}</button>
         {accounts.length > 0 && <button onClick={exportChart} data-testid="export-chart" className={BTN_GHOST_EM}><Download size={14} /> {t("Export chart", "تصدير الدليل")}</button>}

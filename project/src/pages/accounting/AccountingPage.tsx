@@ -12,10 +12,10 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   Home, ChevronLeft, Network, BookOpen, FileText, Scale,
   Plus, Trash2, Download, Save, Check, Search,
-  Building2, Layers,
+  Building2,
   Wallet, Landmark, ArrowDownCircle, Users, Printer,
   TrendingDown, TrendingUp, BarChart3, ShoppingCart,
-  LayoutDashboard, RotateCcw, Banknote, CheckCircle2, FileClock,
+  LayoutDashboard, RotateCcw,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../lib/supabase";
@@ -29,6 +29,7 @@ import AssetsTab from "./assets/AssetsTab";
 import { buildReportHTML, openPrint } from "./shared/printReport";
 import { useLang } from "../../context/LanguageContext";
 import JournalCenter from "./journal/JournalCenter";
+import AccountingDashboard from "./dash/AccountingDashboard";
 import type { GLAccount, GLLine, EntryWithLines, AccType } from "../lib/accountingDb";
 
 const fmt = (n: number) => (Math.round(n * 100) / 100).toLocaleString("en-US", { maximumFractionDigits: 2 });
@@ -395,7 +396,7 @@ export default function AccountingPage({ section, onSection, onNavigate }: { sec
         </div>
       </div>
 
-      {tab === "dashboard" && <DashboardTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} parties={parties} onSection={setTab} onNavigate={onNavigate} />}
+      {tab === "dashboard" && <AccountingDashboard org={org} accounts={accounts} parties={parties} branches={branches || []} onSection={(k: string) => setTab(k as Tab)} onNavigate={onNavigate} />}
       {tab === "chart" && <ChartTab org={org} shop={shopInfo} accounts={accounts} reload={reloadAccounts} busy={busy} setBusy={setBusy} />}
       {tab === "opening" && <OpeningTab org={org} accounts={accounts} postable={postable} branches={branches} />}
       {tab === "journal" && <JournalCenter org={org} postable={postable} accById={accById} branches={branches || []} branchName={(id: number) => branchName(id)} parties={parties} ui={{ AccountPicker, PartyPicker, resolvePartyAccount }} onSection={onSection ? (k: string) => setTab(k as Tab) : undefined} shopInfo={shopInfo} isAdmin={!!isAdminFlag} />}
@@ -413,132 +414,6 @@ export default function AccountingPage({ section, onSection, onNavigate }: { sec
 // ══════════════ القيود اليومية ══════════════
 
 // ══════════════ لوحة التحكم المحاسبية ══════════════
-function DashboardTab({ org, postable, parties, onSection }: any) {
-  const [loading, setLoading] = useState(true);
-  const [st, setSt] = useState<{ debit: number; credit: number; posted: number; draft: number; cash: number; bank: number; unbalanced: number; byType: { label: string; value: number; color: string }[]; monthly: { label: string; value: number }[] }>({ debit: 0, credit: 0, posted: 0, draft: 0, cash: 0, bank: 0, unbalanced: 0, byType: [], monthly: [] });
-
-  const TYPE_COLORS: Record<string, string> = { sales: "#10b981", purchases: "#3b82f6", receipt: "#22c55e", payment: "#ef4444", settlement: "#f59e0b", depreciation: "#a855f7", opening: "#64748b", general: "#06b6d4" };
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      setLoading(true);
-      const y = new Date().getFullYear();
-      const es = await DB.fetchEntries(org.id, `${y}-01-01`, today());
-      let debit = 0, credit = 0, posted = 0, draft = 0, unbalanced = 0;
-      const typeAgg: Record<string, number> = {};
-      const monthAgg: Record<string, number> = {};
-      for (const e of es) {
-        const isPosted = (e.status || "posted") === "posted";
-        const d = (e.lines || []).reduce((s, l) => s + Number(l.debit || 0), 0);
-        const c = (e.lines || []).reduce((s, l) => s + Number(l.credit || 0), 0);
-        if (isPosted) {
-          posted++; debit += d; credit += c;
-          if (Math.abs(d - c) > 0.009) unbalanced++;
-          const tk = e.entry_type || "general"; typeAgg[tk] = (typeAgg[tk] || 0) + d;
-          const mk = (e.date || "").slice(0, 7); monthAgg[mk] = (monthAgg[mk] || 0) + d;
-        } else draft++;
-      }
-      const trs = await DB.fetchTreasuries(org.id);
-      let cash = 0, bank = 0;
-      await Promise.all((trs || []).map(async (t: any) => {
-        if (!t.account_id) return;
-        const net = await DB.fetchAccountNet(org.id, t.account_id);
-        if ((t.kind || "cash") === "bank") bank += net; else cash += net;
-      }));
-      const byType = Object.entries(typeAgg).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ label: DB.ENTRY_TYPE_LABEL[k] || k, value: v, color: TYPE_COLORS[k] || "#64748b" }));
-      const monthly = Object.entries(monthAgg).sort((a, b) => a[0].localeCompare(b[0])).map(([k, v]) => ({ label: k.slice(5), value: v }));
-      if (!alive) return;
-      setSt({ debit, credit, posted, draft, cash, bank, unbalanced, byType, monthly });
-      setLoading(false);
-    })();
-    return () => { alive = false; };
-  }, [org.id]);
-
-  const custCount = (parties || []).filter((p: any) => p.type === "customer").length;
-  const suppCount = (postable || []).filter((a: any) => String(a.code || "").startsWith("2101") && String(a.code) !== "2101").length;
-
-  const KCard = ({ icon: Icon, label, value, sub, color, onClick }: any) => (
-    <button type="button" onClick={onClick} disabled={!onClick}
-      className={`${CARD} p-4 flex flex-col justify-between min-h-[104px] text-right transition-all ${onClick ? "hover:border-blue-500/50 active:scale-[0.99] cursor-pointer" : "cursor-default"}`}>
-      <div className="flex items-center justify-between">
-        <span className="text-[11px] font-bold text-slate-500">{label}</span>
-        <span className={`w-8 h-8 rounded-xl bg-slate-800/60 flex items-center justify-center ${color}`}><Icon size={16} /></span>
-      </div>
-      <div className={`text-xl font-black mt-1 [direction:ltr] text-right ${color}`}>{value}</div>
-      {sub && <div className="text-[10px] text-slate-500 mt-0.5">{sub}</div>}
-    </button>
-  );
-
-  if (loading) return <div className="p-10 text-center text-slate-500 text-sm">جارٍ تجهيز اللوحة…</div>;
-
-  const money = (n: number) => `${fmt(n)} ر.س`;
-
-  return (
-    <div className="space-y-4">
-      {st.unbalanced > 0 && (
-        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-bold">
-          <TrendingDown size={15} /> يوجد {st.unbalanced} قيد مُرحّل غير متوازن — راجعها من القيود اليومية.
-        </div>
-      )}
-
-      {/* بطاقات المؤشرات */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
-        <KCard icon={TrendingUp}  label="إجمالي المدين (مُرحّل)" value={money(st.debit)}  color="text-emerald-400" />
-        <KCard icon={TrendingDown} label="إجمالي الدائن (مُرحّل)" value={money(st.credit)} color="text-amber-400" />
-        <KCard icon={CheckCircle2} label="قيود مُرحّلة"  value={st.posted} color="text-blue-400"   onClick={() => onSection?.("journal")} />
-        <KCard icon={FileClock}    label="قيود مسودة"   value={st.draft}  color="text-orange-400" sub="بانتظار الترحيل" onClick={() => onSection?.("journal")} />
-        <KCard icon={Wallet}       label="رصيد الصناديق" value={money(st.cash)} color="text-emerald-400" onClick={() => onSection?.("treasury")} />
-        <KCard icon={Banknote}     label="رصيد البنوك"   value={money(st.bank)} color="text-sky-400"     onClick={() => onSection?.("treasury")} />
-        <KCard icon={Users}        label="عدد العملاء"   value={custCount} color="text-indigo-400" onClick={() => onSection?.("parties")} />
-        <KCard icon={Users}        label="عدد الموردين"  value={suppCount} color="text-rose-400"   sub="حسابات فرعية تحت 2101" onClick={() => onSection?.("parties")} />
-      </div>
-
-      {/* روابط التقارير */}
-      <div className={`${CARD} p-3`}>
-        <div className="text-[11px] font-bold text-slate-500 mb-2 px-1">تقارير سريعة</div>
-        <div className="flex flex-wrap gap-2">
-          {[
-            { k: "ledger",     label: "كشف حساب",      icon: FileText },
-            { k: "trial",      label: "ميزان المراجعة", icon: Scale },
-            { k: "statements", label: "القوائم المالية", icon: BarChart3 },
-            { k: "journal",    label: "القيود اليومية",  icon: BookOpen },
-            { k: "chart",      label: "دليل الحسابات",   icon: Network },
-          ].map((r) => { const RI = r.icon; return (
-            <button key={r.k} onClick={() => onSection?.(r.k)} className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800/60 border border-slate-700 text-slate-200 text-xs font-bold hover:border-blue-500/50 hover:text-white transition-all">
-              <RI size={14} className="text-blue-400" /> {r.label}
-            </button>
-          ); })}
-        </div>
-      </div>
-
-      {/* الرسوم */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <div className={`${CARD} p-4`}>
-          <SectionHead icon={BarChart3} title="الحركة الشهرية (مدين مُرحّل)" />
-          {st.monthly.length ? <LineChart data={st.monthly} /> : <div className="p-8 text-center text-slate-600 text-xs">لا توجد حركة هذا العام.</div>}
-        </div>
-        <div className={`${CARD} p-4`}>
-          <SectionHead icon={Layers} title="القيود المُرحّلة حسب المصدر" />
-          {st.byType.length ? (
-            <div className="flex items-center gap-4 flex-wrap justify-center py-2">
-              <DonutChart data={st.byType} />
-              <div className="space-y-1.5 text-xs">
-                {st.byType.map((d) => (
-                  <div key={d.label} className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: d.color }} />
-                    <span className="text-slate-400">{d.label}</span>
-                    <span className="text-slate-200 font-mono [direction:ltr] mr-2">{fmt(d.value)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : <div className="p-8 text-center text-slate-600 text-xs">لا توجد قيود مُرحّلة.</div>}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ══════════════ ميزان المراجعة ══════════════
 function TrialTab({ org, shop, accById, branches }: any) {
@@ -740,38 +615,6 @@ function OpeningTab({ org, accounts, postable, branches }: any) {
 
 // رسوم SVG خفيفة بلا مكتبات
 const CHART_PALETTE = ["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4", "#ec4899"];
-function DonutChart({ data, size = 150 }: { data: { label: string; value: number; color: string }[]; size?: number }) {
-  const total = data.reduce((s, d) => s + d.value, 0) || 1;
-  const r = size / 2 - 14; const c = 2 * Math.PI * r; let offset = 0;
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: "rotate(-90deg)" }}>
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#94a3b8" strokeOpacity={0.22} strokeWidth={14} />
-      {data.map((d, i) => {
-        const len = (d.value / total) * c;
-        const el = <circle key={i} cx={size / 2} cy={size / 2} r={r} fill="none" stroke={d.color} strokeWidth={14} strokeDasharray={`${len} ${c - len}`} strokeDashoffset={-offset} />;
-        offset += len; return el;
-      })}
-    </svg>
-  );
-}
-function LineChart({ data, height = 190 }: { data: { label: string; value: number }[]; height?: number }) {
-  const w = 620, pad = 26;
-  const max = Math.max(1, ...data.map((d) => d.value));
-  const n = data.length;
-  const X = (i: number) => (n <= 1 ? w / 2 : pad + (i * (w - 2 * pad)) / (n - 1));
-  const Y = (v: number) => height - pad - (v / max) * (height - 2 * pad);
-  const pts = data.map((d, i) => `${X(i)},${Y(d.value)}`).join(" ");
-  const area = n ? `${X(0)},${height - pad} ${pts} ${X(n - 1)},${height - pad}` : "";
-  return (
-    <svg viewBox={`0 0 ${w} ${height}`} className="w-full" style={{ height }} preserveAspectRatio="none">
-      <defs><linearGradient id="salesGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3b82f6" stopOpacity="0.28" /><stop offset="100%" stopColor="#3b82f6" stopOpacity="0" /></linearGradient></defs>
-      {n > 0 && <polygon points={area} fill="url(#salesGrad)" />}
-      {n > 1 && <polyline points={pts} fill="none" stroke="#3b82f6" strokeWidth={2.5} strokeLinejoin="round" />}
-      {data.map((d, i) => <circle key={i} cx={X(i)} cy={Y(d.value)} r={3} fill="#3b82f6" />)}
-    </svg>
-  );
-}
-
 // ══════════════ فواتير المبيعات (نقدي/آجل/جزئي + ضريبة) ══════════════
 function SalesTab({ org, postable, accById, branches, branchName, parties, shop, onNavigate, returnsMode = false }: any) {
   const multiBranch = branches && branches.length > 1;

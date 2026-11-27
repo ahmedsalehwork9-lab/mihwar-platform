@@ -1224,3 +1224,13 @@ html.light [data-testid="journal-center"] .text-blue-400,
 html.light [data-testid="journal-center"] .text-blue-300{color:#1d4ed8 !important;}
 html.light [data-testid="journal-center"] .text-purple-400{color:#6d28d9 !important;}
 html.light [data-testid="journal-center"] .text-red-400{color:#b91c1c !important;}
+
+/* ── لوحة تحكم الحسابات: نفس الألوان الأغمق في الثيم الفاتح ── */
+html.light [data-testid="acc-dashboard"] .text-emerald-400{color:#047857 !important;}
+html.light [data-testid="acc-dashboard"] .text-amber-400{color:#92400e !important;}
+html.light [data-testid="acc-dashboard"] .text-blue-400,
+html.light [data-testid="acc-dashboard"] .text-sky-400,
+html.light [data-testid="acc-dashboard"] .text-indigo-400{color:#1d4ed8 !important;}
+html.light [data-testid="acc-dashboard"] .text-purple-400{color:#6d28d9 !important;}
+html.light [data-testid="acc-dashboard"] .text-rose-400,
+html.light [data-testid="acc-dashboard"] .text-red-400{color:#b91c1c !important;}

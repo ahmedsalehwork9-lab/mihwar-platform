@@ -15,6 +15,7 @@ import { useLang } from "../../context/LanguageContext";
 import * as DB from "../lib/accountingDb";
 import type { GLAccount, GLParty, GLSalesInvoice, GLTreasury } from "../lib/accountingDb";
 import { cashBankOptions } from "../lib/cashAccounts";
+import { channelAssigned, limitToChannel } from "../lib/channelTreasury";
 import * as API from "./salesInvoiceApi";
 import type { DraftRow, MapRow, SaleProduct, WarehouseRow } from "./salesInvoiceApi";
 import { addDays, buildTenders, computeInvoice, computeMargin, clampPct, daysBetween, r2, validateLines } from "./salesInvoiceCalc";
@@ -156,7 +157,12 @@ export default function SalesInvoicePage({ onNavigate, onSection }: Props) {
   const payMode: "credit" | "cash" | "partial" | "card" = saleType === "credit" ? "credit" : saleType === "partial_credit" ? "partial" : payMethod === "pos" ? "card" : "cash";
   const branchTreasuries = useMemo(() => treasuries.filter((x) => x.branch_id == null || x.branch_id === branchId), [treasuries, branchId]);
   const cashBank = useMemo(() => cashBankOptions(accounts, branchTreasuries), [accounts, branchTreasuries]);
-  const payOptions = useMemo(() => (payMode === "card" ? cashBank.filter((o) => o.kind === "bank") : cashBank), [cashBank, payMode]);
+  const payOptions = useMemo(() => {
+    if (branchId == null) return payMode === "card" ? cashBank.filter((o) => o.kind === "bank") : cashBank;
+    const cash = limitToChannel(cashBank, "cash", channelAssigned(accMap, branchId, "sales_cash"));
+    const bank = limitToChannel(cashBank, "bank", channelAssigned(accMap, branchId, "sales_bank"));
+    return payMode === "card" ? bank : [...cash, ...bank];
+  }, [cashBank, payMode, accMap, branchId]);
   useEffect(() => {
     if (treasuryId !== "" && !payOptions.some((o) => o.id === treasuryId)) { setTreasuryId(""); return; }
     if (treasuryId === "" && saleType !== "credit" && payOptions.length) setTreasuryId(payOptions[0].id);

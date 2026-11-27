@@ -5,6 +5,9 @@ import { useOrgConfig } from "../../context/OrgConfigContext";
 import { useLang } from "../../context/LanguageContext";
 import * as DB from "../lib/accountingDb";
 import { cashBankOptions } from "../lib/cashAccounts";
+import { channelAssigned, limitToChannel } from "../lib/channelTreasury";
+import { fetchAccountMap } from "../sales/salesInvoiceApi";
+import type { MapRow } from "../sales/salesInvoiceApi";
 import type { GLAccount, GLParty, GLTreasury, POSProduct, SalesItem, ShopInfo } from "../lib/accountingDb";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -45,6 +48,7 @@ export default function POSPage() {
   const [vatAcc, setVatAcc] = useState<number | "">("");
   const [cashTreas, setCashTreas] = useState<number | "">("");
   const [cardTreas, setCardTreas] = useState<number | "">("");
+  const [chanMap, setChanMap] = useState<MapRow[]>([]);
   const [saving, setSaving] = useState(false);
   const [postErr, setPostErr] = useState<string>("");              // رسالة التحقق قبل الترحيل (بدل alert)
   const [showToday, setShowToday] = useState(false);
@@ -98,7 +102,9 @@ export default function POSPage() {
         const rev = accs.find((a) => a.type === "revenue" && !a.is_group);
         const vat = accs.find((a) => a.type === "liability" && !a.is_group && /ضريبة|مخرجات|vat|tax/i.test(a.name));
         // خزنة/بنك الفرع: الخزن المربوطة بالفرع + حسابات الصندوق/البنك غير التجميعية في الدليل (القيمة = رقم الحساب)
-        const cb = cashBankOptions(accs, treas.filter((tr) => tr.branch_id == null || tr.branch_id === Number(ownedShopId)));
+        const cm = (await fetchAccountMap(o.id)).rows; setChanMap(cm);
+        const cb0 = cashBankOptions(accs, treas.filter((tr) => tr.branch_id == null || tr.branch_id === Number(ownedShopId)));
+        const cb = [...limitToChannel(cb0, "cash", channelAssigned(cm, Number(ownedShopId), "pos_cash")), ...limitToChannel(cb0, "bank", channelAssigned(cm, Number(ownedShopId), "pos_bank"))];
         setRevAcc(rev?.id ?? "");
         setVatAcc(vat?.id ?? "");
         setCashTreas(cb.find((o) => o.kind === "cash")?.id ?? "");
@@ -202,8 +208,8 @@ export default function POSPage() {
   const dueDate = useMemo(() => { const d = new Date(); d.setDate(d.getDate() + creditDays); return d.toISOString().slice(0, 10); }, [creditDays]);
   // الحساب التجميعي لا يظهر؛ الصندوق/البنك غير التجميعي يظهر — كل القيم أرقام حسابات في الدليل.
   const cashBank = useMemo(() => cashBankOptions(accounts, treasuries.filter((x) => x.branch_id == null || x.branch_id === Number(ownedShopId))), [accounts, treasuries, ownedShopId]);
-  const cashOptions = useMemo(() => cashBank.filter((o) => o.kind === "cash"), [cashBank]);
-  const cardOptions = useMemo(() => cashBank.filter((o) => o.kind === "bank"), [cashBank]);
+  const cashOptions = useMemo(() => limitToChannel(cashBank, "cash", channelAssigned(chanMap, Number(ownedShopId), "pos_cash")), [cashBank, chanMap, ownedShopId]);
+  const cardOptions = useMemo(() => limitToChannel(cashBank, "bank", channelAssigned(chanMap, Number(ownedShopId), "pos_bank")), [cashBank, chanMap, ownedShopId]);
   const treasAccOf = (id: number | ""): number | null => (id === "" ? null : Number(id));
 
   const checkout = async () => {

@@ -8,7 +8,8 @@
 // =============================================================
 import type { GLAccount, GLTreasury } from "./accountingDb";
 
-export type CashOption = { id: number; name: string; kind: "cash" | "bank" };
+/** backed = الحساب مسجَّل كخزنة/بنك فعلية في «الخزن والبنوك» (بعض الدوال في الخادم تشترطه). rawKind = نوع صف الخزنة الأصلي إن وُجد. */
+export type CashOption = { id: number; name: string; kind: "cash" | "bank"; backed: boolean; rawKind?: string };
 
 const BANK_RE = /شبكة|مدى|mada|visa|بنك|bank|card/i;
 const CASH_RE = /صندوق|خزنة|خزينة|نقد|cash/i;
@@ -24,7 +25,7 @@ export function cashBankOptions(accounts: GLAccount[], treasuries: GLTreasury[],
     const acc = byId.get(t.account_id);
     if (!acc || acc.is_group || acc.is_active === false) continue;
     const kind: "cash" | "bank" = t.kind === "bank" || (t.kind as string) === "pos" || isBankLike(t.name) ? "bank" : "cash";
-    if (!out.has(acc.id)) out.set(acc.id, { id: acc.id, name: t.name, kind });
+    if (!out.has(acc.id)) out.set(acc.id, { id: acc.id, name: t.name, kind, backed: true, rawKind: t.kind });
   }
   // 2) حسابات الصندوق/البنك غير التجميعية في الدليل (حتى لو لم تُنشأ لها خزنة)
   for (const a of accounts) {
@@ -32,7 +33,7 @@ export function cashBankOptions(accounts: GLAccount[], treasuries: GLTreasury[],
     const bank = a.code.startsWith("1102") || isBankLike(a.name);
     const cash = a.code.startsWith("1101") || CASH_RE.test(a.name);
     if (!bank && !cash) continue;
-    out.set(a.id, { id: a.id, name: `${a.code} · ${a.name}`, kind: bank ? "bank" : "cash" });
+    out.set(a.id, { id: a.id, name: `${a.code} · ${a.name}`, kind: bank ? "bank" : "cash", backed: false });
   }
   const all = Array.from(out.values());
   const rank = (o: CashOption) => (o.kind === "cash" ? 0 : 1);

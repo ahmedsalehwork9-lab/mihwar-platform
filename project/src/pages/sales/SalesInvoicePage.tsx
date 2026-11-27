@@ -163,7 +163,9 @@ export default function SalesInvoicePage({ onNavigate, onSection }: Props) {
   }, [payOptions, treasuryId, saleType]);
   const payOpt = useMemo(() => (treasuryId === "" ? null : payOptions.find((o) => o.id === treasuryId) ?? null), [treasuryId, payOptions]);
   // طريقة الدفع الفعلية تُستنتج: شبكة → pos، وإلا بنك → تحويل، وإلا نقدي
-  const effMethod: PayMethod = payMode === "card" ? "pos" : payOpt?.kind === "bank" ? "bank_transfer" : "cash";
+  // الخادم يطابق الطريقة بنوع الخزنة المسجَّلة: pos ↔ kind=pos، bank_transfer ↔ kind=bank، cash ↔ kind=cash
+  const effMethod: PayMethod = payOpt?.rawKind === "pos" ? "pos" : payOpt?.kind === "bank" ? "bank_transfer" : "cash";
+  const payUnbacked = saleType !== "credit" && payOpt != null && !payOpt.backed;
   const setPayMode = (m: "credit" | "cash" | "partial" | "card"): void => {
     setSaleType(m === "credit" ? "credit" : m === "partial" ? "partial_credit" : "cash");
     setPayMethod(m === "card" ? "pos" : "cash"); setPaidNow("");
@@ -337,6 +339,7 @@ export default function SalesInvoicePage({ onNavigate, onSection }: Props) {
     if (warehouseId === "") { setMsg({ kind: "err", text: t("Select the warehouse.", "اختر المستودع.") }); return; }
     if (revAcc == null) { setMsg({ kind: "err", text: t("Sales revenue account is not mapped for this branch/organization. Posting is blocked.", "حساب إيراد المبيعات غير مربوط لهذا الفرع/المؤسسة. الترحيل ممنوع.") }); return; }
     if (totals.tax > 0 && taxAcc == null) { setMsg({ kind: "err", text: t("Output VAT account is not mapped. Posting is blocked.", "حساب ضريبة المخرجات غير مربوط. الترحيل ممنوع.") }); return; }
+    if (payUnbacked) { setMsg({ kind: "err", text: t("The selected cash/bank account is not registered as a treasury for this branch. Open Company & Branch Settings → Accounting link → Cash drawer & bank account and save it, then retry.", "حساب الخزنة/البنك المختار غير مسجَّل كخزنة لهذا الفرع. افتح «إعدادات الشركة والفروع» ← «الربط المحاسبي» ← «الخزنة والحساب البنكي» واحفظه ثم أعد المحاولة.") }); return; }
     if (isCredit) {
       if (!customer) { setMsg({ kind: "err", text: t("Select a customer for credit sales.", "اختر العميل للبيع الآجل.") }); return; }
       if (!receivableAcc) { setMsg({ kind: "err", text: t("This customer has no receivable account.", "هذا العميل بلا حساب ذمة.") }); return; }
@@ -555,6 +558,7 @@ export default function SalesInvoicePage({ onNavigate, onSection }: Props) {
                 <option value="">{t("— choose —", "— اختر —")}</option>
                 {payOptions.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
               </select>
+              {payUnbacked && <div className="mt-1 text-[11px] text-amber-300" data-testid="pay-unbacked">{t("Not registered as a treasury for this branch — save it in Branch Settings → Accounting link.", "غير مسجَّل كخزنة لهذا الفرع — احفظه من إعدادات الفرع ← الربط المحاسبي.")}</div>}
             </div>
             {!warehouses.length && !whMissing && <div className="md:col-span-6 text-xs text-amber-300" data-testid="wh-link-hint">{t("No warehouse is linked to this branch. Open Company & Branch Settings → Warehouses and link one to this branch.", "لا يوجد مستودع مرتبط بهذا الفرع. افتح «إعدادات الشركة والفروع» ← «المخازن» واربط مستودعًا بهذا الفرع.")}</div>}
             <div><label className={labelCls}>{t("Salesperson", "مندوب المبيعات")}</label><input className={inputCls} value={salesperson} onChange={(e) => setSalesperson(e.target.value)} /></div>

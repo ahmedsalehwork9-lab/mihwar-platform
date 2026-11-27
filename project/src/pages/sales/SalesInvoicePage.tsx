@@ -5,7 +5,7 @@
 // - المستودع إلزامي من الفرع نفسه؛ الحسابات من جدول الربط gl_account_map (لا تخمين).
 // - الترحيل عبر RPC ذرّية post_sales_invoice. لا تعديل مباشر لـ products.quantity.
 // - اختصارات لوحة المفاتيح: F1 صنف · F2 عميل · F3 نوع البيع · F4 هامش الربح · F6 مستودع
-//   F8 مسودة · F9 معاينة · F10 / Ctrl+Enter ترحيل · Esc إغلاق · ↑↓ تنقل · Enter تأكيد.
+//   F8 مسودة · F9 معاينة · F10 / Ctrl+Enter ترحيل · Esc إغلاق · ↑↓←→ تنقل بين الكمية والسعر والخصم · Enter التالي (Shift+Enter السابق).
 // =============================================================
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Search, Trash2, Printer, Save, X, Check, ScanLine, FileText, History, RotateCcw, Wallet, AlertTriangle, User, ChevronDown, Keyboard, TrendingUp } from "lucide-react";
@@ -280,7 +280,13 @@ export default function SalesInvoicePage({ onNavigate, onSection }: Props) {
       if (el) { el.focus(); el.select(); }
     };
     const c = COLS.indexOf(col);
-    if (e.key === "Enter") { e.preventDefault(); if (c < COLS.length - 1) go(rowIdx, c + 1); else { searchRef.current?.focus(); } }
+    // اتجاه الصفحة: في العربية (RTL) اليسار = العمود التالي (كمية → سعر → خصم)، وفي الإنجليزية اليمين.
+    const rtl = getComputedStyle(e.currentTarget.closest("tr") ?? e.currentTarget).direction === "rtl";
+    const nextKey = rtl ? "ArrowLeft" : "ArrowRight", prevKey = rtl ? "ArrowRight" : "ArrowLeft";
+    if (e.key === "Enter" && e.shiftKey) { e.preventDefault(); if (c > 0) go(rowIdx, c - 1); else go(rowIdx - 1, COLS.length - 1); }
+    else if (e.key === "Enter") { e.preventDefault(); if (c < COLS.length - 1) go(rowIdx, c + 1); else { searchRef.current?.focus(); } }
+    else if (e.key === nextKey) { e.preventDefault(); if (c < COLS.length - 1) go(rowIdx, c + 1); }
+    else if (e.key === prevKey) { e.preventDefault(); if (c > 0) go(rowIdx, c - 1); }
     else if (e.key === "ArrowDown") { e.preventDefault(); go(rowIdx + 1, c); }
     else if (e.key === "ArrowUp") { e.preventDefault(); go(rowIdx - 1, c); }
     else if (e.key === "Delete" && e.ctrlKey) { e.preventDefault(); removeLine(totals.lines[rowIdx].key); searchRef.current?.focus(); }

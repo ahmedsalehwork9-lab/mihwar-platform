@@ -10,6 +10,7 @@
 
 
 
+import { buildCountryChart } from "./chartCountries";
 import { supabase } from "./supabase";
 
 
@@ -331,13 +332,16 @@ export const STANDARD_CHART: SeedRow[] = [
 
 // تهيئة الشجرة القياسية للمؤسسة (تُضيف فقط الأكواد غير الموجودة)*
 
-export async function seedStandardChart(orgId: number): Promise<{ ok: boolean; error?: string; added: number }> {
+export function chartForCountry(country: string | null | undefined): SeedRow[] { return buildCountryChart(STANDARD_CHART, country); }
+
+// country غير مُمرَّر ⇒ الدليل السعودي كما كان سابقاً (توافق رجعي)
+export async function seedStandardChart(orgId: number, country: string | null | undefined = "SA"): Promise<{ ok: boolean; error?: string; added: number }> {
 
   const existing = await fetchAccounts(orgId);
 
   const have = new Set(existing.map((a) => a.code));
 
-  const toAdd = STANDARD_CHART.filter((r) => !have.has(r.code));
+  const toAdd = chartForCountry(country).filter((r) => !have.has(r.code));
 
   if (!toAdd.length) return { ok: true, added: 0 };
 

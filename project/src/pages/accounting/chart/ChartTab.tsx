@@ -8,6 +8,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { Plus, Pencil, Trash2, Download, Printer, Upload, Save, X, Search, Layers, ChevronDown, ChevronRight, ChevronLeft, Network, Keyboard, RotateCcw, Scale, ListTree, List } from "lucide-react";
 import * as DB from "../../lib/accountingDb";
+import { fetchOrgConfig } from "../../lib/orgConfig";
+import { chartCountryInfo } from "../../lib/chartCountries";
 import { buildReportHTML, openPrint, type ReportCol } from "../shared/printReport";
 import type { AccType, GLAccount } from "../../lib/accountingDb";
 import { useLang } from "../../../context/LanguageContext";
@@ -95,6 +97,11 @@ export default function ChartTab({ org, shop, accounts, reload, busy, setBusy }:
     } finally { setBalBusy(false); }
   }, [org.id, accounts]);
   useEffect(() => { if (prefs.showBal) void loadBalances(); }, [prefs.showBal, loadBalances]);
+  // دولة الشركة تحدّد دليل الحسابات الذي يُهيَّأ (الضرائب والتأمينات ونهاية الخدمة تختلف بين الدول)
+  const [orgCountry, setOrgCountry] = useState<string | null>(null);
+  useEffect(() => { let off = false; void fetchOrgConfig(org.id).then((c) => { if (!off) setOrgCountry(c.country || null); }); return () => { off = true; }; }, [org.id]);
+  const cInfo = chartCountryInfo(orgCountry);
+  const cName = lang === "ar" ? cInfo.ar : cInfo.en;
   const showBal = prefs.showBal && balances != null;
 
   // ── الصفوف المعروضة ──
@@ -150,8 +157,13 @@ export default function ChartTab({ org, shop, accounts, reload, busy, setBusy }:
     await reload();
   };
   const seed = async () => {
-    if (!window.confirm(t("Initialize the standard Saudi chart of accounts for this organization?", "تهيئة دليل الحسابات السعودي القياسي لهذه المؤسسة؟"))) return;
-    setBusy(true); const r = await DB.seedStandardChart(org.id); setBusy(false);
+    if (orgCountry == null) return; // لم تُحمَّل دولة الشركة بعد
+    const n = DB.chartForCountry(orgCountry).length;
+    const msg = cInfo.supported
+      ? t(`Initialize the standard chart of accounts for ${cName} (${n} accounts)? Existing codes are kept.`, `تهيئة دليل الحسابات القياسي لدولة ${cName} (${n} حساب)؟ الأكواد الموجودة تبقى كما هي.`)
+      : t(`The company country (${cInfo.code}) has no dedicated chart yet. Initialize the general chart (${n} accounts)? Existing codes are kept.`, `دولة الشركة (${cInfo.code}) ليس لها دليل مخصّص بعد. تهيئة الدليل العام (${n} حساب)؟ الأكواد الموجودة تبقى كما هي.`);
+    if (!window.confirm(msg)) return;
+    setBusy(true); const r = await DB.seedStandardChart(org.id, orgCountry); setBusy(false);
     if (!r.ok) { alert(t("Initialization failed: ", "تعذّرت التهيئة: ") + (r.error || "")); return; }
     await reload(); alert(t(`✓ ${r.added} accounts added`, `✓ تم إضافة ${r.added} حساب`));
   };
@@ -298,7 +310,7 @@ export default function ChartTab({ org, shop, accounts, reload, busy, setBusy }:
       {/* الأدوات */}
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <button onClick={() => openNew(null)} className={BTN_GHOST_EM} data-testid="new-account"><Plus size={14} /> {t("New account", "حساب جديد")}</button>
-        {accounts.length === 0 && <button onClick={seed} disabled={busy} className={BTN_PRIMARY}><Network size={14} /> {busy ? "…" : t("Initialize standard Saudi chart", "تهيئة الدليل السعودي القياسي")}</button>}
+        {accounts.length === 0 && <button data-testid="chart-seed" onClick={seed} disabled={busy || orgCountry == null} className={BTN_PRIMARY}><Network size={14} /> {busy ? "…" : cInfo.supported ? t(`Initialize ${cName} standard chart`, `تهيئة دليل ${cName} القياسي`) : t("Initialize general chart", "تهيئة الدليل العام")}</button>}
         <button onClick={downloadTemplate} className={BTN_SOFT}><Download size={14} /> {t("Excel template", "نموذج Excel")}</button>
         <button onClick={() => fileRef.current?.click()} disabled={busy} className={BTN_GHOST_BL}><Upload size={14} /> {t("Import chart", "رفع دليل حسابات")}</button>
         {accounts.length > 0 && <button onClick={exportChart} data-testid="export-chart" className={BTN_GHOST_EM}><Download size={14} /> {t("Export chart", "تصدير الدليل")}</button>}
@@ -363,7 +375,7 @@ export default function ChartTab({ org, shop, accounts, reload, busy, setBusy }:
 
       {/* الجدول */}
       {accounts.length === 0 ? (
-        <div className={`${CARD} p-10 text-center text-slate-500 text-sm`}>{t("No accounts yet. Start with “Initialize standard Saudi chart”, then edit as needed.", "لا توجد حسابات بعد. ابدأ بزر «تهيئة الدليل السعودي القياسي» ثم عدّله كما تريد.")}</div>
+        <div className={`${CARD} p-10 text-center text-slate-500 text-sm`}>{t("No accounts yet. Start with the “Initialize standard chart” button (matched to your company country), then edit as needed.", "لا توجد حسابات بعد. ابدأ بزر «تهيئة الدليل القياسي» (يُطابق دولة شركتك) ثم عدّله كما تريد.")}</div>
       ) : (
         <div className={`${CARD} overflow-hidden`}>
           <div className={`grid ${gridCols} gap-3 px-3 py-2 text-[10px] font-bold text-slate-400 bg-slate-800/60`}>

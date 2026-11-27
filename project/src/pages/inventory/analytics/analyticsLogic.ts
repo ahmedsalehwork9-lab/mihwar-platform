@@ -111,11 +111,12 @@ export function classifyStale(p: Prod, a: Activity | undefined, today: string, t
 export const isStagnant = (s: StaleStatus): boolean => s === "slow" || s === "dead" || s === "severe";
 
 // ── الفلاتر ─────────────────────────────────────────────────
-export function filterProds(prods: Prod[], sc: Scope, by: GroupBy, supplierOf: Map<number, string>): Prod[] {
+/** defaultWhByBranch: الصنف بلا مخزن يتبع المستودع الرئيسي لفرعه (يُحسب ضمن فلتر المخزن). */
+export function filterProds(prods: Prod[], sc: Scope, by: GroupBy, supplierOf: Map<number, string>, defaultWhByBranch: Map<number, number> = new Map()): Prod[] {
   const q = sc.q.trim().toLowerCase();
   return prods.filter((p) => {
     if (sc.branches && (p.branchId == null || !sc.branches.has(p.branchId))) return false;
-    if (sc.warehouses && (p.whId == null || !sc.warehouses.has(p.whId))) return false;
+    if (sc.warehouses) { const eff = p.whId ?? (p.branchId != null ? defaultWhByBranch.get(p.branchId) ?? null : null); if (eff == null || !sc.warehouses.has(eff)) return false; }
     if (sc.groups && !sc.groups.has(groupOf(p, by))) return false;
     if (sc.suppliers && !sc.suppliers.has(supplierOf.get(p.id) || UNCLASSIFIED)) return false;
     if (q && !`${p.name} ${p.code || ""} ${p.brand || ""}`.toLowerCase().includes(q)) return false;

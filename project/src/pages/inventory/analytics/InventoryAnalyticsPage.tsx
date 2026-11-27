@@ -76,7 +76,8 @@ export default function InventoryAnalyticsPage({ onNavigate, onSection }: { onNa
   const supRef = useMemo(() => lastSupplierByProduct(prods, purchDocs), [prods, purchDocs]);
   const supOf = useMemo(() => { const m = new Map<number, string>(); supRef.forEach((v, k) => m.set(k, v.name)); return m; }, [supRef]);
   const scope: Scope = useMemo(() => ({ ...ALL_SCOPE, branches: toNumSet(S.br), warehouses: toNumSet(S.wh), groups: toSet(S.gr), suppliers: toSet(S.su), q: S.q }), [S.br, S.wh, S.gr, S.su, S.q]);
-  const scoped = useMemo(() => filterProds(prods, scope, S.groupBy, supOf), [prods, scope, S.groupBy, supOf]);
+  const defWh = useMemo(() => { const m = new Map<number, number>(); whs.forEach((w) => { if (w.is_default && w.branch_id != null) m.set(w.branch_id, w.id); }); return m; }, [whs]);
+  const scoped = useMemo(() => filterProds(prods, scope, S.groupBy, supOf, defWh), [prods, scope, S.groupBy, supOf, defWh]);
   const act = useMemo(() => buildActivity(moves, prods, saleDocs), [moves, prods, saleDocs]);
   const stale = useMemo(() => { const m = new Map<number, StaleInfo>(); for (const p of scoped) m.set(p.id, classifyStale(p, act.get(p.id), today, th, S.useCreated)); return m; }, [scoped, act, today, th, S.useCreated]);
   const periodLen = Math.max(1, daysBetween(S.from, S.to) + 1); const prevTo = addDays(S.from, -1); const prevFrom = addDays(prevTo, -(periodLen - 1));

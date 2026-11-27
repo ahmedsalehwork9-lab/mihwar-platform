@@ -2610,7 +2610,7 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
                     lang={isRTL ? 'ar' : 'en'}
                     t={t}
                     inputClass="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-emerald-500 focus:outline-none transition-colors text-sm"
-                    placeholder={t('e.g. Filters, Oils…', 'مثال: فلاتر، زيوت…')}
+                    placeholder=""
                   />
                 </div>
                 <div>

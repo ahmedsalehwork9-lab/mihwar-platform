@@ -631,6 +631,8 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
     if (orgId) setWarehouses(await DB.fetchWarehouses(orgId));
   }, [orgId]);
   useEffect(() => { reloadWarehouses(); }, [reloadWarehouses]);
+  // المستودع الرئيسي: المُعلَّم افتراضيًا، وإلا الوحيد إن وُجد مستودع واحد.
+  const mainWarehouseId = useMemo(() => (warehouses.find(w => w.is_default) ?? (warehouses.length === 1 ? warehouses[0] : undefined))?.id ?? null, [warehouses]);
   const warehouseName = useCallback((id: number | null | undefined) => id == null ? '' : (warehouses.find(w => w.id === id)?.name ?? ''), [warehouses]);
   // كل فروع المجموعة التي يصل إليها المستخدم (للـ «كل الفروع» + عمود الفرع)
   const branchList = useMemo(() => (Array.isArray(branches) ? branches : []) as { id: number; name: string }[], [branches]);
@@ -647,6 +649,8 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
   const [page, setPage]                 = useState(1);
   const [selected, setSelected]         = useState<Set<number>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkWh, setBulkWh] = useState<string>('');
+  const [bulkMoving, setBulkMoving] = useState(false);
 
   const [showModal, setShowModal]       = useState(false);
   const [editItem, setEditItem]         = useState<Product | null>(null);
@@ -1116,6 +1120,21 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
   };
 
   // ── Image picker handlers (modal-scoped, applied on Save) ─────────────────
+  const handleBulkAssignWarehouse = async () => {
+    const ids = Array.from(selected);
+    if (!ids.length || bulkWh === '') return;
+    const target = bulkWh === 'none' ? null : Number(bulkWh);
+    const nm = target == null ? t('No warehouse', 'بدون مستودع') : (warehouses.find(w => w.id === target)?.name ?? '');
+    if (!confirm(t(`Assign ${ids.length} selected items to "${nm}"? Quantities and costs are not changed.`, `نقل ${ids.length} صنف محدد إلى «${nm}»؟ لا تتغير الكميات ولا التكلفة.`))) return;
+    setBulkMoving(true);
+    const r = await DB.assignProductsWarehouse(ids, target);
+    setBulkMoving(false);
+    setSelected(new Set()); setBulkWh('');
+    await fetchProducts();
+    if (r.failed === 0) { setSuccessMsg(t(`Updated ${r.done} items`, `تم تحديث مستودع ${r.done} صنف ✓`)); setTimeout(() => setSuccessMsg(null), 3000); }
+    else setError(t(`Updated ${r.done}, failed ${r.failed}`, `تم ${r.done} وفشل ${r.failed} صنف (قد لا تملك صلاحية تعديلها).`));
+  };
+
   const handleBulkDelete = useCallback(async () => {
     const ids = Array.from(selected);
     if (ids.length === 0) return;
@@ -1546,7 +1565,7 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
 
   const openAdd = useCallback(() => {
     setEditItem(null);
-    setForm(EMPTY_FORM);
+    setForm({ ...EMPTY_FORM, warehouse_id: mainWarehouseId != null ? String(mainWarehouseId) : '' });
     setAttrRows([]);
     setAllowedShopIds([]);
     setFormError(null);
@@ -1554,7 +1573,7 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
     setPendingImageFile(null);
     setImageRemoved(false);
     setShowModal(true);
-  }, []);
+  }, [mainWarehouseId]);
 
   const openEdit = useCallback(async (p: Product) => {
     setEditItem(p);
@@ -2971,6 +2990,18 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
           <button onClick={() => setSelected(new Set())} className="text-xs font-bold text-slate-400 hover:text-white whitespace-nowrap">
             {t('Clear', 'إلغاء')}
           </button>
+          {warehouses.length > 0 && (
+            <>
+              <select value={bulkWh} onChange={e => setBulkWh(e.target.value)} data-testid="bulk-wh" className="bg-slate-800 border border-slate-700 rounded-xl px-2 py-2 text-xs text-white outline-none max-w-[9rem]">
+                <option value="">{t('Move to warehouse…', 'نقل إلى مستودع…')}</option>
+                {warehouses.map(w => <option key={w.id} value={String(w.id)}>{w.name}</option>)}
+                <option value="none">{t('No warehouse', 'بدون مستودع')}</option>
+              </select>
+              <button onClick={handleBulkAssignWarehouse} disabled={bulkMoving || bulkWh === ''} data-testid="bulk-wh-go" className="px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-black hover:bg-emerald-500 disabled:opacity-40 whitespace-nowrap">
+                {bulkMoving ? '…' : t('Apply', 'تطبيق')}
+              </button>
+            </>
+          )}
           <button onClick={handleBulkDelete} disabled={bulkDeleting} className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-600 text-white text-xs font-black hover:bg-red-500 transition-all active:scale-95 disabled:opacity-50 whitespace-nowrap">
             {bulkDeleting ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
             {t('Delete Selected', 'حذف المحدد')}
@@ -3039,6 +3070,14 @@ function WarehousesModal({ orgId, warehouses, t, isRTL, onClose, onChanged }: {
     if (!res.ok) { setErr(res.error || 'تعذّر التعديل'); return; }
     setEditId(null); onChanged();
   };
+  const makeMain = async (id: number) => {
+    if (!orgId) return;
+    setBusy(true); setErr(null);
+    const res = await DB.setDefaultWarehouse(orgId, id);
+    setBusy(false);
+    if (!res.ok) { setErr(res.error || 'تعذّر التعيين'); return; }
+    onChanged();
+  };
   const del = async (id: number) => {
     if (!orgId) return;
     if (!window.confirm(t('Delete this warehouse? Items will be unassigned.', 'حذف المستودع؟ ستُفصل أصنافه (بدون مستودع).'))) return;
@@ -3074,7 +3113,8 @@ function WarehousesModal({ orgId, warehouses, t, isRTL, onClose, onChanged }: {
                   </>
                 ) : (
                   <>
-                    <span className="flex-1 text-sm text-white">{w.name}</span>
+                    <span className="flex-1 text-sm text-white">{w.name}{w.is_default && <span className="ms-2 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-full px-2 py-0.5">{t('Main', 'رئيسي')}</span>}</span>
+                    {!w.is_default && <button onClick={() => makeMain(w.id)} disabled={busy} data-testid={`wh-main-${w.id}`} className="text-[10px] font-bold text-slate-400 hover:text-emerald-400 px-2 py-1 rounded-lg hover:bg-emerald-500/10">{t('Set as main', 'تعيين كرئيسي')}</button>}
                     <button onClick={() => { setEditId(w.id); setEditName(w.name); }} className="p-2 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg"><Edit2 size={15} /></button>
                     <button onClick={() => del(w.id)} className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg"><Trash2 size={15} /></button>
                   </>

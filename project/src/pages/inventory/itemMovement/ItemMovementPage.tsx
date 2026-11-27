@@ -74,7 +74,9 @@ export default function ItemMovementPage() {
   const [showKeys, setShowKeys] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null); const seq = useRef(0);
 
-  const nameOfWh = useCallback((id: number | null): string => (id == null ? t("Unassigned", "بلا مخزن") : whs.find((w) => w.id === id)?.name || `#${id}`), [whs, t]);
+  // حركة بلا مستودع تُعرض على المستودع الرئيسي إن وُجد (المخزون العام يُحتسب فيه).
+  const mainWh = useMemo(() => whs.find((w) => w.is_default) ?? (whs.length === 1 ? whs[0] : null), [whs]);
+  const nameOfWh = useCallback((id: number | null): string => (id == null ? (mainWh ? t(`${mainWh.name} (main)`, `${mainWh.name} (رئيسي)`) : t("Unassigned", "بلا مخزن")) : whs.find((w) => w.id === id)?.name || `#${id}`), [whs, t, mainWh]);
   const branchName = useCallback((id: number | null): string => (id == null ? "—" : branches?.find((b) => b.id === id)?.name || `#${id}`), [branches]);
   const refText = useCallback((m: Move): string => refLabel(m), []);
 

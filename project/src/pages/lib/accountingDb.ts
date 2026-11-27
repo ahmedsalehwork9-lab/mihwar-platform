@@ -2888,6 +2888,26 @@ export async function addWarehouse(orgId: number, a: { name: string; branch_id?:
   return { ok: true, id: Number((data as any).id) };
 }
 
+/** تعيين المستودع الرئيسي للمؤسسة (واحد فقط): نُلغي الافتراضي عن الباقي ثم نُفعّله هنا. */
+export async function setDefaultWarehouse(orgId: number, id: number): Promise<{ ok: boolean; error?: string }> {
+  const off = await supabase.from("warehouses").update({ is_default: false }).eq("organization_id", orgId).neq("id", id);
+  if (off.error) return { ok: false, error: off.error.message };
+  const on = await supabase.from("warehouses").update({ is_default: true }).eq("id", id).eq("organization_id", orgId);
+  if (on.error) return { ok: false, error: on.error.message };
+  return { ok: true };
+}
+
+/** نقل أصناف إلى مستودع (أو إلى «بدون») — تحديث الحقل فقط، دون تغيير كمية أو تكلفة أو قيود. */
+export async function assignProductsWarehouse(ids: number[], warehouseId: number | null): Promise<{ ok: boolean; done: number; failed: number }> {
+  let done = 0, failed = 0;
+  for (let i = 0; i < ids.length; i += 200) {
+    const chunk = ids.slice(i, i + 200);
+    const { error } = await supabase.from("products").update({ warehouse_id: warehouseId }).in("id", chunk);
+    if (error) failed += chunk.length; else done += chunk.length;
+  }
+  return { ok: failed === 0, done, failed };
+}
+
 export async function updateWarehouse(id: number, a: { name: string }): Promise<{ ok: boolean; error?: string }> {
   const name = (a.name || "").trim();
   if (!name) return { ok: false, error: "اكتب اسم المستودع." };

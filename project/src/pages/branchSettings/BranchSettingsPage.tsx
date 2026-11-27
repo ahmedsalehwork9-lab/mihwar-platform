@@ -18,6 +18,7 @@ import {
   ROLES, branchOverride, defaultsToClear, dirtyFields, effective, filterShops, kpisOf, orgDefault, patchOf, planMap, toForm, typeLabel, validateBasic, whValidate,
   type BasicForm, type MapRow, type Shop, type Wh, type WhErr,
 } from "./branchLogic";
+import { prefetchRemotePrefs, saveRemotePrefs } from "./printPrefsApi";
 import { DEFAULT_PREFS, DOC_LANGS, PAPERS, type DocLang, browserStore, clearPrintPrefs, isDefaultPrefs, loadPrintPrefs, savePrintPrefs, type PrintPrefs } from "./printPrefs";
 
 const PublicShopSettings = lazy(() => import("../ShopSettingsPage"));
@@ -67,7 +68,7 @@ export default function BranchSettingsPage() {
     setLoading(true); setLoadErr(null);
     try {
       const [s, w, m, a] = await Promise.all([API.fetchShops(o.id), API.fetchWarehouses(o.id), API.fetchMap(o.id), DB.fetchAccounts(o.id)]);
-      setShops(s); setWhs(w); setMap(m); setAccounts(a); setItems(await API.fetchItemCounts(s.map((x) => x.id)));
+      await prefetchRemotePrefs(true); setShops(s); setWhs(w); setMap(m); setAccounts(a); setItems(await API.fetchItemCounts(s.map((x) => x.id)));
       setSelId((cur) => (cur != null && s.some((x) => x.id === cur) ? cur : s.find((x) => x.id === activeShop)?.id ?? s[0]?.id ?? null));
     } catch (e) { setLoadErr((e as { message?: string })?.message || "load failed"); }
     setLoading(false);
@@ -117,7 +118,13 @@ export default function BranchSettingsPage() {
   const mapOps = useMemo(() => (sh ? planMap(map, sh.id, sel) : []), [map, sh, sel]);
   const saveMap = async () => { if (!org || !sh || !mapOps.length) return; setBusy(true); const r = await API.applyMapOps(org.id, sh.id, mapOps); setBusy(false); setMsg(r.ok ? { ok: true, text: t("Accounting link saved.", "تم حفظ الربط المحاسبي.") } : { ok: false, text: r.error }); if (r.ok) await reload(); };
 
-  const ppSave = () => { if (!sh) return; const ok = isDefaultPrefs(pp) ? (clearPrintPrefs(browserStore(), sh.id), true) : savePrintPrefs(browserStore(), sh.id, pp); setMsg(ok ? { ok: true, text: t("Print settings saved on this device.", "تم حفظ إعدادات الطباعة على هذا الجهاز.") } : { ok: false, text: t("Could not save (browser storage unavailable).", "تعذّر الحفظ (تخزين المتصفح غير متاح).") }); };
+  const ppSave = async () => {
+    if (!sh) return; setBusy(true); const dflt = isDefaultPrefs(pp); const r = await saveRemotePrefs(sh.id, dflt ? null : pp); setBusy(false);
+    if (r.ok) { clearPrintPrefs(browserStore(), sh.id); setMsg({ ok: true, text: t("Print settings saved for this branch (all devices).", "تم حفظ إعدادات الطباعة للفرع (تسري على كل الأجهزة).") }); return; }
+    if (r.denied) { setMsg({ ok: false, text: t("You do not have permission to change this branch's print settings (branch owner or system admin only).", "لا تملك صلاحية تعديل إعدادات طباعة هذا الفرع (لمالك الفرع أو مدير النظام فقط).") }); return; }
+    const ok = dflt ? (clearPrintPrefs(browserStore(), sh.id), true) : savePrintPrefs(browserStore(), sh.id, pp);
+    setMsg(ok ? { ok: true, text: r.missing ? t("Saved on this device only — the server column is not installed yet.", "حُفظت على هذا الجهاز فقط — عمود الخادم لم يُطبَّق بعد.") : t("Server unavailable — saved on this device only.", "تعذّر الاتصال بالخادم — حُفظت على هذا الجهاز فقط.") } : { ok: false, text: t("Could not save (browser storage unavailable).", "تعذّر الحفظ (تخزين المتصفح غير متاح).") });
+  };
   const ppPreview = () => { if (sh) setPv({ kind: "sales_invoice", lang: pp.docLang }); };
   const ppPrintNow = () => { if (pvHTML) printHTML(pvHTML); };
 
@@ -126,7 +133,7 @@ export default function BranchSettingsPage() {
     if (!window.confirm(t(`Copy the selected settings from "${src.shop_name}" to "${sh.shop_name}"? This overwrites them.`, `نسخ الإعدادات المحددة من «${src.shop_name}» إلى «${sh.shop_name}»؟ سيتم استبدالها.`))) return;
     setBusy(true); const done: string[] = []; let bad: string | null = null;
     if (cp.map) { const ops = planMap(map, sh.id, Object.fromEntries(ROLES.map((r) => [r.role, branchOverride(map, src.id, r.role) ?? ""]))); const r = await API.applyMapOps(org.id, sh.id, ops); if (r.ok) done.push(t("accounting link", "الربط المحاسبي")); else bad = r.error; }
-    if (!bad && cp.print) { const p = loadPrintPrefs(browserStore(), src.id); if (isDefaultPrefs(p)) clearPrintPrefs(browserStore(), sh.id); else savePrintPrefs(browserStore(), sh.id, p); setPp(p); done.push(t("print settings", "إعدادات الطباعة")); }
+    if (!bad && cp.print) { const p = loadPrintPrefs(browserStore(), src.id); const r = await saveRemotePrefs(sh.id, isDefaultPrefs(p) ? null : p); if (r.ok) { clearPrintPrefs(browserStore(), sh.id); setPp(p); done.push(t("print settings", "إعدادات الطباعة")); } else if (r.missing) { if (isDefaultPrefs(p)) clearPrintPrefs(browserStore(), sh.id); else savePrintPrefs(browserStore(), sh.id, p); setPp(p); done.push(t("print settings (this device only)", "إعدادات الطباعة (على هذا الجهاز فقط)")); } else bad = r.denied ? t("No permission to change this branch's print settings", "لا صلاحية لتعديل طباعة هذا الفرع") : r.error; }
     if (!bad && cp.margin) { const r = await API.updateShop(sh.id, { default_margin_percent: src.default_margin_percent }); if (r.ok) done.push(t("default margin", "الهامش الافتراضي")); else bad = r.error; }
     setBusy(false); setCopyOpen(false); setMsg(bad ? { ok: false, text: `${bad}${done.length ? ` — ${t("copied before the error: ", "نُسخ قبل الخطأ: ")}${done.join(", ")}` : ""}` } : { ok: true, text: `${t("Copied: ", "تم النسخ: ")}${done.join(isRTL ? "، " : ", ") || "—"}` }); await reload();
   };
@@ -221,7 +228,7 @@ export default function BranchSettingsPage() {
 
             {tab === "print" && <div className="space-y-3" data-testid="bs-panel-print">
               <div className={`${CARD} p-4 space-y-4`}><h3 className="font-bold">{t("Document printing for this branch", "طباعة مستندات هذا الفرع")}</h3>
-                <p className="text-[11px] text-amber-200/80 bg-amber-500/5 border border-amber-500/20 rounded-lg p-2">{t("Saved on this device/browser only, and applied to every printed document of this branch.", "تُحفظ على هذا الجهاز/المتصفح فقط، وتُطبَّق على كل مستند يُطبع لهذا الفرع.")}</p>
+                <p className="text-[11px] text-amber-200/80 bg-amber-500/5 border border-amber-500/20 rounded-lg p-2">{t("Saved for this branch on the server (all devices) and applied to every printed document of this branch.", "تُحفظ للفرع على الخادم (تسري على كل الأجهزة) وتُطبَّق على كل مستند يُطبع لهذا الفرع.")}</p>
                 <div className="grid gap-3 md:grid-cols-3">
                   <div><label className={LBL}>{t("Paper size", "حجم الورق")}</label><div className="flex gap-1.5">{PAPERS.map((x) => <button key={x} type="button" onClick={() => setPp({ ...pp, paper: x })} data-testid={`pp-paper-${x}`} className={`flex-1 py-2 rounded-lg text-xs font-bold border ${pp.paper === x ? "bg-blue-600 border-blue-500 text-white" : "bg-slate-800 border-slate-700 text-slate-400"}`}>{x}</button>)}</div></div>
                   <div><label className={LBL}>{t("Orientation", "اتجاه الطباعة")}</label><div className="flex gap-1.5">{(["portrait", "landscape"] as const).map((x) => <button key={x} type="button" disabled={pp.paper === "80mm"} onClick={() => setPp({ ...pp, orient: x })} data-testid={`pp-orient-${x}`} className={`flex-1 py-2 rounded-lg text-xs font-bold border disabled:opacity-40 ${pp.orient === x ? "bg-blue-600 border-blue-500 text-white" : "bg-slate-800 border-slate-700 text-slate-400"}`}>{x === "portrait" ? t("Portrait", "عمودي") : t("Landscape", "أفقي")}</button>)}</div></div>

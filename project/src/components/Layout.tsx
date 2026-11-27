@@ -1,3 +1,4 @@
+import { prefetchRemotePrefs } from '../pages/branchSettings/printPrefsApi';
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { BrandLogo } from './brand/BrandLogo';
 import {
@@ -29,10 +30,7 @@ import {
   FileBarChart,
   FolderOpen,
   Calculator,
-  ClipboardCheck,
-  Boxes,
   Inbox,
-  BarChart3,
 } from 'lucide-react';
 
 import { supabase } from '../pages/lib/supabase';
@@ -437,6 +435,8 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
     window.addEventListener('mihwar:sub-requests-changed', run);
     return () => { alive = false; window.clearInterval(id); window.removeEventListener('mihwar:sub-requests-changed', run); };
   }, [isAdmin]);
+  // تفضيلات الطباعة المحفوظة على الخادم (تُحمَّل مرة لتسري على كل الأجهزة)
+  useEffect(() => { void prefetchRemotePrefs(true); }, [ownedShopId]);
   const [sidebarOpen, setSidebarOpen]     = useState(false);
   const [showMore,    setShowMore]         = useState(false);
   const [cmdOpen,     setCmdOpen]          = useState(false);

@@ -1,7 +1,8 @@
 // =============================================================
 // src/pages/branchSettings/printPrefs.ts
 // تفضيلات طباعة المستندات لكل فرع (حجم الورق، الاتجاه، الشعار، توقيع المستلم).
-// تُخزَّن في هذا المتصفح (لا يوجد جدول لها في قاعدة البيانات). القيم الافتراضية = القالب الحالي دون تغيير.
+// تُحفظ في قاعدة البيانات (shops.print_prefs) لتسري على كل أجهزة الفرع؛ وإن لم يُطبَّق عمود القاعدة بعد تُحفظ في هذا المتصفح فقط.
+// القيم الافتراضية = القالب الحالي دون تغيير.
 // =============================================================
 export type Paper = "A4" | "A5" | "80mm";
 export type Orient = "portrait" | "landscape";
@@ -19,7 +20,13 @@ export function validPrefs(x: unknown): PrintPrefs | null {
   if (!paper || !orient || typeof o.showLogo !== "boolean" || typeof o.showSignature !== "boolean") return null;
   return { paper, orient, showLogo: o.showLogo, showSignature: o.showSignature, showBrand: typeof o.showBrand === "boolean" ? o.showBrand : true, docLang: DOC_LANGS.includes(o.docLang as DocLang) ? (o.docLang as DocLang) : "ui" };
 }
+// نسخة الخادم (عمود shops.print_prefs): تُحمَّل مرة عند فتح التطبيق/الإعدادات وتُخزَّن في الذاكرة، وتتقدم على نسخة هذا المتصفح.
+const remote = new Map<number, PrintPrefs>();
+export const setRemotePrefs = (branchId: number, p: PrintPrefs | null): void => { if (p) remote.set(branchId, p); else remote.delete(branchId); };
+export const hasRemotePrefs = (branchId: number): boolean => remote.has(branchId);
+export const clearRemoteCache = (): void => remote.clear();
 export function loadPrintPrefs(s: Storage | null, branchId: number | null): PrintPrefs {
+  if (branchId != null && remote.has(branchId)) return remote.get(branchId)!;
   try { const raw = s?.getItem(prefsKey(branchId)); if (!raw) return DEFAULT_PREFS; return validPrefs(JSON.parse(raw)) ?? DEFAULT_PREFS; } catch { return DEFAULT_PREFS; }
 }
 export function savePrintPrefs(s: Storage | null, branchId: number | null, p: PrintPrefs): boolean { try { if (!s) return false; s.setItem(prefsKey(branchId), JSON.stringify(p)); return true; } catch { return false; } }

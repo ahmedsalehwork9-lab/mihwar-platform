@@ -4,6 +4,7 @@ import { escapeHTML } from "../utils/orderHelpers";
 import { calculateApprovedTotal } from "../utils/calculateApprovedTotal";
 import { buildVerifyUrl } from "../utils/generateVerificationQR";
 
+import { curAr } from "../../lib/orgConfig";
 const C128_PATTERNS = [
   "11011001100","11001101100","11001100110","10010011000","10010001100",
   "10001001100","10011001000","10011000100","10001100100","11001001000",
@@ -105,8 +106,8 @@ function buildItemRows(items: OrderItem[], hasAnyApproved: boolean, hasAnyRemain
       <td style="padding:8px 9px;border:1px solid ${LINE};font-family:'JetBrains Mono',monospace;font-size:12px;color:${INK};text-align:center;">${item.quantity}</td>
       ${hasAnyApproved ? `<td style="padding:8px 9px;border:1px solid ${LINE};font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:${ACCENT};text-align:center;">${dispQty}</td>` : ""}
       ${hasAnyRemaining ? `<td style="padding:8px 9px;border:1px solid ${LINE};font-family:'JetBrains Mono',monospace;font-size:12px;color:${remaining > 0 ? "#B45309" : SOFT};text-align:center;">${remaining}</td>` : ""}
-      <td style="padding:8px 9px;border:1px solid ${LINE};font-family:'JetBrains Mono',monospace;font-size:11.5px;color:${INK};text-align:left;">${item.price.toLocaleString("en-SA")}<span style="font-size:9px;color:${FAINT};"> ر.س</span></td>
-      <td style="padding:8px 9px;border:1px solid ${LINE};font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:${INK};text-align:left;">${lineTotal.toLocaleString("en-SA")}<span style="font-size:9px;color:${FAINT};"> ر.س</span></td>
+      <td style="padding:8px 9px;border:1px solid ${LINE};font-family:'JetBrains Mono',monospace;font-size:11.5px;color:${INK};text-align:left;">${item.price.toLocaleString("en-SA")}<span style="font-size:9px;color:${FAINT};"> ${curAr()}</span></td>
+      <td style="padding:8px 9px;border:1px solid ${LINE};font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:${INK};text-align:left;">${lineTotal.toLocaleString("en-SA")}<span style="font-size:9px;color:${FAINT};"> ${curAr()}</span></td>
     </tr>`;
   }).join("");
 }
@@ -397,7 +398,7 @@ body{font-family:'IBM Plex Sans Arabic',Tahoma,Arial,sans-serif;font-size:12px;c
     ${order.notes ? `<div style="flex:1;border:1px solid ${LINE};border-radius:8px;padding:11px 14px;background:${FILL2};"><div style="font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:${FAINT};margin-bottom:5px;">${L.notes}</div><div style="font-size:11px;color:${SOFT};line-height:1.7;">${escapeHTML(order.notes)}</div></div>` : `<div style="flex:1;"></div>`}
     <div style="width:250px;flex-shrink:0;margin-right:${order.notes ? "12px" : "0"};background:${ACCENT};border-radius:8px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;">
       <span style="font-size:12px;font-weight:600;color:#fff;">${L.grandTotal}</span>
-      <span class="mono" style="font-size:20px;font-weight:700;color:#fff;">${subtotal.toLocaleString("en-SA")}<span style="font-size:10px;font-weight:600;color:#cbd5e1;margin-right:4px;">ر.س</span></span>
+      <span class="mono" style="font-size:20px;font-weight:700;color:#fff;">${subtotal.toLocaleString("en-SA")}<span style="font-size:10px;font-weight:600;color:#cbd5e1;margin-right:4px;">${curAr()}</span></span>
     </div>
   </div>
 </div>

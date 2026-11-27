@@ -16,6 +16,7 @@ import * as API from "./journalApi";
 import { JournalDrawer, ReasonDialog, printEntryDoc, stateBadge } from "./JournalDrawer";
 import { PBTN, PBTN_BLUE, PIN, PLBL, PCARD, type PrintInfo } from "./JournalPanels";
 
+import { curAr, curEn } from "../../lib/orgConfig";
 export type JUi = { AccountPicker: ComponentType<{ value: number | ""; onChange: (v: number | "") => void; options: GLAccount[]; placeholder?: string; size?: "sm" | "md" }>; PartyPicker: ComponentType<{ parties: DB.GLParty[]; onPick: (p: DB.GLParty) => void; compact?: boolean }>; resolvePartyAccount: (p: DB.GLParty, all: DB.GLParty[]) => number | null };
 export type Period = { from: string; to: string; branch: string; setFrom: (v: string) => void; setTo: (v: string) => void; setBranch: (v: string) => void };
 export type JCmd = { nonce: number; kind: "new" | "copy" | "reverse" | "status" | "template" | "open"; id?: number; status?: StatusFilter; template?: API.Template } | null;
@@ -63,7 +64,7 @@ export default function JournalTab(P: Props) {
   // ── نموذج الإدخال ──
   const [showForm, setShowForm] = useState(false); const [editingId, setEditingId] = useState<number | null>(null); const [editingNo, setEditingNo] = useState(""); const [nextNo, setNextNo] = useState(0); const [saving, setSaving] = useState(false); const [saveTick, setSaveTick] = useState(0);
   const [date, setDate] = useState(today()); const [eType, setEType] = useState("general"); const [desc, setDesc] = useState(""); const [notes, setNotes] = useState(""); const [eBranch, setEBranch] = useState(""); const [lines, setLines] = useState<Draft[]>([emptyLine(), emptyLine()]);
-  const [currency, setCurrency] = useState("SAR"); const [fx, setFx] = useState("1"); const [extRef, setExtRef] = useState(""); const [project, setProject] = useState(""); const [costCenter, setCostCenter] = useState("");
+  const [currency, setCurrency] = useState(curEn()); const [fx, setFx] = useState("1"); const [extRef, setExtRef] = useState(""); const [project, setProject] = useState(""); const [costCenter, setCostCenter] = useState("");
   const [pendingFiles, setPendingFiles] = useState<File[]>([]); const [existingAtts, setExistingAtts] = useState<DB.GLAttachment[]>([]); const attRef = useRef<HTMLInputElement>(null);
   const [formErr, setFormErr] = useState(""); const [tplName, setTplName] = useState<string | null>(null); const [tplKeep, setTplKeep] = useState(false); const [tplMsg, setTplMsg] = useState(""); const [tpls, setTpls] = useState<API.Template[]>([]);
   const [drawer, setDrawer] = useState<JEntry | null>(null); const [busy, setBusy] = useState(false); const [revTarget, setRevTarget] = useState<JEntry | null>(null); const [toast, setToast] = useState("");
@@ -85,13 +86,13 @@ export default function JournalTab(P: Props) {
   const canPost = !saving && balanced && blocking.length === 0 && !!desc.trim();
   const needApproval = !!settings?.require_approval && caps.applied;
   const setLine = (i: number, patch: Partial<Draft>) => setLines((p) => p.map((l, k) => (k === i ? { ...l, ...patch } : l)));
-  const resetForm = () => { setDate(today()); setEType("general"); setDesc(""); setNotes(""); setEBranch(""); setLines([emptyLine(), emptyLine()]); setPendingFiles([]); setExistingAtts([]); setCurrency("SAR"); setFx("1"); setExtRef(""); setProject(""); setCostCenter(""); setFormErr(""); setTplName(null); setTplMsg(""); };
+  const resetForm = () => { setDate(today()); setEType("general"); setDesc(""); setNotes(""); setEBranch(""); setLines([emptyLine(), emptyLine()]); setPendingFiles([]); setExistingAtts([]); setCurrency(curEn()); setFx("1"); setExtRef(""); setProject(""); setCostCenter(""); setFormErr(""); setTplName(null); setTplMsg(""); };
   const scrollForm = () => window.setTimeout(() => { try { formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); } catch { /* noop */ } }, 50);
   const openNew = () => { setEditingId(null); setEditingNo(""); resetForm(); setShowForm(true); scrollForm(); };
   const closeForm = () => { setShowForm(false); setEditingId(null); setEditingNo(""); resetForm(); };
   const fillFrom = (e: JEntry, copy: boolean) => {
     setDate(copy ? today() : e.date); setEType(e.entry_type || "general"); setDesc(e.description || ""); setNotes(copy ? "" : (e.notes || "")); setEBranch(e.branch_id != null ? String(e.branch_id) : "");
-    setCurrency(e.currency_code || "SAR"); setExtRef(copy ? "" : e.external_ref || ""); setProject(e.project || ""); setCostCenter(e.cost_center || "");
+    setCurrency(e.currency_code || curEn()); setExtRef(copy ? "" : e.external_ref || ""); setProject(e.project || ""); setCostCenter(e.cost_center || "");
     const ls: Draft[] = (e.lines || []).map((l) => ({ account_id: l.account_id, debit: Number(l.debit) ? String(l.debit) : "", credit: Number(l.credit) ? String(l.credit) : "", branch_id: l.branch_id != null ? Number(l.branch_id) : "", note: l.note || "", party_id: l.party_id ?? null }));
     setLines(ls.length >= 2 ? ls : [...ls, emptyLine(), emptyLine()].slice(0, Math.max(2, ls.length))); setPendingFiles([]); setExistingAtts([]);
   };
@@ -120,7 +121,7 @@ export default function JournalTab(P: Props) {
   const kb = (n?: number) => (n ? (n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB") : "");
 
   // ── الحفظ ──
-  const buildHeader = (status: "draft" | "posted"): API.HeaderX => ({ date, description: desc.trim() || null, branch_id: eBranch ? Number(eBranch) : null, entry_type: eType, notes: notes || null, status, ...(caps.applied ? { currency_code: currency || "SAR", fx_rate: Number(fx) > 0 ? Number(fx) : 1, external_ref: extRef.trim() || null, project: project.trim() || null, cost_center: costCenter.trim() || null } : {}) });
+  const buildHeader = (status: "draft" | "posted"): API.HeaderX => ({ date, description: desc.trim() || null, branch_id: eBranch ? Number(eBranch) : null, entry_type: eType, notes: notes || null, status, ...(caps.applied ? { currency_code: currency || curEn(), fx_rate: Number(fx) > 0 ? Number(fx) : 1, external_ref: extRef.trim() || null, project: project.trim() || null, cost_center: costCenter.trim() || null } : {}) });
   const glLines = (): GLLine[] => lines.filter((l) => l.account_id && (toCents(l.debit) || toCents(l.credit))).map((l) => ({ account_id: Number(l.account_id), debit: toCents(l.debit) / 100, credit: toCents(l.credit) / 100, branch_id: l.branch_id === "" ? null : Number(l.branch_id), note: l.note || null, party_id: l.party_id ?? null }));
   const persist = async (status: "posted" | "draft", opt?: { andNew?: boolean; sendApproval?: boolean }) => {
     setFormErr("");
@@ -207,8 +208,8 @@ export default function JournalTab(P: Props) {
             {multiBranch && <div><label className={LABEL}>{T("Branch / default cost center", "الفرع / مركز التكلفة الافتراضي")}</label><select value={eBranch} onChange={(e) => setEBranch(e.target.value)} className={INPUT} data-testid="je-branch"><option value="">{T("— None", "— بدون")}</option>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
             <div className={multiBranch ? "" : "lg:col-span-2"}><label className={LABEL}>{T("Main description", "البيان الرئيسي")} *</label><input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={T("Describe the entry", "وصف القيد")} className={INPUT} data-testid="je-desc" /></div>
             {caps.applied && <>
-              <div><label className={LABEL}>{T("Currency", "العملة")}</label><select value={currency} onChange={(e) => { setCurrency(e.target.value); if (e.target.value === "SAR") setFx("1"); }} className={INPUT} data-testid="je-cur"><option value="SAR">{T("Saudi Riyal (SAR)", "ريال سعودي (SAR)")}</option><option value="USD">USD</option><option value="EUR">EUR</option><option value="AED">AED</option></select></div>
-              {currency !== "SAR" && <div><label className={LABEL}>{T("Exchange rate to SAR", "سعر الصرف إلى الريال")}</label><input inputMode="decimal" value={fx} onChange={(e) => setFx(normalizeDigits(e.target.value))} className={INPUT + " [direction:ltr] text-center"} data-testid="je-fx" /></div>}
+              <div><label className={LABEL}>{T("Currency", "العملة")}</label><select value={currency} onChange={(e) => { setCurrency(e.target.value); if (e.target.value === curEn()) setFx("1"); }} className={INPUT} data-testid="je-cur"><option value={curEn()}>{curEn()} — {T("company currency", "عملة الشركة")}</option>{["USD", "EUR", "SAR", "AED", "EGP"].filter((c) => c !== curEn()).map((c) => <option key={c} value={c}>{c}</option>)}</select></div>
+              {currency !== curEn() && <div><label className={LABEL}>{T(`Exchange rate to ${curEn()}`, `سعر الصرف إلى ${curAr()}`)}</label><input inputMode="decimal" value={fx} onChange={(e) => setFx(normalizeDigits(e.target.value))} className={INPUT + " [direction:ltr] text-center"} data-testid="je-fx" /></div>}
               <div><label className={LABEL}>{T("External reference", "المرجع الخارجي")}</label><input value={extRef} onChange={(e) => setExtRef(e.target.value)} placeholder={T("Invoice / document no.", "رقم فاتورة أو مستند")} className={INPUT} data-testid="je-ref" /></div>
               <div><label className={LABEL}>{T("Project", "المشروع")}</label><input value={project} onChange={(e) => setProject(e.target.value)} className={INPUT} /></div>
               <div><label className={LABEL}>{T("Cost center", "مركز التكلفة")}</label><input value={costCenter} onChange={(e) => setCostCenter(e.target.value)} className={INPUT} /></div></>}
@@ -310,7 +311,7 @@ export default function JournalTab(P: Props) {
                         <td className="px-3 py-2.5 text-slate-200 max-w-[260px] truncate">{e.description || "—"}{isReversal(e) && <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 ms-1">{T("Reversal", "قيد عكسي")}</span>}</td>
                         <td className="px-3 py-2.5"><span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-700/40 text-slate-300 whitespace-nowrap">{typeLabel(e.entry_type || "general")}</span></td>
                         {multiBranch && <td className="px-3 py-2.5 text-slate-400 whitespace-nowrap">{e.branch_id != null ? branchName(e.branch_id) : "—"}</td>}
-                        {caps.applied && <td className="px-3 py-2.5 text-slate-400 font-mono">{e.currency_code || "SAR"}</td>}
+                        {caps.applied && <td className="px-3 py-2.5 text-slate-400 font-mono">{e.currency_code || curEn()}</td>}
                         <td className="px-3 py-2.5 text-center font-mono text-emerald-400 [direction:ltr] whitespace-nowrap">{fmtCents(d)}</td><td className="px-3 py-2.5 text-center font-mono text-amber-400 [direction:ltr] whitespace-nowrap">{fmtCents(c)}</td>
                         <td className="px-3 py-2.5 text-slate-400 whitespace-nowrap">{userName(e.created_by)}</td>{caps.applied && <td className="px-3 py-2.5 text-slate-400 whitespace-nowrap">{e.approved_by ? userName(e.approved_by) : "—"}</td>}
                         <td className="px-3 py-2.5 text-center"><span className={`text-[10px] px-2 py-0.5 rounded-full font-bold whitespace-nowrap ${b.cls}`}>{b.label}</span></td>

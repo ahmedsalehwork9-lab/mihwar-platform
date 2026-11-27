@@ -6,13 +6,14 @@
 
 import { useLang } from "../../../context/LanguageContext";
 
+import { curAr, curEn } from "../../lib/orgConfig";
 export function buildTr(t: (en: string, ar: string) => string) {
   return {
     // page
     title: t("Cash & Banks", "الخزن والبنوك"),
     subtitle: t("Manage cash accounts, bank accounts, and financial transactions.", "إدارة الخزن النقدية والحسابات البنكية وحركتها المالية."),
     home: t("Home", "الرئيسية"), accounting: t("Accounting", "الحسابات"), organization: t("Organization", "المؤسسة"),
-    currency: t("SAR", "ر.س"),
+    currency: t(`${curEn()}`, `${curAr()}`),
     // filters
     dateFrom: t("From", "من"), dateTo: t("To", "إلى"), period: t("Period", "الفترة"),
     branch: t("Branch", "الفرع"), allBranches: t("All branches", "كل الفروع"),

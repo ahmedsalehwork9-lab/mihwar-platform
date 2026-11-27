@@ -27,6 +27,10 @@ export const COUNTRY_PRESETS: Record<string, Partial<OrgConfig> & { en: string; 
   EG: { en: "Egypt", ar: "مصر", country: "EG", currency: "EGP", currency_symbol: "ج.م", timezone: "Africa/Cairo", default_tax_rate: 14 },
   AE: { en: "UAE", ar: "الإمارات", country: "AE", currency: "AED", currency_symbol: "د.إ", timezone: "Asia/Dubai", default_tax_rate: 5 },
   KW: { en: "Kuwait", ar: "الكويت", country: "KW", currency: "KWD", currency_symbol: "د.ك", timezone: "Asia/Kuwait", default_tax_rate: 0 },
+  QA: { en: "Qatar", ar: "قطر", country: "QA", currency: "QAR", currency_symbol: "ر.ق", timezone: "Asia/Qatar", default_tax_rate: 0 },
+  BH: { en: "Bahrain", ar: "البحرين", country: "BH", currency: "BHD", currency_symbol: "د.ب", timezone: "Asia/Bahrain", default_tax_rate: 10 },
+  OM: { en: "Oman", ar: "عُمان", country: "OM", currency: "OMR", currency_symbol: "ر.ع", timezone: "Asia/Muscat", default_tax_rate: 5 },
+  JO: { en: "Jordan", ar: "الأردن", country: "JO", currency: "JOD", currency_symbol: "د.أ", timezone: "Asia/Amman", default_tax_rate: 16 },
 };
 
 export const DEFAULT_CONFIG: OrgConfig = {
@@ -45,6 +49,11 @@ export function setActiveFromConfig(cfg: OrgConfig) {
   ACTIVE.timezone = cfg.timezone || "Asia/Riyadh";
   ACTIVE.taxRate = cfg.default_tax_rate ?? 15;
 }
+
+/** اختصار العملة للعرض: بالعربية الرمز (ج.م / ر.س) وبالإنجليزية رمز ISO (EGP / SAR) — يتبع دولة الشركة النشطة. */
+export const curAr = (): string => ACTIVE.symbol;
+export const curEn = (): string => ACTIVE.code;
+export const cur = (ar: boolean): string => (ar ? ACTIVE.symbol : ACTIVE.code);
 
 // ── جلب إعداد الشركة (بأمان: يرجع الافتراضات لو الأعمدة غير موجودة بعد) ──────────
 export async function fetchOrgConfig(orgId: number): Promise<OrgConfig> {

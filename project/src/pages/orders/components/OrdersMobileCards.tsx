@@ -8,6 +8,7 @@ import { Package, ArrowRightLeft } from "lucide-react";
 import type { Order } from "../types";
 import { StatusBadge } from "./StatusBadge";
 
+import { curAr } from "../../lib/orgConfig";
 type OrdersMobileCardsProps = {
   orders: Order[];
   onOpenDetail: (order: Order) => void;
@@ -55,7 +56,7 @@ function OrdersMobileCardsBase({ orders, onOpenDetail, isRTL, t }: OrdersMobileC
               <p>{new Date(o.created_at).toLocaleDateString()}</p>
             </div>
             <span className="text-emerald-400 font-black text-lg leading-none">
-              {o.total_amount.toLocaleString()}<span className="text-[10px] font-normal text-slate-500"> ر.س</span>
+              {o.total_amount.toLocaleString()}<span className="text-[10px] font-normal text-slate-500"> {curAr()}</span>
             </span>
           </div>
         </button>

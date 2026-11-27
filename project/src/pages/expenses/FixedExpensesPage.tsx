@@ -16,6 +16,7 @@ import {
 } from "../lib/cafeDb";
 import { logoBox, contactFooter, waQrDataUrl, SUPPORT_WA } from "../lib/reportChrome";
 
+import { curAr } from "../lib/orgConfig";
 type SalType = "daily" | "weekly" | "monthly";
 type Salary = { id: number; name: string; title: string; type: SalType; amount: string; count: string; note: string };
 type FEItem = { id: number; name: string; amount: string; dueDate: string; payment: string; inBE: boolean; note: string };
@@ -161,21 +162,21 @@ export default function FixedExpensesPage() {
     const now = new Date().toLocaleString("ar-SA");
     const card = (l: string, v: string, green = false) => `<div style="flex:1;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:10px 14px;"><div style="font-size:10px;color:#6b7280;font-weight:700;">${l}</div><div style="font-size:16px;font-weight:800;margin-top:3px;color:${green ? "#15a06a" : "#111827"};">${v}</div></div>`;
     const header = `<div style="background:#0f1b2b;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;"><div style="text-align:left;"><div style="font-size:20px;font-weight:800;color:#34d399;">نقطة التعادل والمستهدف</div><div style="font-size:12px;color:#9fb3c8;">الشهر: ${month} — ${now}</div></div><div style="display:flex;align-items:center;gap:10px;"><div style="text-align:right;"><div style="font-size:18px;font-weight:800;color:#fff;">محور</div><div style="font-size:9px;letter-spacing:3px;color:#9fb3c8;">MIHWAR PLATFORM</div></div>${logoBox(logoUrl)}</div></div>`;
-    const cards = `<div style="display:flex;gap:10px;padding:14px 20px;background:#f8fafc;">${card("الفرع", branch || "—")}${card("المبيعات الفعلية", fmt(actualSales) + " ر.س")}${card("نقطة التعادل", fmt(be.breakEven) + " ر.س", true)}${card("المستهدف", fmt(be.target) + " ر.س", true)}</div>`;
+    const cards = `<div style="display:flex;gap:10px;padding:14px 20px;background:#f8fafc;">${card("الفرع", branch || "—")}${card("المبيعات الفعلية", fmt(actualSales) + " " + curAr())}${card("نقطة التعادل", fmt(be.breakEven) + " " + curAr(), true)}${card("المستهدف", fmt(be.target) + " " + curAr(), true)}</div>`;
     const row = (l: string, v: string, note = "") => `<tr><td style="border:1px solid #e5e7eb;padding:6px 10px;font-size:12px;text-align:right;font-weight:600;color:#374151;">${l}</td><td style="border:1px solid #e5e7eb;padding:6px 10px;font-size:12px;text-align:center;font-weight:800;color:#0f1b2b;">${v}</td><td style="border:1px solid #e5e7eb;padding:6px 10px;font-size:11px;text-align:right;color:#6b7280;">${note}</td></tr>`;
     const metrics = `<div style="padding:8px 20px;"><table style="border-collapse:collapse;width:100%;max-width:640px;">
-      ${row("المبيعات الشهرية الفعلية", fmt(actualSales) + " ر.س", "من بيانات تسوية المبيعات")}
-      ${row("التكاليف الثابتة الشهرية", fmt(fixedForBE) + " ر.س", "من صفحة المصروفات الثابتة")}
-      ${row("التكاليف المتغيرة", fmt(variableCosts) + " ر.س", "مشتريات + تحويل وارد − تحويل صادر")}
-      ${row("— تحويل وارد (مكتمل/جزئي)", "+" + fmt(transfers.transIn) + " ر.س", "طلبات واردة للفرع")}
-      ${row("— تحويل صادر (مكتمل/جزئي)", "−" + fmt(transfers.transOut) + " ر.س", "طلبات صادرة من الفرع")}
+      ${row("المبيعات الشهرية الفعلية", fmt(actualSales) + " " + curAr(), "من بيانات تسوية المبيعات")}
+      ${row("التكاليف الثابتة الشهرية", fmt(fixedForBE) + " " + curAr(), "من صفحة المصروفات الثابتة")}
+      ${row("التكاليف المتغيرة", fmt(variableCosts) + " " + curAr(), "مشتريات + تحويل وارد − تحويل صادر")}
+      ${row("— تحويل وارد (مكتمل/جزئي)", "+" + fmt(transfers.transIn) + " " + curAr(), "طلبات واردة للفرع")}
+      ${row("— تحويل صادر (مكتمل/جزئي)", "−" + fmt(transfers.transOut) + " " + curAr(), "طلبات صادرة من الفرع")}
       ${row("نسبة التكلفة المتغيرة", (be.varPct * 100).toFixed(1) + "%", "متغيرة ÷ مبيعات")}
       ${row("هامش المساهمة", (be.cm * 100).toFixed(1) + "%", "1 − نسبة المتغيرة")}
-      ${row("نقطة التعادل الشهرية", fmt(be.breakEven) + " ر.س", "ثابتة ÷ هامش المساهمة")}
-      ${row("نقطة التعادل اليومية", fmt(be.dailyBE) + " ر.س", "شهري ÷ 30")}
-      ${row("المستهدف (Target)", fmt(be.target) + " ر.س", `تعادل × (1 + ${targetUplift}%)`)}
+      ${row("نقطة التعادل الشهرية", fmt(be.breakEven) + " " + curAr(), "ثابتة ÷ هامش المساهمة")}
+      ${row("نقطة التعادل اليومية", fmt(be.dailyBE) + " " + curAr(), "شهري ÷ 30")}
+      ${row("المستهدف (Target)", fmt(be.target) + " " + curAr(), `تعادل × (1 + ${targetUplift}%)`)}
       ${row("تحقيق المستهدف", be.achievement.toFixed(1) + "%", "مبيعات ÷ المستهدف")}
-      ${row("صافي الربح التقديري", fmt(be.profit) + " ر.س", "مبيعات − متغيرة − ثابتة")}
+      ${row("صافي الربح التقديري", fmt(be.profit) + " " + curAr(), "مبيعات − متغيرة − ثابتة")}
     </table></div>`;
     const scen = `<div style="padding:4px 20px 14px;"><div style="font-size:13px;font-weight:800;color:#0f1b2b;margin:6px 0;">سيناريوهات المستهدف فوق نقطة التعادل</div>
       <table style="border-collapse:collapse;width:100%;max-width:640px;"><tr>${["السيناريو", "الزيادة", "Target", "الفرق عن التعادل"].map((h) => `<th style="border:1px solid #d1d5db;padding:6px 8px;background:#14304d;color:#fff;font-size:11px;">${h}</th>`).join("")}</tr>
@@ -219,7 +220,7 @@ export default function FixedExpensesPage() {
         <>
           {/* الرواتب */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden mb-4">
-            <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-emerald-500" /><h2 className="text-sm font-bold text-white">الرواتب (تفصيلي)</h2><span className="text-[11px] text-emerald-400 font-bold mr-auto">إجمالي شهري: {fmt(salariesTotal)} ر.س</span></div>
+            <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-emerald-500" /><h2 className="text-sm font-bold text-white">الرواتب (تفصيلي)</h2><span className="text-[11px] text-emerald-400 font-bold mr-auto">إجمالي شهري: {fmt(salariesTotal)} {curAr()}</span></div>
             <div className="overflow-x-auto">
               <table className="w-full border-collapse" style={{ minWidth: 820 }}>
                 <thead><tr className="bg-slate-950">{["اسم الموظف", "الوظيفة", "نوع الراتب", "القيمة", "العدد/الشهر", "المستحق الشهري", "ملاحظات", ""].map((h) => <th key={h} className="text-right text-[10px] font-bold text-slate-500 px-3 py-2 whitespace-nowrap">{h}</th>)}</tr></thead>
@@ -247,7 +248,7 @@ export default function FixedExpensesPage() {
 
           {/* مصروفات ثابتة أخرى */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden mb-4">
-            <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-blue-500" /><h2 className="text-sm font-bold text-white">مصروفات ثابتة أخرى</h2><span className="text-[11px] text-slate-400 font-bold mr-auto">إجمالي: {fmt(itemsTotal)} ر.س</span></div>
+            <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-blue-500" /><h2 className="text-sm font-bold text-white">مصروفات ثابتة أخرى</h2><span className="text-[11px] text-slate-400 font-bold mr-auto">إجمالي: {fmt(itemsTotal)} {curAr()}</span></div>
             <div className="overflow-x-auto">
               <table className="w-full border-collapse" style={{ minWidth: 820 }}>
                 <thead><tr className="bg-slate-950">{["البند", "القيمة الشهرية", "تاريخ الاستحقاق", "طريقة الدفع", "يدخل في التعادل؟", "ملاحظات", ""].map((h) => <th key={h} className="text-right text-[10px] font-bold text-slate-500 px-3 py-2 whitespace-nowrap">{h}</th>)}</tr></thead>
@@ -271,9 +272,9 @@ export default function FixedExpensesPage() {
 
           {/* إجماليات */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4"><div className="text-[10px] text-slate-500 font-bold">إجمالي الرواتب</div><div className="text-xl font-black font-mono mt-1 text-white [direction:ltr]">{fmt(salariesTotal)} <span className="text-[11px] text-slate-500">ر.س</span></div></div>
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4"><div className="text-[10px] text-slate-500 font-bold">إجمالي المصروفات الأخرى</div><div className="text-xl font-black font-mono mt-1 text-white [direction:ltr]">{fmt(itemsTotal)} <span className="text-[11px] text-slate-500">ر.س</span></div></div>
-            <div className="bg-gradient-to-br from-blue-600/20 to-slate-900 border border-blue-500/20 rounded-2xl p-4"><div className="text-[10px] text-slate-400 font-bold">إجمالي المصروفات الثابتة</div><div className="text-2xl font-black font-mono mt-1 text-emerald-400 [direction:ltr]">{fmt(fixedTotal)} <span className="text-xs text-slate-400">ر.س</span></div></div>
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4"><div className="text-[10px] text-slate-500 font-bold">إجمالي الرواتب</div><div className="text-xl font-black font-mono mt-1 text-white [direction:ltr]">{fmt(salariesTotal)} <span className="text-[11px] text-slate-500">{curAr()}</span></div></div>
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4"><div className="text-[10px] text-slate-500 font-bold">إجمالي المصروفات الأخرى</div><div className="text-xl font-black font-mono mt-1 text-white [direction:ltr]">{fmt(itemsTotal)} <span className="text-[11px] text-slate-500">{curAr()}</span></div></div>
+            <div className="bg-gradient-to-br from-blue-600/20 to-slate-900 border border-blue-500/20 rounded-2xl p-4"><div className="text-[10px] text-slate-400 font-bold">إجمالي المصروفات الثابتة</div><div className="text-2xl font-black font-mono mt-1 text-emerald-400 [direction:ltr]">{fmt(fixedTotal)} <span className="text-xs text-slate-400">{curAr()}</span></div></div>
           </div>
         </>
       )}
@@ -291,12 +292,12 @@ export default function FixedExpensesPage() {
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
               <div className="flex items-center justify-between mb-1"><span className="text-[10px] text-slate-500 font-bold">المبيعات الفعلية (شهري)</span>{salesOv.trim() && <button onClick={() => setSalesOv("")} className="text-[10px] text-blue-400">استخدم المقترح</button>}</div>
               <input type="number" value={salesOv} onChange={(e) => setSalesOv(e.target.value)} placeholder={fmt(suggSales)} className="w-full bg-slate-950 border border-slate-700 rounded-xl text-white px-3 py-2 text-lg font-mono text-center [direction:ltr]" />
-              <div className="text-[10px] text-slate-500 mt-1">مقترح من تسوية المبيعات: {fmt(suggSales)} ر.س</div>
+              <div className="text-[10px] text-slate-500 mt-1">مقترح من تسوية المبيعات: {fmt(suggSales)} {curAr()}</div>
             </div>
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
               <div className="flex items-center justify-between mb-1"><span className="text-[10px] text-slate-500 font-bold">التكاليف المتغيرة (شهري)</span>{varOv.trim() && <button onClick={() => setVarOv("")} className="text-[10px] text-blue-400">استخدم المقترح</button>}</div>
               <input type="number" value={varOv} onChange={(e) => setVarOv(e.target.value)} placeholder={fmt(suggVar)} className="w-full bg-slate-950 border border-slate-700 rounded-xl text-white px-3 py-2 text-lg font-mono text-center [direction:ltr]" />
-              <div className="text-[10px] text-slate-500 mt-1 leading-relaxed [direction:ltr] text-right">مشتريات {fmt(suggPurch)} <span className="text-emerald-400">+ وارد {fmt(transfers.transIn)}</span> <span className="text-red-400">− صادر {fmt(transfers.transOut)}</span> = <b className="text-slate-300">{fmt(suggVar)}</b> ر.س</div>
+              <div className="text-[10px] text-slate-500 mt-1 leading-relaxed [direction:ltr] text-right">مشتريات {fmt(suggPurch)} <span className="text-emerald-400">+ وارد {fmt(transfers.transIn)}</span> <span className="text-red-400">− صادر {fmt(transfers.transOut)}</span> = <b className="text-slate-300">{fmt(suggVar)}</b> {curAr()}</div>
             </div>
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
               <div className="text-[10px] text-slate-500 font-bold">التكاليف الثابتة (من الصفحة)</div>
@@ -313,7 +314,7 @@ export default function FixedExpensesPage() {
           </div>
 
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 mb-4">
-            <div className="flex justify-between text-xs mb-2"><span className="text-slate-400 font-bold">المبيعات الفعلية مقابل التعادل والمستهدف</span><span className="font-mono text-white [direction:ltr]">{fmt(actualSales)} ر.س</span></div>
+            <div className="flex justify-between text-xs mb-2"><span className="text-slate-400 font-bold">المبيعات الفعلية مقابل التعادل والمستهدف</span><span className="font-mono text-white [direction:ltr]">{fmt(actualSales)} {curAr()}</span></div>
             <div className="relative h-5 bg-slate-800 rounded-full overflow-hidden">
               <div className={`h-full rounded-full ${actualSales >= be.breakEven ? "bg-gradient-to-l from-emerald-500 to-blue-500" : "bg-gradient-to-l from-amber-500 to-red-500"}`} style={{ width: `${be.target > 0 ? Math.min(100, (actualSales / be.target) * 100) : 0}%` }} />
               {be.target > 0 && <div className="absolute top-0 h-full border-r-2 border-dashed border-amber-300" style={{ right: `${Math.min(100, (be.breakEven / be.target) * 100)}%` }} title="نقطة التعادل" />}
@@ -324,8 +325,8 @@ export default function FixedExpensesPage() {
             </div>
             <div className="mt-2 text-xs font-bold">
               {actualSales >= be.target ? <span className="text-emerald-400">✅ تجاوزت المستهدف</span>
-                : actualSales >= be.breakEven ? <span className="text-blue-400">✔️ فوق نقطة التعادل — تحتاج {fmt(Math.max(0, be.target - actualSales))} ر.س للوصول للمستهدف</span>
-                : <span className="text-amber-400">⚠️ تحت نقطة التعادل — تحتاج {fmt(Math.max(0, be.breakEven - actualSales))} ر.س للوصول للتعادل</span>}
+                : actualSales >= be.breakEven ? <span className="text-blue-400">✔️ فوق نقطة التعادل — تحتاج {fmt(Math.max(0, be.target - actualSales))} {curAr()} للوصول للمستهدف</span>
+                : <span className="text-amber-400">⚠️ تحت نقطة التعادل — تحتاج {fmt(Math.max(0, be.breakEven - actualSales))} {curAr()} للوصول للتعادل</span>}
             </div>
           </div>
 

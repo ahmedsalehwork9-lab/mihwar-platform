@@ -21,6 +21,7 @@ import { useMemo, useState } from "react";
 import { CalendarDays, FileDown, FileSpreadsheet, X } from "lucide-react";
 import * as XLSX from "xlsx";
 
+import { curAr, curEn } from "../../lib/orgConfig";
 // ── الأنواع (متوافقة مع Order في types بدون استيراد صارم) ──
 type ShopLite = { shop_name?: string | null } | null | undefined;
 type OrderLite = {
@@ -116,7 +117,7 @@ export function OrderReportExport({ orders, t, isRTL }: Props) {
       t("Order No.", "رقم الطلب"),
       t("From", "من"),
       t("To", "إلى"),
-      t("Amount (SAR)", "المبلغ (ر.س)"),
+      t(`Amount (${curEn()})`, `المبلغ (${curAr()})`),
       t("Status", "الحالة"),
       t("Date", "التاريخ"),
     ];
@@ -271,7 +272,7 @@ function buildReportHTML(
       <td style="padding:7px 9px;border:1px solid ${LINE};font-family:monospace;font-size:11px;color:${SOFT};text-align:center;">#${esc(String(o.id).padStart(5, "0"))}</td>
       <td style="padding:7px 9px;border:1px solid ${LINE};font-size:11.5px;font-weight:600;color:${INK};">${esc(o.from_shop?.shop_name ?? "—")}</td>
       <td style="padding:7px 9px;border:1px solid ${LINE};font-size:11.5px;font-weight:600;color:${INK};">${esc(o.to_shop?.shop_name ?? "—")}</td>
-      <td style="padding:7px 9px;border:1px solid ${LINE};font-family:monospace;font-size:11.5px;font-weight:700;color:${INK};text-align:left;">${Number(o.total_amount || 0).toLocaleString("en-SA")}<span style="font-size:8px;color:${FAINT};"> ر.س</span></td>
+      <td style="padding:7px 9px;border:1px solid ${LINE};font-family:monospace;font-size:11.5px;font-weight:700;color:${INK};text-align:left;">${Number(o.total_amount || 0).toLocaleString("en-SA")}<span style="font-size:8px;color:${FAINT};"> ${curAr()}</span></td>
       <td style="padding:7px 9px;border:1px solid ${LINE};font-size:11px;color:${SOFT};text-align:center;">${esc(statusLabel(o.status, lang))}</td>
       <td style="padding:7px 9px;border:1px solid ${LINE};font-size:11px;color:${SOFT};text-align:center;">${esc(fmtDate(o.created_at, lang))}</td>
     </tr>`;
@@ -323,7 +324,7 @@ body{font-family:'IBM Plex Sans Arabic',Tahoma,Arial,sans-serif;color:${INK};bac
     <div style="background:${FILL};padding:8px 14px;border-bottom:1px solid ${LINE_S};"><span style="font-size:12px;font-weight:700;color:${ACCENT};">${t("Summary", "الملخص")}</span></div>
     <div style="display:grid;grid-template-columns:repeat(2,1fr);padding:13px 16px;">
       ${kpi(String(summary.count), t("Total Orders", "عدد الطلبات"), INK, false)}
-      ${kpi(summary.total.toLocaleString("en-SA") + " ر.س", t("Total Value", "إجمالي القيمة"), ACCENT, true)}
+      ${kpi(summary.total.toLocaleString("en-SA") + " " + curAr(), t("Total Value", "إجمالي القيمة"), ACCENT, true)}
     </div>
     <div style="padding:0 16px 12px;">${statusChips || ""}</div>
   </div>
@@ -349,7 +350,7 @@ body{font-family:'IBM Plex Sans Arabic',Tahoma,Arial,sans-serif;color:${INK};bac
       <tfoot>
         <tr style="background:${FILL};">
           <td colspan="3" style="padding:9px;border:1px solid ${LINE};font-size:12px;font-weight:700;color:${ACCENT};text-align:${lang === "ar" ? "left" : "right"};">${t("Total", "الإجمالي")}</td>
-          <td style="padding:9px;border:1px solid ${LINE};font-family:monospace;font-size:13px;font-weight:800;color:${ACCENT};text-align:left;">${summary.total.toLocaleString("en-SA")}<span style="font-size:8px;color:${FAINT};"> ر.س</span></td>
+          <td style="padding:9px;border:1px solid ${LINE};font-family:monospace;font-size:13px;font-weight:800;color:${ACCENT};text-align:left;">${summary.total.toLocaleString("en-SA")}<span style="font-size:8px;color:${FAINT};"> ${curAr()}</span></td>
           <td colspan="2" style="padding:9px;border:1px solid ${LINE};font-size:11px;color:${SOFT};text-align:center;">${summary.count} ${t("orders", "طلب")}</td>
         </tr>
       </tfoot>

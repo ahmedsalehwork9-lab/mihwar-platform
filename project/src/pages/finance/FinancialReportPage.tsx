@@ -16,6 +16,7 @@ import {
 } from "../lib/cafeDb";
 import { logoBox, contactFooter, waQrDataUrl, SUPPORT_WA } from "../lib/reportChrome";
 
+import { curAr, curEn } from "../lib/orgConfig";
 const VAT_DIV = 1.15;
 
 const fmt = (n: number) => (Math.round(n * 100) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -217,8 +218,8 @@ export default function FinancialReportPage() {
 
     const plBody = plRows.map((r) => {
       const rowBg = r.hl === "green" ? "background:#dcfce7;" : r.hl === "gray" ? "background:#f1f5f9;" : "";
-      const cv = fmt(r.c) + " SAR";
-      const pv = fmt(r.p) + " SAR";
+      const cv = fmt(r.c) + " " + curEn();
+      const pv = fmt(r.p) + " " + curEn();
       return `<tr style="${rowBg}">${tdL(r.label, r.bold)}${tdN(cv, "#15803d", r.bold)}${compare ? tdN(pv, "#334155", r.bold) + tdNote(changeNote(r.c, r.p)) : ""}</tr>`;
     }).join("");
     const marginRow = `<tr style="background:#dcfce7;">${tdL("هامش الربح", true)}${tdN(cur.margin.toFixed(1) + "%", "#15803d", true)}${compare ? tdN(prev.margin.toFixed(1) + "%", "#334155", true) + tdNote((cur.margin - prev.margin >= 0 ? "تحسّن " : "تراجع ") + Math.abs(cur.margin - prev.margin).toFixed(1) + " نقطة") : ""}</tr>`;
@@ -232,19 +233,19 @@ export default function FinancialReportPage() {
     const appTable = commIds.length ? `<table style="border-collapse:collapse;width:100%;margin-top:6px;">
       <tr>${th("مدخلات عمولة التطبيقات", "#14304d")}${th(monthLabel(month), "#14304d")}${compare ? th(monthLabel(pm), "#14304d") : ""}${th("ملاحظة", "#14304d")}</tr>
       ${appRows}
-      <tr style="background:#eff6ff;">${tdL("إجمالي مبيعات التطبيقات", true)}${tdN(fmt(cur.appSales), "#14304d", true)}${compare ? tdN(fmt(prev.appSales), "#14304d", true) : ""}${tdNote("إجمالي العمولة: " + fmt(cur.commission) + " SAR")}</tr>
+      <tr style="background:#eff6ff;">${tdL("إجمالي مبيعات التطبيقات", true)}${tdN(fmt(cur.appSales), "#14304d", true)}${compare ? tdN(fmt(prev.appSales), "#14304d", true) : ""}${tdNote("إجمالي العمولة: " + fmt(cur.commission) + " " + curEn())}</tr>
     </table>` : "";
 
     const beRow = (l: string, cv: string, pv: string) => `<tr>${tdL(l)}${tdN(cv, "#334155")}${compare ? tdN(pv, "#334155") : ""}</tr>`;
     const beTable = `<table style="border-collapse:collapse;width:100%;">
       <tr>${th("المؤشر")}${th(monthLabel(month))}${compare ? th(monthLabel(pm)) : ""}</tr>
-      ${beRow("المبيعات الشهرية الفعلية (صافي)", fmt(cur.net) + " SAR", fmt(prev.net) + " SAR")}
-      ${beRow("التكاليف الثابتة الشهرية", fmt(cur.totalFixed) + " SAR", fmt(prev.totalFixed) + " SAR")}
-      ${beRow("التكاليف المتغيرة", fmt(cur.variable) + " SAR", fmt(prev.variable) + " SAR")}
+      ${beRow("المبيعات الشهرية الفعلية (صافي)", fmt(cur.net) + " " + curEn(), fmt(prev.net) + " " + curEn())}
+      ${beRow("التكاليف الثابتة الشهرية", fmt(cur.totalFixed) + " " + curEn(), fmt(prev.totalFixed) + " " + curEn())}
+      ${beRow("التكاليف المتغيرة", fmt(cur.variable) + " " + curEn(), fmt(prev.variable) + " " + curEn())}
       ${beRow("نسبة التكاليف المتغيرة", cur.varPct.toFixed(1) + "%", prev.varPct.toFixed(1) + "%")}
       ${beRow("هامش المساهمة", cur.cm.toFixed(1) + "%", prev.cm.toFixed(1) + "%")}
-      ${beRow("نقطة التعادل الشهرية", fmt(cur.breakEven) + " SAR", fmt(prev.breakEven) + " SAR")}
-      ${beRow("نقطة التعادل اليومية", fmt(cur.dailyBE) + " SAR", fmt(prev.dailyBE) + " SAR")}
+      ${beRow("نقطة التعادل الشهرية", fmt(cur.breakEven) + " " + curEn(), fmt(prev.breakEven) + " " + curEn())}
+      ${beRow("نقطة التعادل اليومية", fmt(cur.dailyBE) + " " + curEn(), fmt(prev.dailyBE) + " " + curEn())}
     </table>`;
 
     const feBody = [
@@ -259,7 +260,7 @@ export default function FinancialReportPage() {
 
     const header = `<div style="background:#0f1b2b;padding:18px 22px;display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #34d399;"><div style="display:flex;align-items:center;gap:10px;">${logoBox(logoUrl)}<div style="text-align:right;"><div style="font-size:18px;font-weight:800;color:#fff;">محور</div><div style="font-size:9px;letter-spacing:3px;color:#9fb3c8;">MIHWAR PLATFORM</div></div></div><div style="text-align:left;"><div style="font-size:22px;font-weight:800;color:#34d399;">التقرير المالي الشهري — ${branch || "الفرع"}</div><div style="font-size:12px;color:#9fb3c8;">${compare ? monthLabel(pm) + " و " + monthLabel(month) : monthLabel(month)} — ${now}</div></div></div>`;
     const card = (l: string, v: string, green = false) => `<div style="flex:1;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:10px 14px;"><div style="font-size:10px;color:#6b7280;font-weight:700;">${l}</div><div style="font-size:16px;font-weight:800;margin-top:3px;color:${green ? "#15a06a" : "#111827"};">${v}</div></div>`;
-    const cards = `<div style="display:flex;gap:10px;padding:14px 22px;background:#f8fafc;border-bottom:1px solid #e5e7eb;">${card("الفرع", branch || "—")}${card("صافي المبيعات (" + monthLabel(month) + ")", fmt(cur.net) + " SAR")}${card("صافي الربح", fmt(cur.netProfit) + " SAR", true)}${card("هامش الربح", cur.margin.toFixed(1) + "%")}</div>`;
+    const cards = `<div style="display:flex;gap:10px;padding:14px 22px;background:#f8fafc;border-bottom:1px solid #e5e7eb;">${card("الفرع", branch || "—")}${card("صافي المبيعات (" + monthLabel(month) + ")", fmt(cur.net) + " " + curEn())}${card("صافي الربح", fmt(cur.netProfit) + " " + curEn(), true)}${card("هامش الربح", cur.margin.toFixed(1) + "%")}</div>`;
     const sec = (t: string) => `<div style="font-size:16px;font-weight:800;color:#0f1b2b;border-bottom:2px solid #14304d;padding-bottom:4px;margin:18px 0 10px;">${t}</div>`;
     const plHead = `<table style="border-collapse:collapse;width:100%;"><tr>${th("البند")}${th(monthLabel(pm))}${th(monthLabel(month))}${th("ملاحظات")}</tr>${plBody}${marginRow}</table>`;
     const footer = `<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 22px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:10px;margin-top:16px;gap:12px;"><div><div>تم إنشاء هذا التقرير آليًا من منصة محور</div><div>MIHWAR B2B Marketplace</div></div>${contactFooter(waNum, qr)}</div>`;
@@ -368,7 +369,7 @@ export default function FinancialReportPage() {
                 {cur.commByCh.length === 0 ? <div className="text-xs text-slate-500">لا توجد مبيعات تطبيقات توصيل في هذا الشهر.</div> : cur.commByCh.map((c) => (
                   <div key={c.id} className="flex justify-between text-xs"><span className="text-slate-300">{c.name} <span className="text-slate-600">({c.rate}%)</span></span><span className="font-mono text-slate-200 [direction:ltr]">{fmt(c.sales)} → عمولة {fmt(c.amount)}</span></div>
                 ))}
-                <div className="flex justify-between text-xs border-t border-slate-800 pt-2 mt-1"><span className="text-white font-bold">إجمالي العمولة</span><span className="font-mono font-bold text-amber-400 [direction:ltr]">{fmt(cur.commission)} ر.س</span></div>
+                <div className="flex justify-between text-xs border-t border-slate-800 pt-2 mt-1"><span className="text-white font-bold">إجمالي العمولة</span><span className="font-mono font-bold text-amber-400 [direction:ltr]">{fmt(cur.commission)} {curAr()}</span></div>
               </div>
             </div>
             <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">

@@ -20,6 +20,7 @@ import { X, Plus, Check, Search, RefreshCw, Save, AlertCircle, Trash2 } from "lu
 import type { CartItem, Product, Shop } from "../types";
 import { VisibilityBadge } from "./VisibilityBadge";
 
+import { curAr } from "../../lib/orgConfig";
 type ProductEligibility = { canView: boolean; canTransfer: boolean; canPurchase: boolean; requestType: "PURCHASE" | "TRANSFER" };
 
 type CreateOrderModalProps = {
@@ -139,7 +140,7 @@ function CreateOrderModalBase({
                         <div className="flex items-center justify-between gap-2">
                           <div>
                             <span className="text-emerald-400 font-bold text-sm">{p.price.toLocaleString()}</span>
-                            <span className="text-slate-600 text-[10px] mr-1">ر.س</span>
+                            <span className="text-slate-600 text-[10px] mr-1">{curAr()}</span>
                             <span className="text-slate-600 text-[9px]">· {p.quantity} {t("in stock", "متوفر")}</span>
                           </div>
                           <button
@@ -162,14 +163,14 @@ function CreateOrderModalBase({
             <div className="space-y-3 pt-3 border-t border-slate-800">
               <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center justify-between">
                 {t("Order Summary", "سلة الطلب")}
-                <span className="text-emerald-400 font-black text-sm normal-case">{cartTotal.toLocaleString()} ر.س</span>
+                <span className="text-emerald-400 font-black text-sm normal-case">{cartTotal.toLocaleString()} {curAr()}</span>
               </h3>
               <div className="space-y-2">
                 {cart.map(c => (
                   <div key={c.product.id} className="bg-slate-950/40 px-3 py-2.5 rounded-xl flex items-center justify-between border border-slate-800/50">
                     <div className="flex-1 min-w-0 mr-3">
                       <p className="text-white font-bold text-xs truncate">{c.product.part_name}</p>
-                      <p className="text-[10px] text-slate-500">{c.product.price.toLocaleString()} ر.س</p>
+                      <p className="text-[10px] text-slate-500">{c.product.price.toLocaleString()} {curAr()}</p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <div className="flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700">
@@ -204,7 +205,7 @@ function CreateOrderModalBase({
           >
             {saving ? <RefreshCw className="animate-spin" size={18} /> : <Save size={18} />}
             {isEdit ? t("Save Changes", "حفظ التعديلات") : t("Confirm & Send", "تأكيد وإرسال")}
-            {cart.length > 0 && <span className="bg-white/20 px-2 py-0.5 rounded-lg text-xs font-bold">{cartTotal.toLocaleString()} ر.س</span>}
+            {cart.length > 0 && <span className="bg-white/20 px-2 py-0.5 rounded-lg text-xs font-bold">{cartTotal.toLocaleString()} {curAr()}</span>}
           </button>
         </div>
       </div>

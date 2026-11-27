@@ -13,6 +13,7 @@ import { fetchPrintOrg, type PrintOrg } from "../../sales/salesInvoiceApi";
 import { printHTML } from "../../sales/salesInvoicePrint";
 import type { Caps } from "./journalApi";
 
+import { curEn } from "../../lib/orgConfig";
 export const stateBadge = (tr: Tr): Record<string, { label: string; cls: string }> => ({
   draft: { label: tr("Draft", "مسودة"), cls: "bg-amber-500/15 text-amber-400" },
   pending: { label: tr("Awaiting approval", "بانتظار الاعتماد"), cls: "bg-purple-500/15 text-purple-400" },
@@ -27,7 +28,7 @@ export function printEntryDoc(e: { jv: string; date: string; description: string
   const fallback: PrintOrg = { name: info.orgName, tax_number: info.taxNumber ?? null, commercial_registration: null, phone: null, address: info.address ?? null, logo_url: info.logoUrl ?? null };
   const shopId = e.branchId ?? info.shopId ?? null;
   void fetchPrintOrg(info.orgId ?? 0, info.shopId ?? null).catch(() => fallback).then((org) => printHTML(buildDocHTML({
-    kind: "journal_voucher", number: e.jv, date: e.date, partyName: null, total: d, currency: "SAR", description: e.description, notes: e.notes || null, branchId: shopId, draft: e.draft,
+    kind: "journal_voucher", number: e.jv, date: e.date, partyName: null, total: d, currency: curEn(), description: e.description, notes: e.notes || null, branchId: shopId, draft: e.draft,
     refs: [[tr("Type", "النوع"), e.typeLabel], [tr("Status", "الحالة"), e.stateLabel], ...(e.branch ? [[tr("Branch", "الفرع"), e.branch] as [string, string]] : [])],
     lines: e.lines.map((l) => ({ account: `${l.code} ${l.name}`.trim(), debit: l.debit, credit: l.credit, note: l.note || null })),
   }, org, info.lang)));
@@ -83,7 +84,7 @@ export function JournalDrawer(p: DrawerProps) {
             <Info label={tr("Created by", "المنشئ")} value={p.userName(e.created_by)} /><Info label={tr("Created at", "أُنشئ في")} value={ts(e.created_at)} />
             {p.caps.applied && <><Info label={tr("Approved by", "المعتمد")} value={e.approved_by ? p.userName(e.approved_by) : "—"} /><Info label={tr("Approved at", "تاريخ الاعتماد")} value={ts(e.approved_at)} />
               <Info label={tr("Posted by", "المُرحِّل")} value={e.posted_by ? p.userName(e.posted_by) : "—"} /><Info label={tr("Posted at", "تاريخ الترحيل")} value={ts(e.posted_at)} />
-              <Info label={tr("Currency", "العملة")} value={e.currency_code || "SAR"} /><Info label={tr("External reference", "المرجع الخارجي")} value={e.external_ref || "—"} />
+              <Info label={tr("Currency", "العملة")} value={e.currency_code || curEn()} /><Info label={tr("External reference", "المرجع الخارجي")} value={e.external_ref || "—"} />
               {(e.project || e.cost_center) && <Info label={tr("Project / cost center", "المشروع / مركز التكلفة")} value={[e.project, e.cost_center].filter(Boolean).join(" / ")} />}
               {e.reversed_of != null && <Info label={tr("Reverses", "يعكس القيد")} value={<span className="font-mono [direction:ltr]">{p.jvOf(e.reversed_of)}</span>} />}
               {e.reversed_by != null && <Info label={tr("Reversed by", "عُكس بالقيد")} value={<span className="font-mono [direction:ltr]">{p.jvOf(e.reversed_by)}</span>} />}</>}

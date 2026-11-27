@@ -7,6 +7,7 @@ import { memo } from "react";
 import { DollarSign, Clock, CheckCircle, XCircle } from "lucide-react";
 import type { OrderCounts } from "../types";
 
+import { curAr } from "../../lib/orgConfig";
 type OrderSummaryCardsProps = {
   counts: OrderCounts;
   t: (en: string, ar: string) => string;
@@ -14,7 +15,7 @@ type OrderSummaryCardsProps = {
 
 function OrderSummaryCardsBase({ counts, t }: OrderSummaryCardsProps) {
   const kpis = [
-    { label: t("Total Value", "إجمالي القيمة"), val: `${counts.totalValue.toLocaleString()} ر.س`, icon: DollarSign, color: "text-emerald-400", bg: "bg-emerald-500/5" },
+    { label: t("Total Value", "إجمالي القيمة"), val: `${counts.totalValue.toLocaleString()} ${curAr()}`, icon: DollarSign, color: "text-emerald-400", bg: "bg-emerald-500/5" },
     { label: t("Pending", "معلقة"),             val: counts.pending,                               icon: Clock,       color: "text-amber-400",  bg: "bg-amber-500/5"  },
     { label: t("Approved", "مكتملة"),           val: counts.approved,                              icon: CheckCircle, color: "text-emerald-400", bg: "bg-emerald-500/5" },
     { label: t("Rejected", "مرفوضة"),           val: counts.rejected,                              icon: XCircle,     color: "text-red-400",    bg: "bg-red-500/5"    },

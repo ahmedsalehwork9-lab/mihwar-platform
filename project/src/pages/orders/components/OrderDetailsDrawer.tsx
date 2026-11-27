@@ -19,6 +19,7 @@ import { StatusBadge } from "./StatusBadge";
 import { OrderProgressPanel } from "./OrderProgressPanel";
 import { OrderApprovalPanel } from "./OrderApprovalPanel";
 
+import { curAr } from "../../lib/orgConfig";
 type OrderDetailsDrawerProps = {
   detailOrder: Order;
   detailItems: OrderItem[];
@@ -169,7 +170,7 @@ function OrderDetailsDrawerBase({
                 </span>
               )}
             </div>
-            <span className="text-2xl font-black text-emerald-400">{liveTotal.toLocaleString()}<span className="text-sm font-normal text-slate-400"> ر.س</span></span>
+            <span className="text-2xl font-black text-emerald-400">{liveTotal.toLocaleString()}<span className="text-sm font-normal text-slate-400"> {curAr()}</span></span>
           </div>
 
           <OrderApprovalPanel

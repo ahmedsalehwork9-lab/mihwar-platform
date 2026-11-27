@@ -3,7 +3,7 @@
 // يحمّل إعداد الشركة النشطة (حسب الفرع الحالي) ويضبط حامل العملة العالمي،
 // فتتبع كل التنسيقات (العملة/الأرقام/التواريخ) إعدادات الشركة تلقائيًا.
 // =============================================================
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, Fragment, ReactNode } from "react";
 import { useAuth } from "./AuthContext";
 import { getOrgForBranch } from "../pages/lib/accountingDb";
 import { OrgConfig, DEFAULT_CONFIG, fetchOrgConfig, setActiveFromConfig } from "../pages/lib/orgConfig";
@@ -27,7 +27,10 @@ export function OrgConfigProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { load(); }, [load]);
 
-  return <OrgConfigContext.Provider value={{ cfg, loading, reload: load }}>{children}</OrgConfigContext.Provider>;
+  return <OrgConfigContext.Provider value={{ cfg, loading, reload: load }}>
+    {/* عند تغيّر العملة (تحميل الشركة أو تغيير الدولة) تُعاد رسم الواجهة كي تلتقط كل الشاشات الاختصار الجديد */}
+    <Fragment key={`${cfg.currency}|${cfg.currency_symbol}`}>{children}</Fragment>
+  </OrgConfigContext.Provider>;
 }
 
 export function useOrgConfig(): Ctx {

@@ -15,6 +15,7 @@ import { buildVerifyUrl } from "../utils/generateVerificationQR";
 import { buildPurchaseVerificationCard } from "./DocumentVerificationCard";
 import { buildPurchaseSignatureGrid, PURCHASE_SIGS_AR, PURCHASE_SIGS_EN } from "./DocumentSignatures";
 
+import { curAr } from "../../lib/orgConfig";
 type PrintLabels = {
   docNo: string; issueDate: string; issueTime2: string;
   buyer: string; supplier: string;
@@ -107,8 +108,8 @@ function buildItemRows(items: OrderItem[], hasBrand: boolean, hasAnyApproved: bo
       ${hasBrand ? `<td style="padding:9px 10px;font-size:11px;color:#64748B;">${escapeHTML(item.product?.brand)}</td>` : ""}
       <td style="padding:9px 10px;font-size:13px;font-weight:700;color:#1E3A5F;text-align:center;">${item.quantity}</td>
       ${hasAnyApproved ? `<td style="padding:9px 10px;font-size:13px;font-weight:800;color:#7C3AED;text-align:center;">${dispQty}</td>` : ""}
-      <td style="padding:9px 10px;font-size:12px;text-align:left;">${item.price.toLocaleString("en-SA")}<span style="font-size:9px;color:#94A3B8;"> ر.س</span></td>
-      <td style="padding:9px 10px;font-size:13px;font-weight:700;color:#1E3A5F;text-align:left;">${lineTotal.toLocaleString("en-SA")}<span style="font-size:9px;color:#94A3B8;"> ر.س</span></td>
+      <td style="padding:9px 10px;font-size:12px;text-align:left;">${item.price.toLocaleString("en-SA")}<span style="font-size:9px;color:#94A3B8;"> ${curAr()}</span></td>
+      <td style="padding:9px 10px;font-size:13px;font-weight:700;color:#1E3A5F;text-align:left;">${lineTotal.toLocaleString("en-SA")}<span style="font-size:9px;color:#94A3B8;"> ${curAr()}</span></td>
     </tr>`;
   }).join("");
 }
@@ -251,9 +252,9 @@ body{font-family:'IBM Plex Sans Arabic',Tahoma,Arial,sans-serif;font-size:12px;c
 <div style="display:flex;border:1.5px solid #CBD5E1;border-top:none;border-radius:0 0 10px 10px;overflow:hidden;">
   ${order.notes ? `<div style="flex:1;background:#FFFBEB;border-left:1.5px solid #E2E8F0;padding:12px 14px;"><div style="font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#B45309;margin-bottom:5px;">${PL.notes}</div><div style="font-size:11.5px;color:#78350F;line-height:1.7;">${escapeHTML(order.notes)}</div></div>` : `<div style="flex:1;background:#F8FAFC;"></div>`}
   <div style="width:260px;flex-shrink:0;background:#F8FAFC;">
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 14px;border-bottom:1px solid #CBD5E1;font-size:12px;"><span style="color:#64748B;font-weight:600;">${PL.subtotal}</span><span style="font-weight:700;color:#1E3A5F;font-family:'JetBrains Mono',monospace;">${subtotal.toLocaleString("en-SA")} ر.س</span></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 14px;border-bottom:1px solid #CBD5E1;font-size:12px;"><span style="color:#64748B;font-weight:600;">${PL.subtotal}</span><span style="font-weight:700;color:#1E3A5F;font-family:'JetBrains Mono',monospace;">${subtotal.toLocaleString("en-SA")} ${curAr()}</span></div>
     <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 14px;border-bottom:1px solid #CBD5E1;font-size:12px;"><span style="color:#64748B;font-weight:600;">${PL.vat}</span><span style="color:#94A3B8;font-weight:700;">—</span></div>
-    <div style="background:#1E40AF;padding:14px;display:flex;justify-content:space-between;align-items:center;"><span style="font-size:11.5px;font-weight:700;color:#BFDBFE;">${PL.grandTotal}</span><span style="font-size:22px;font-weight:800;color:#34D399;font-family:'JetBrains Mono',monospace;">${subtotal.toLocaleString("en-SA")}<span style="font-size:11px;font-weight:600;color:#64A07A;margin-right:4px;">ر.س</span></span></div>
+    <div style="background:#1E40AF;padding:14px;display:flex;justify-content:space-between;align-items:center;"><span style="font-size:11.5px;font-weight:700;color:#BFDBFE;">${PL.grandTotal}</span><span style="font-size:22px;font-weight:800;color:#34D399;font-family:'JetBrains Mono',monospace;">${subtotal.toLocaleString("en-SA")}<span style="font-size:11px;font-weight:600;color:#64A07A;margin-right:4px;">${curAr()}</span></span></div>
   </div>
 </div>
 

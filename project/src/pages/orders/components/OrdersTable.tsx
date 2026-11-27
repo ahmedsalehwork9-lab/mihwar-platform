@@ -9,6 +9,7 @@ import type { Order } from "../types";
 import { formatOrderNo } from "../types";
 import { StatusBadge } from "./StatusBadge";
 
+import { curAr } from "../../lib/orgConfig";
 type OrdersTableProps = {
   orders: Order[];
   ownedShopId: number | null | undefined;
@@ -53,7 +54,7 @@ function OrdersTableBase({
                     <span className="truncate block max-w-[140px]">{o.to_shop?.shop_name}</span>
                     {o.to_shop_id === ownedShopId && <span className="text-[9px] opacity-50 font-medium px-1 bg-emerald-500/10 rounded">{t("You", "أنت")}</span>}
                   </td>
-                  <td className="p-4 font-black text-white whitespace-nowrap">{o.total_amount.toLocaleString()} <span className="text-[10px] font-normal text-slate-500">ر.س</span></td>
+                  <td className="p-4 font-black text-white whitespace-nowrap">{o.total_amount.toLocaleString()} <span className="text-[10px] font-normal text-slate-500">{curAr()}</span></td>
                   <td className="p-4"><StatusBadge status={o.status} isRTL={isRTL} /></td>
                   <td className="p-4 text-slate-500 text-xs whitespace-nowrap">{new Date(o.created_at).toLocaleDateString()}</td>
                   <td className="p-4 text-center">

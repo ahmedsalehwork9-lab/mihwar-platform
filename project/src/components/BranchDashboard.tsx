@@ -13,6 +13,7 @@ import {
   getSettingWithMigration, SETTING_KEYS, LOCAL_KEYS,
 } from "../pages/lib/cafeDb";
 
+import { curAr } from "../pages/lib/orgConfig";
 const VAT_RATE = 15;
 
 const BASE_CH: Record<string, string> = { cash: "نقدي", net: "شبكة", keeta: "كيتا", hunger: "هنقرستيشن", jahez: "جاهز", trans: "تحويل", refund: "مرتجع" };
@@ -179,15 +180,15 @@ export default function BranchDashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
           <div className="text-[10px] text-slate-500 font-bold">مبيعات اليوم</div>
-          <div className="text-2xl font-black font-mono mt-1 text-white [direction:ltr]">{fmt(d.todaySales)} <span className="text-xs text-slate-500">ر.س</span></div>
+          <div className="text-2xl font-black font-mono mt-1 text-white [direction:ltr]">{fmt(d.todaySales)} <span className="text-xs text-slate-500">{curAr()}</span></div>
         </div>
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
           <div className="text-[10px] text-slate-500 font-bold">مبيعات الشهر</div>
-          <div className="text-2xl font-black font-mono mt-1 text-blue-400 [direction:ltr]">{fmt(d.monthSales)} <span className="text-xs text-slate-500">ر.س</span></div>
+          <div className="text-2xl font-black font-mono mt-1 text-blue-400 [direction:ltr]">{fmt(d.monthSales)} <span className="text-xs text-slate-500">{curAr()}</span></div>
         </div>
         <div className="bg-gradient-to-br from-emerald-600/15 to-slate-900 border border-emerald-500/20 rounded-2xl p-4">
           <div className="text-[10px] text-slate-400 font-bold">صافي الربح التقديري (الشهر)</div>
-          <div className={`text-2xl font-black font-mono mt-1 [direction:ltr] ${d.profit >= 0 ? "text-emerald-400" : "text-red-400"}`}>{fmt(d.profit)} <span className="text-xs text-slate-500">ر.س</span></div>
+          <div className={`text-2xl font-black font-mono mt-1 [direction:ltr] ${d.profit >= 0 ? "text-emerald-400" : "text-red-400"}`}>{fmt(d.profit)} <span className="text-xs text-slate-500">{curAr()}</span></div>
         </div>
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
           <div className="text-[10px] text-slate-500 font-bold">مشتريات / مصروفات الشهر</div>
@@ -199,14 +200,14 @@ export default function BranchDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         {/* التعادل */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
-          <div className="flex justify-between text-xs mb-2"><span className="text-slate-400 font-bold">التقدّم نحو نقطة التعادل</span><span className="font-mono text-amber-400 [direction:ltr]">{fmt(d.breakEven)} ر.س</span></div>
+          <div className="flex justify-between text-xs mb-2"><span className="text-slate-400 font-bold">التقدّم نحو نقطة التعادل</span><span className="font-mono text-amber-400 [direction:ltr]">{fmt(d.breakEven)} {curAr()}</span></div>
           <div className="h-3 bg-slate-800 rounded-full overflow-hidden">
             <div className={`h-full rounded-full ${d.beAchievement >= 100 ? "bg-gradient-to-l from-emerald-500 to-blue-500" : "bg-gradient-to-l from-amber-500 to-red-500"}`} style={{ width: `${Math.min(100, d.beAchievement)}%` }} />
           </div>
           <div className="mt-2 text-xs font-bold">
             {d.breakEven <= 0 ? <span className="text-slate-500">أدخل المصروفات الثابتة لحساب التعادل</span>
               : d.netSales >= d.breakEven ? <span className="text-emerald-400">✅ تجاوزت التعادل ({d.beAchievement.toFixed(0)}%)</span>
-                : <span className="text-amber-400">تحت التعادل ({d.beAchievement.toFixed(0)}%) — باقي {fmt(Math.max(0, d.breakEven - d.netSales))} ر.س</span>}
+                : <span className="text-amber-400">تحت التعادل ({d.beAchievement.toFixed(0)}%) — باقي {fmt(Math.max(0, d.breakEven - d.netSales))} {curAr()}</span>}
           </div>
         </div>
 

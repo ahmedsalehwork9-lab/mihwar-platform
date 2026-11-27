@@ -16,6 +16,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { curAr, curEn } from "./lib/orgConfig";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type ProductAlert = {
@@ -371,7 +372,7 @@ export default function AlertsPage({ setPage }: AlertsPageProps) {
                     <div className="flex flex-col items-end gap-2 shrink-0">
                       <p className="text-white font-black text-lg">
                         {order.total_amount?.toLocaleString()}{" "}
-                        <span className="text-[10px] font-medium opacity-50 uppercase">{t("SAR", "ر.س")}</span>
+                        <span className="text-[10px] font-medium opacity-50 uppercase">{t(`${curEn()}`, `${curAr()}`)}</span>
                       </p>
                       <ChevronRight size={20} className="text-slate-700 group-hover:text-blue-500 transition-colors" />
                     </div>

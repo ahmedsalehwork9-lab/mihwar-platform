@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { Plus, Pencil, Trash2, Download, Printer, Upload, Save, X, Search, Layers, ChevronDown, ChevronRight, ChevronLeft, Network, Keyboard, RotateCcw, Scale, ListTree, List } from "lucide-react";
 import * as DB from "../../lib/accountingDb";
-import { fetchOrgConfig } from "../../lib/orgConfig";
+import { fetchOrgConfig, curAr, curEn } from "../../lib/orgConfig";
 import { chartCountryInfo } from "../../lib/chartCountries";
 import { buildReportHTML, openPrint, type ReportCol } from "../shared/printReport";
 import type { AccType, GLAccount } from "../../lib/accountingDb";
@@ -380,7 +380,7 @@ export default function ChartTab({ org, shop, accounts, reload, busy, setBusy }:
         <div className={`${CARD} overflow-hidden`}>
           <div className={`grid ${gridCols} gap-3 px-3 py-2 text-[10px] font-bold text-slate-400 bg-slate-800/60`}>
             <span>{t("Account", "الحساب")}</span><span>{t("Type", "النوع")}</span><span>{t("Kind", "الطبيعة")}</span>
-            {showBal && <span className="text-end">{t("Balance (SAR)", "الرصيد (ر.س)")}</span>}<span className="w-24" />
+            {showBal && <span className="text-end">{t(`Balance (${curEn()})`, `الرصيد (${curAr()})`)}</span>}<span className="w-24" />
           </div>
           <div ref={listRef} className="max-h-[60vh] overflow-auto" data-testid="chart-rows" role="listbox">
             {rows.length === 0 && <div className="px-4 py-8 text-center text-sm text-slate-500" data-testid="chart-empty">{t("No accounts match the search or filters", "لا توجد حسابات مطابقة للبحث أو المرشحات")}</div>}

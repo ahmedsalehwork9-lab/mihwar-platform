@@ -16,6 +16,7 @@ import {
   Printer, ClipboardCheck, ArrowRightLeft, LineChart, Eye,
 } from "lucide-react";
 
+import { curAr } from "./lib/orgConfig";
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 type VisibilityScope = 'public' | 'group' | 'specific' | 'private';
@@ -551,7 +552,7 @@ function MobileProductCard({ p, selected, onToggle, onEdit, onDelete, t }: Mobil
           <div className="text-[9px] text-slate-600 uppercase tracking-wider mb-0.5">{t('Unit Price', 'السعر')}</div>
           <div className="text-slate-100 text-xs font-bold tabular-nums">
             {p.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}{' '}
-            <span className="text-[9px] text-slate-500 font-normal">ر.س</span>
+            <span className="text-[9px] text-slate-500 font-normal">{curAr()}</span>
           </div>
         </div>
         <div className="col-span-2">
@@ -1874,7 +1875,7 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
   <div class="kpis">
     <div class="kpi"><div class="lbl">عدد الأصناف في التقرير</div><div class="val">${filtered.length.toLocaleString('en-US')}</div></div>
     <div class="kpi"><div class="lbl">إجمالي الكمية</div><div class="val">${filteredQty.toLocaleString('en-US')}</div></div>
-    <div class="kpi"><div class="lbl">إجمالي القيمة (سعر التكلفة)</div><div class="val green">${fmtMoney(filteredValue)} ر.س</div></div>
+    <div class="kpi"><div class="lbl">إجمالي القيمة (سعر التكلفة)</div><div class="val green">${fmtMoney(filteredValue)} ${curAr()}</div></div>
   </div>
 
   <table>
@@ -1891,8 +1892,8 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
         <th>الصنف</th>
         <th>التفاصيل</th>
         <th class="c">الكمية</th>
-        <th class="c">السعر (ر.س)</th>
-        <th class="c">سعر البيع (ر.س)</th>
+        <th class="c">السعر (${curAr()})</th>
+        <th class="c">سعر البيع (${curAr()})</th>
         <th class="c">نطاق الظهور</th>
       </tr>
     </thead>
@@ -2144,7 +2145,7 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
         {/* Desktop: 6-column grid — الضغط على البطاقة يصفّي الجدول */}
         <div className="hidden md:grid md:grid-cols-6 gap-2.5">
           {[
-            { label: t('Total Value', 'قيمة المخزون'), val: `${totals.value.toLocaleString()} ر.س`, icon: DollarSign, color: 'text-emerald-400', fk: 'all' as FilterStatus },
+            { label: t('Total Value', 'قيمة المخزون'), val: `${totals.value.toLocaleString()} ${curAr()}`, icon: DollarSign, color: 'text-emerald-400', fk: 'all' as FilterStatus },
             { label: t('Total Parts', 'إجمالي الأصناف'),  val: counts.all,          icon: Boxes,        color: 'text-blue-400',    fk: 'all' as FilterStatus },
             { label: t('In Stock', 'متوفر'),             val: counts.in_stock,     icon: PackageCheck, color: 'text-emerald-500', fk: 'in_stock' as FilterStatus },
             { label: t('Low Stock', 'منخفض'),            val: counts.low_stock,    icon: TrendingDown, color: 'text-amber-400',   fk: 'low_stock' as FilterStatus },
@@ -2172,7 +2173,7 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
           <div className="col-span-2 p-2.5 rounded-xl border border-slate-800/60 bg-slate-900 flex items-center justify-between min-h-[54px] hover:border-slate-700 transition-colors">
             <div className="flex flex-col">
               <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">{t('Total Value', 'إجمالي القيمة')}</span>
-              <span className="text-base font-black text-emerald-400 leading-tight">{totals.value.toLocaleString()} <span className="text-[10px] font-normal text-slate-500">ر.س</span></span>
+              <span className="text-base font-black text-emerald-400 leading-tight">{totals.value.toLocaleString()} <span className="text-[10px] font-normal text-slate-500">{curAr()}</span></span>
             </div>
             <DollarSign size={16} className="text-emerald-400/60 shrink-0" />
           </div>
@@ -2481,17 +2482,17 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
                     </td>
                     {cols.cost && (
                     <td className="p-4 font-bold text-slate-100">
-                      {p.price.toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-[10px] text-slate-500 font-normal">ر.س</span>
+                      {p.price.toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-[10px] text-slate-500 font-normal">{curAr()}</span>
                     </td>
                     )}
                     {cols.selling && (
                     <td className="p-4 text-slate-300">
-                      {effectiveSelling(p, defaultMarginPercent).toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-[10px] text-slate-500 font-normal">ر.س</span>
+                      {effectiveSelling(p, defaultMarginPercent).toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-[10px] text-slate-500 font-normal">{curAr()}</span>
                     </td>
                     )}
                     {cols.value && (
                     <td className="p-4 font-bold text-emerald-400">
-                      {(p.quantity * p.price).toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-[10px] text-slate-500 font-normal">ر.س</span>
+                      {(p.quantity * p.price).toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-[10px] text-slate-500 font-normal">{curAr()}</span>
                     </td>
                     )}
                     {cols.visibility && (
@@ -3198,7 +3199,7 @@ function CategoryBars({ data, t }: { data: { name: string; value: number }[]; t:
           <div key={i}>
             <div className="flex justify-between text-xs mb-1 gap-2">
               <span className="text-slate-300 truncate">{d.name}</span>
-              <span className="text-emerald-400 font-bold shrink-0">{d.value.toLocaleString(undefined, { maximumFractionDigits: 0 })} <span className="text-slate-500 font-normal">ر.س</span></span>
+              <span className="text-emerald-400 font-bold shrink-0">{d.value.toLocaleString(undefined, { maximumFractionDigits: 0 })} <span className="text-slate-500 font-normal">{curAr()}</span></span>
             </div>
             <div className="h-2.5 rounded-full bg-slate-800 overflow-hidden">
               <div className="h-full rounded-full bg-gradient-to-l from-emerald-500 to-emerald-400" style={{ width: `${(d.value / max) * 100}%` }} />

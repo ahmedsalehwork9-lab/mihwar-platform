@@ -21,6 +21,7 @@ import {
 } from "./analyticsLogic";
 import { BTN_BLUE, BTN_SOFT, CARD, Chip, DataGrid, DonutChart, FlowChart, HBars, INPUT, LABEL, MultiSelect, Panel, PALETTE, IA_CSS, exportXlsx, makeFmt, printSpec, type Digits, type GCol, type Opt, type ReportSpec } from "./AnalyticsKit";
 
+import { curAr, curEn } from "../../lib/orgConfig";
 type Tab = "movement" | "stagnant" | "aging" | "sales" | "valuation" | "suppliers" | "insights";
 const KEY = "mihwar.invanalytics.v1"; const KEY_VIEWS = "mihwar.invanalytics.views"; const LAST_ITEM = "mihwar.itemmove.last";
 type Persist = { br: string[] | null; wh: string[] | null; gr: string[] | null; su: string[] | null; q: string; from: string; to: string; slow: number; dead: number; severe: number; groupBy: GroupBy; useCreated: boolean; digits: Digits; tab: Tab };
@@ -123,7 +124,7 @@ export default function InventoryAnalyticsPage({ onNavigate, onSection }: { onNa
     const d = ((cur - prev) / Math.abs(prev)) * 100; return <span className={d >= 0 ? "text-emerald-400 font-bold" : "text-red-400 font-bold"}>{d >= 0 ? "▲" : "▼"} {fmt.pct(Math.abs(d))} {t("vs prev. period", "عن الفترة السابقة")}</span>;
   };
   const snap = <span>{t("Snapshot — no history to compare", "لقطة حالية — لا سجل تاريخي للمقارنة")}</span>;
-  const cur = (n: number): string => `${fmt.money(n)} ${t("SAR", "ر.س")}`;
+  const cur = (n: number): string => `${fmt.money(n)} ${t(`${curEn()}`, `${curAr()}`)}`;
 
   // ── تبويب: الأصناف الراكدة ──
   const [stFilter, setStFilter] = useState<"stagnant" | "slow" | "dead" | "severe" | "nohistory">("stagnant");
@@ -296,7 +297,7 @@ export default function InventoryAnalyticsPage({ onNavigate, onSection }: { onNa
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3" data-testid="kpis">
         <Kpi testId="kpi-branches" label={t("Branches", "عدد الفروع")} value={fmt.int(kpis.branches)} icon={<Boxes size={16} />} tone="text-sky-400" tab="valuation" sub={snap} />
         <Kpi testId="kpi-items" label={t("Items in stock", "عدد الأصناف")} value={fmt.int(kpis.items)} icon={<Package size={16} />} tone="text-purple-400" tab="valuation" sub={snap} />
-        <Kpi testId="kpi-value" label={t("Inventory value", "قيمة المخزون")} value={fmt.money(kpis.value)} icon={<Wallet size={16} />} tone="text-blue-400" tab="valuation" sub={<span>{t("SAR · avg cost", "ر.س · متوسط التكلفة")}</span>} />
+        <Kpi testId="kpi-value" label={t("Inventory value", "قيمة المخزون")} value={fmt.money(kpis.value)} icon={<Wallet size={16} />} tone="text-blue-400" tab="valuation" sub={<span>{t(`${curEn()} · avg cost`, `${curAr()} · متوسط التكلفة`)}</span>} />
         <Kpi testId="kpi-stagnant" label={t("Stagnant items", "الأصناف الراكدة")} value={fmt.int(kpis.stagnantItems)} icon={<Package size={16} />} tone="text-orange-400" tab="stagnant" sub={kpis.noHistory > 0 ? <span>{fmt.int(kpis.noHistory)} {t("items have no history", "صنف بلا سجل حركة")}</span> : snap} />
         <Kpi testId="kpi-stagnant-value" label={t("Stagnant value", "قيمة الراكد")} value={fmt.money(kpis.stagnantValue)} icon={<Layers size={16} />} tone="text-red-400" tab="stagnant" sub={<span>{kpis.value > 0 ? fmt.pct((kpis.stagnantValue / kpis.value) * 100) : "—"} {t("of total", "من الإجمالي")}</span>} />
         <Kpi testId="kpi-low" label={t("Low-stock items", "أصناف تحت الطلب")} value={fmt.int(kpis.lowItems)} icon={<AlertTriangle size={16} />} tone="text-amber-400" tab="insights" sub={snap} />

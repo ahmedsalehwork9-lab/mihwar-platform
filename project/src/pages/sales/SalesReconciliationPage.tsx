@@ -15,6 +15,7 @@ import {
 } from "../lib/cafeDb";
 import { logoBox, contactFooter, waQrDataUrl, SUPPORT_WA } from "../lib/reportChrome";
 
+import { curAr } from "../lib/orgConfig";
 type ShiftId = "am" | "pm";
 type Channel = { id: string; icon: string; nm: string; base?: boolean; sign?: number };
 
@@ -234,7 +235,7 @@ export default function SalesReconciliationPage() {
     (e.reasons || []).forEach((r) => {
       const amt = num(r.amount);
       if ((!r.note || !r.note.trim()) && !amt && (!r.employees || !r.employees.trim())) return;
-      const seg = [shiftLbl(r.shift), r.employees, r.reason, amt ? fmt(amt) + " ر.س" : ""].filter((x) => x && String(x).trim()).join(" · ");
+      const seg = [shiftLbl(r.shift), r.employees, r.reason, amt ? fmt(amt) + " " + curAr() : ""].filter((x) => x && String(x).trim()).join(" · ");
       parts.push(r.note && r.note.trim() ? seg + " — " + r.note.trim() : seg);
     });
     return parts.join(" | ");
@@ -357,9 +358,9 @@ export default function SalesReconciliationPage() {
       <div style="display:flex;gap:10px;padding:14px 20px;background:#f8fafc;">
         ${card("الفرع", branch || "—")}
         ${card("عدد الأيام", String(n))}
-        ${card("الإجمالي قبل الضريبة", fmt(grandBefore) + " ر.س")}
-        ${card("ضريبة القيمة المضافة", fmt(grandVat) + " ر.س")}
-        ${card("شامل الضريبة", fmt(grandActual) + " ر.س", true)}
+        ${card("الإجمالي قبل الضريبة", fmt(grandBefore) + " " + curAr())}
+        ${card("ضريبة القيمة المضافة", fmt(grandVat) + " " + curAr())}
+        ${card("شامل الضريبة", fmt(grandActual) + " " + curAr(), true)}
       </div>`;
 
     const ths = ["التاريخ", ...cols.map((c) => c.nm), "الفعلي", "السيستم", "الفرق", "قبل الضريبة", "الضريبة", "شامل الضريبة", "الخطأ %", "الحالة", "ملاحظات"];
@@ -561,9 +562,9 @@ export default function SalesReconciliationPage() {
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4"><div className="text-[10px] text-slate-500 font-bold">مبيعات السيستم</div><div className="text-xl font-black font-mono mt-1 text-white [direction:ltr]">{fmt(calc.gSys)} <span className="text-[11px] text-slate-500">ر.س</span></div></div>
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4"><div className="text-[10px] text-slate-500 font-bold">التحصيل الفعلي</div><div className="text-xl font-black font-mono mt-1 text-white [direction:ltr]">{fmt(calc.gAct)} <span className="text-[11px] text-slate-500">ر.س</span></div></div>
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4"><div className="text-[10px] text-slate-500 font-bold">الفرق</div><div className={`text-xl font-black font-mono mt-1 [direction:ltr] ${diffColor(calc.net)}`}>{diffTxt(calc.net)} <span className="text-[11px] text-slate-500">ر.س</span></div></div>
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4"><div className="text-[10px] text-slate-500 font-bold">مبيعات السيستم</div><div className="text-xl font-black font-mono mt-1 text-white [direction:ltr]">{fmt(calc.gSys)} <span className="text-[11px] text-slate-500">{curAr()}</span></div></div>
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4"><div className="text-[10px] text-slate-500 font-bold">التحصيل الفعلي</div><div className="text-xl font-black font-mono mt-1 text-white [direction:ltr]">{fmt(calc.gAct)} <span className="text-[11px] text-slate-500">{curAr()}</span></div></div>
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4"><div className="text-[10px] text-slate-500 font-bold">الفرق</div><div className={`text-xl font-black font-mono mt-1 [direction:ltr] ${diffColor(calc.net)}`}>{diffTxt(calc.net)} <span className="text-[11px] text-slate-500">{curAr()}</span></div></div>
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4"><div className="text-[10px] text-slate-500 font-bold">نسبة الخطأ + الحالة</div><div className="text-lg font-black font-mono mt-1 text-white [direction:ltr]">{(calc.err > 0 ? "+" : "") + calc.err.toFixed(1)}%</div><span className={`inline-flex items-center gap-1.5 mt-1.5 text-xs font-extrabold px-3 py-1 rounded-full ${calc.warn ? "bg-amber-500/15 text-amber-400" : "bg-emerald-500/15 text-emerald-400"}`}>{calc.warn ? "⚠️ يحتاج مراجعة" : "✓ مطابق"}</span></div>
           </div>
 
@@ -605,7 +606,7 @@ export default function SalesReconciliationPage() {
               <div className="flex justify-between text-xs"><span className="text-slate-400 font-semibold">غير المبرَّر المتبقي</span><span className={`font-mono font-bold [direction:ltr] ${calc.left > 0.009 ? "text-red-400" : "text-emerald-400"}`}>{fmt(calc.left)}</span></div>
               <div className="mt-2.5 text-xs font-extrabold">
                 {calc.need < 0.01 ? <span className="text-emerald-400">✅ مطابق تمامًا</span>
-                  : !calc.covered ? <span className="text-amber-400">⚠️ يتبقى {fmt(calc.left)} ر.س غير مبرَّر</span>
+                  : !calc.covered ? <span className="text-amber-400">⚠️ يتبقى {fmt(calc.left)} {curAr()} غير مبرَّر</span>
                   : calc.badReasons.length > 0 ? <span className="text-red-400">⚠️ حدّد الشفت واسم الموظف لكل سبب</span>
                   : <span className="text-emerald-400">✅ الفرق مبرَّر بالكامل — جاهز للحفظ</span>}
               </div>

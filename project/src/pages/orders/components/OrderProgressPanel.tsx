@@ -7,6 +7,7 @@ import { Package } from "lucide-react";
 import type { ApprovedQtyMap, Order, OrderItem } from "../types";
 import { effectiveApproved, remainingQty } from "../utils/orderHelpers";
 
+import { curAr, curEn } from "../../lib/orgConfig";
 type OrderProgressPanelProps = {
   detailOrder: Order;
   detailItems: OrderItem[];
@@ -115,7 +116,7 @@ function OrderProgressPanelBase({
                       <p className="text-slate-500 text-[10px] font-mono mt-0.5 tracking-wide">{productCode}</p>
                     </div>
                     <div className="text-left shrink-0 pl-2">
-                      <p className="text-white font-black text-sm tabular-nums">{lineTotal.toLocaleString()}<span className="text-[9px] font-normal text-slate-500"> {t("SAR", "ر.س")}</span></p>
+                      <p className="text-white font-black text-sm tabular-nums">{lineTotal.toLocaleString()}<span className="text-[9px] font-normal text-slate-500"> {t(`${curEn()}`, `${curAr()}`)}</span></p>
                       <p className="text-slate-500 text-[10px] font-bold tabular-nums">{dispQty} × {item.price.toLocaleString()}</p>
                     </div>
                   </div>

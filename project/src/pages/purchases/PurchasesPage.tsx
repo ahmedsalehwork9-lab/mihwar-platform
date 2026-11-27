@@ -19,6 +19,7 @@ import { supabase } from "../lib/supabase";
 import { fetchPurchasesWithMigration, upsertPurchase, deletePurchase } from "../lib/cafeDb";
 import { logoBox, contactFooter, waQrDataUrl, SUPPORT_WA } from "../lib/reportChrome";
 
+import { curAr } from "../lib/orgConfig";
 type PItem = { id: number; name: string; category: string; qty: string; unit: string; price: string };
 type Purchase = {
   id: string; internalNo?: string; branchId: number | null; branch: string; date: string;
@@ -482,11 +483,11 @@ export default function PurchasesPage() {
       <div style="display:flex;gap:10px;padding:14px 20px;background:#f8fafc;">
         ${card("الفرع", branch || "—")}
         ${card("عدد الفواتير", String(report.count))}
-        ${card("إجمالي الضريبة", fmt(report.totalVat) + " ر.س")}
-        ${card("الإجمالي شامل الضريبة", fmt(report.total) + " ر.س", true)}
-        ${card("متوسط الفاتورة", fmt(report.avg) + " ر.س")}
+        ${card("إجمالي الضريبة", fmt(report.totalVat) + " " + curAr())}
+        ${card("الإجمالي شامل الضريبة", fmt(report.total) + " " + curAr(), true)}
+        ${card("متوسط الفاتورة", fmt(report.avg) + " " + curAr())}
       </div>`;
-    const ths = ["الرقم الداخلي", "التاريخ", "المورّد", "مرجع المورد", "النوع", "عدد الأصناف", "الضريبة", "الإجمالي (ر.س)", "طريقة الدفع", "ملاحظات"];
+    const ths = ["الرقم الداخلي", "التاريخ", "المورّد", "مرجع المورد", "النوع", "عدد الأصناف", "الضريبة", "الإجمالي (" + curAr() + ")", "طريقة الدفع", "ملاحظات"];
     const thead = `<tr>${ths.map((h) => `<th style="border:1px solid #d1d5db;padding:7px 8px;background:#14304d;color:#fff;font-size:11px;font-weight:700;white-space:nowrap;">${h}</th>`).join("")}</tr>`;
     const body = report.rows.map((e, idx) => {
       const bg = idx % 2 ? "#fff" : "#f9fafb";
@@ -505,7 +506,7 @@ export default function PurchasesPage() {
       <div style="padding:4px 20px 14px;">
         <div style="font-size:13px;font-weight:800;color:#0f1b2b;margin:6px 0;">نسبة كل تصنيف من إجمالي المشتريات</div>
         <table style="border-collapse:collapse;width:100%;max-width:520px;">
-          <tr>${["التصنيف", "القيمة (ر.س)", "النسبة %"].map((h) => `<th style="border:1px solid #d1d5db;padding:6px 8px;background:#14304d;color:#fff;font-size:11px;">${h}</th>`).join("")}</tr>
+          <tr>${["التصنيف", "القيمة (" + curAr() + ")", "النسبة %"].map((h) => `<th style="border:1px solid #d1d5db;padding:6px 8px;background:#14304d;color:#fff;font-size:11px;">${h}</th>`).join("")}</tr>
           ${report.cats.map(([c, v]) => `<tr>
             <td style="border:1px solid #e5e7eb;padding:5px 8px;font-size:11px;text-align:right;">${c}</td>
             <td style="border:1px solid #e5e7eb;padding:5px 8px;font-size:11px;text-align:center;">${fmt(v)}</td>
@@ -552,8 +553,8 @@ export default function PurchasesPage() {
         <div style="text-align:left;"><div style="font-size:20px;font-weight:800;color:#34d399;">تقرير المشتريات — بالأصناف</div><div style="font-size:12px;color:#9fb3c8;">الفترة: ${from} إلى ${to} — ${now}</div></div>
         <div style="display:flex;align-items:center;gap:10px;"><div style="text-align:right;"><div style="font-size:18px;font-weight:800;color:#fff;">محور</div><div style="font-size:9px;letter-spacing:3px;color:#9fb3c8;">MIHWAR PLATFORM</div></div>${logoBox(logoUrl)}</div>
       </div>`;
-    const cards = `<div style="display:flex;gap:10px;padding:14px 20px;background:#f8fafc;">${card("الفرع", branch || "—")}${card("عدد الأصناف", String(report.itemAgg.length))}${card("إجمالي التكلفة (صافي)", fmt(totalCost) + " ر.س", true)}</div>`;
-    const ths = ["الصنف", "التصنيف", "إجمالي الكمية", "الوحدة", "متوسط السعر", "إجمالي التكلفة (ر.س)", "عدد الموردين", "عدد الفواتير"];
+    const cards = `<div style="display:flex;gap:10px;padding:14px 20px;background:#f8fafc;">${card("الفرع", branch || "—")}${card("عدد الأصناف", String(report.itemAgg.length))}${card("إجمالي التكلفة (صافي)", fmt(totalCost) + " " + curAr(), true)}</div>`;
+    const ths = ["الصنف", "التصنيف", "إجمالي الكمية", "الوحدة", "متوسط السعر", "إجمالي التكلفة (" + curAr() + ")", "عدد الموردين", "عدد الفواتير"];
     const thead = `<tr>${ths.map((h) => `<th style="border:1px solid #d1d5db;padding:7px 8px;background:#14304d;color:#fff;font-size:11px;font-weight:700;white-space:nowrap;">${h}</th>`).join("")}</tr>`;
     const body = report.itemAgg.map((g, idx) => {
       const bg = idx % 2 ? "#fff" : "#f9fafb";
@@ -696,7 +697,7 @@ export default function PurchasesPage() {
             <div className="bg-gradient-to-br from-blue-600/20 to-slate-900 border border-blue-500/20 rounded-2xl p-4 flex flex-col justify-center gap-1">
               <div className="flex justify-between text-xs"><span className="text-slate-400 font-semibold">المجموع قبل الضريبة</span><span className="font-mono text-slate-200 [direction:ltr]">{fmt(subtotal)}</span></div>
               <div className="flex justify-between text-xs"><span className="text-slate-400 font-semibold">ضريبة القيمة المضافة {taxable ? `(${VAT_RATE}%)` : "(معفاة)"}</span><span className="font-mono text-slate-200 [direction:ltr]">{fmt(vat)}</span></div>
-              <div className="flex justify-between items-center border-t border-slate-700/60 mt-1 pt-1.5"><span className="text-slate-300 font-bold text-sm">الإجمالي</span><span className="text-2xl font-black font-mono text-white [direction:ltr]">{fmt(grandTotal)} <span className="text-xs text-slate-400">ر.س</span></span></div>
+              <div className="flex justify-between items-center border-t border-slate-700/60 mt-1 pt-1.5"><span className="text-slate-300 font-bold text-sm">الإجمالي</span><span className="text-2xl font-black font-mono text-white [direction:ltr]">{fmt(grandTotal)} <span className="text-xs text-slate-400">{curAr()}</span></span></div>
             </div>
           </div>
 

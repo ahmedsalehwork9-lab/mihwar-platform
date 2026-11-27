@@ -22,6 +22,7 @@ import { addDays, buildTenders, computeInvoice, computeMargin, clampPct, daysBet
 import type { InvoiceLine, PayMethod, SaleType } from "./salesInvoiceCalc";
 import { buildInvoiceHTML, printHTML } from "./salesInvoicePrint";
 
+import { curAr, curEn } from "../lib/orgConfig";
 const today = (): string => new Date().toISOString().slice(0, 10);
 const monthStart = (): string => `${today().slice(0, 8)}01`;
 const fmt = (n: number): string => (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -45,7 +46,7 @@ export default function SalesInvoicePage({ onNavigate, onSection }: Props) {
   const { t, lang, isRTL } = useLang();
   const dir = isRTL ? "rtl" : "ltr";
   const taxRate = Number(cfg?.default_tax_rate ?? 15);
-  const currency = cfg?.currency_symbol || (isRTL ? "ر.س" : "SAR");
+  const currency = cfg?.currency_symbol || ((isRTL ? curAr() : curEn()));
 
   const [tab, setTab] = useState<"new" | "history">("new");
   const [org, setOrg] = useState<{ id: number; name: string } | null>(null);

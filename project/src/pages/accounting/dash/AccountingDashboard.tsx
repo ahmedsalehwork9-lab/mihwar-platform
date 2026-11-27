@@ -15,6 +15,7 @@ import type { JEntry } from "../journal/reviewLogic";
 import { fmtCents } from "../journal/money";
 import { computeDash, periodRange, type AlertCode, type DashData, type PeriodKey } from "./dashLogic";
 
+import { curAr, curEn } from "../../lib/orgConfig";
 const CARD = "bg-slate-900 border border-slate-800 rounded-2xl";
 const INPUT = "bg-slate-950 border border-slate-700 rounded-xl text-white px-3 py-2 text-xs outline-none focus:border-blue-500 transition-colors";
 const today = (): string => new Date().toISOString().slice(0, 10);
@@ -23,7 +24,7 @@ type Props = { org: { id: number; name: string }; accounts: GLAccount[]; parties
 
 export default function AccountingDashboard({ org, accounts, parties, branches, onSection, onNavigate }: Props) {
   const { lang } = useLang(); const ar = lang === "ar"; const T = useCallback((en: string, a: string) => (ar ? a : en), [ar]); const dir = ar ? "rtl" : "ltr";
-  const cur = ar ? "ر.س" : "SAR";
+  const cur = (ar ? curAr() : curEn());
   const [pkey, setPkey] = useState<PeriodKey>("month"); const [cFrom, setCFrom] = useState(""); const [cTo, setCTo] = useState(""); const [branch, setBranch] = useState("");
   const [entries, setEntries] = useState<JEntry[]>([]); const [treasuries, setTreasuries] = useState<GLTreasury[]>([]); const [assets, setAssets] = useState<AssetLike[]>([]);
   const [loading, setLoading] = useState(true); const [err, setErr] = useState(""); const [truncated, setTruncated] = useState(false); const [stamp, setStamp] = useState("");

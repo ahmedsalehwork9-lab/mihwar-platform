@@ -237,6 +237,7 @@ const OPERATIONS: OpEntry[] = [
     { labelEn: 'Sales Reconciliation', labelAr: 'تسوية المبيعات', page: 'sales-reconciliation' },
     { labelEn: 'Quotation',            labelAr: 'عرض سعر',        page: 'quotation' },
     { labelEn: 'Sales Returns',        labelAr: 'مرتجعات المبيعات', section: 'sales-returns' },
+    { labelEn: 'Sales by Items', labelAr: 'المبيعات بالأصناف', section: 'sales-items' },
   ] },
 
   { type: 'group', key: 'purchases', icon: <ShoppingBag size={17} />, labelEn: 'Purchases', labelAr: 'المشتريات', homePage: 'purchase-invoices', children: [
@@ -267,7 +268,6 @@ const OPERATIONS: OpEntry[] = [
     { labelEn: 'Ledger',         labelAr: 'كشف حساب',         section: 'ledger' },
     { labelEn: 'Trial Balance',  labelAr: 'ميزان المراجعة',   section: 'trial' },
     { labelEn: 'Statements',     labelAr: 'القوائم المالية',   section: 'statements' },
-    { labelEn: 'Sales by Items', labelAr: 'المبيعات بالأصناف', section: 'sales-items' },
     { labelEn: 'Assets',         labelAr: 'الأصول',           section: 'assets' },
     { labelEn: 'Fixed Expenses', labelAr: 'المصروفات الثابتة', page: 'fixed-expenses' },
   ] },

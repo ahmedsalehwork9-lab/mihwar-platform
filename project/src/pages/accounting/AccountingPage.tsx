@@ -377,7 +377,7 @@ export default function AccountingPage({ section, onSection, onNavigate }: { sec
       <nav className="flex items-center gap-1.5 text-[11px] text-slate-500 mb-3 flex-wrap">
         <span className="inline-flex items-center gap-1"><Home size={12} /> {tr("Home", "الرئيسية")}</span>
         <ChevronLeft size={12} className="opacity-60" />
-        <span className="text-slate-400 font-bold">{tab === "sales" || tab === "sales-returns" ? tr("Sales", "المبيعات") : tr("Accounting", "الحسابات")}</span>
+        <span className="text-slate-400 font-bold">{tab === "sales" || tab === "sales-returns" || tab === "sales-items" ? tr("Sales", "المبيعات") : tr("Accounting", "الحسابات")}</span>
         <ChevronLeft size={12} className="opacity-60" />
         <span className="text-blue-400 font-bold">{tabLabel}</span>
       </nav>
@@ -768,7 +768,7 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, shop,
           {multiBranch && <div><label className={LABEL}>الفرع</label><select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className={SELECT}><option value="">كل الفروع</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
           {!returnsMode && <button onClick={() => onNavigate?.("sales-invoice")} className={BTN_GHOST_EM}><Plus size={14} /> فاتورة جديدة</button>}
           <button data-testid="new-return" onClick={() => setShowReturnForm(true)} disabled={invoices.length === 0} className={BTN_GHOST_BL} title={invoices.length === 0 ? "لا توجد فواتير ضمن الفترة المحددة" : "إنشاء مرتجع مبيعات"}><ArrowDownCircle size={14} /> إنشاء مرتجع</button>
-          {returnsMode ? <button onClick={() => onNavigate?.("sales-invoice")} className={BTN_SOFT}><ShoppingCart size={14} /> فواتير المبيعات</button> : <>
+          {returnsMode ? null : <>
           <button onClick={() => onNavigate?.("pos")} className={BTN_GHOST_BL}><ShoppingCart size={14} /> نقاط البيع</button>
           <button onClick={() => onNavigate?.("reports")} className={BTN_SOFT}><BarChart3 size={14} /> تقارير المبيعات</button></>}
           <span className="text-[11px] text-slate-500 mr-auto">{invoices.length} فاتورة · متبقٍّ على العملاء: <span className="font-mono text-amber-300 font-bold">{fmt(tDue)}</span></span>

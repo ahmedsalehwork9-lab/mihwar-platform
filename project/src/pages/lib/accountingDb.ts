@@ -2888,6 +2888,13 @@ export async function addWarehouse(orgId: number, a: { name: string; branch_id?:
   return { ok: true, id: Number((data as any).id) };
 }
 
+/** ربط مستودع بفرع (شرط دالة ترحيل المبيعات: المستودع يتبع الفرع المختار). لا يغيّر الكميات ولا القيود. */
+export async function assignWarehouseBranch(id: number, branchId: number): Promise<{ ok: boolean; error?: string }> {
+  const { data, error } = await supabase.from("warehouses").update({ branch_id: branchId }).eq("id", id).select("id");
+  if (error) return { ok: false, error: error.message };
+  return (data as unknown[] | null)?.length ? { ok: true } : { ok: false, error: "لا تملك صلاحية تعديل هذا المستودع." };
+}
+
 /** تعيين المستودع الرئيسي للمؤسسة (واحد فقط): نُلغي الافتراضي عن الباقي ثم نُفعّله هنا. */
 export async function setDefaultWarehouse(orgId: number, id: number): Promise<{ ok: boolean; error?: string }> {
   const off = await supabase.from("warehouses").update({ is_default: false }).eq("organization_id", orgId).neq("id", id);

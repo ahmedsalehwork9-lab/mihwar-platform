@@ -206,10 +206,10 @@ export function newIdempotencyKey(): string {
 // ── المستودعات وربط الحسابات (جداول P02) ──
 export type WarehouseRow = { id: number; branch_id: number | null; name: string; code: string | null; is_default: boolean; is_active: boolean; inventory_account_id: number | null };
 
-// مستودعات الفرع + المستودعات العامة للمؤسسة (branch_id فارغ) — فيظهر المستودع الرئيسي تلقائيًا.
+// مستودعات الفرع فقط: دالة الترحيل ترفض أي مستودع لا يتبع الفرع («Warehouse does not belong to the selected branch»).
 export async function fetchBranchWarehouses(orgId: number, branchId: number): Promise<{ rows: WarehouseRow[]; missing: boolean }> {
   const { data, error } = await supabase.from("warehouses").select("id, branch_id, name, code, is_default, is_active, inventory_account_id")
-    .eq("organization_id", orgId).or(`branch_id.eq.${branchId},branch_id.is.null`).eq("is_active", true).order("is_default", { ascending: false }).order("id");
+    .eq("organization_id", orgId).eq("branch_id", branchId).eq("is_active", true).order("is_default", { ascending: false }).order("id");
   if (error) return { rows: [], missing: /column|does not exist|schema cache/i.test(error.message) };
   return { rows: ((data as unknown) as WarehouseRow[]) || [], missing: false };
 }

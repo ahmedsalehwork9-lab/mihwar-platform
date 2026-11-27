@@ -3047,15 +3047,15 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
 
       {/* ── Manage Warehouses ── */}
       {showWhModal && (
-        <WarehousesModal orgId={orgId} warehouses={warehouses} t={t} isRTL={isRTL} onClose={() => setShowWhModal(false)} onChanged={reloadWarehouses} />
+        <WarehousesModal orgId={orgId} branchId={ownedShopId ? Number(ownedShopId) : null} warehouses={warehouses} t={t} isRTL={isRTL} onClose={() => setShowWhModal(false)} onChanged={reloadWarehouses} />
       )}
     </div>
   );
 }
 
 // ─── Warehouses management modal ─────────────────────────────────────────────
-function WarehousesModal({ orgId, warehouses, t, isRTL, onClose, onChanged }: {
-  orgId: number | null; warehouses: DB.GLWarehouse[]; t: (en: string, ar: string) => string; isRTL: boolean; onClose: () => void; onChanged: () => void;
+function WarehousesModal({ orgId, branchId, warehouses, t, isRTL, onClose, onChanged }: {
+  orgId: number | null; branchId: number | null; warehouses: DB.GLWarehouse[]; t: (en: string, ar: string) => string; isRTL: boolean; onClose: () => void; onChanged: () => void;
 }) {
   const [newName, setNewName] = useState('');
   const [editId, setEditId] = useState<number | null>(null);
@@ -3066,7 +3066,7 @@ function WarehousesModal({ orgId, warehouses, t, isRTL, onClose, onChanged }: {
   const add = async () => {
     if (!orgId || !newName.trim()) return;
     setBusy(true); setErr(null);
-    const res = await DB.addWarehouse(orgId, { name: newName });
+    const res = await DB.addWarehouse(orgId, { name: newName, branch_id: branchId });
     setBusy(false);
     if (!res.ok) { setErr(res.error || 'تعذّر الإضافة'); return; }
     setNewName(''); onChanged();
@@ -3078,6 +3078,14 @@ function WarehousesModal({ orgId, warehouses, t, isRTL, onClose, onChanged }: {
     setBusy(false);
     if (!res.ok) { setErr(res.error || 'تعذّر التعديل'); return; }
     setEditId(null); onChanged();
+  };
+  const linkHere = async (id: number) => {
+    if (!branchId) return;
+    setBusy(true); setErr(null);
+    const res = await DB.assignWarehouseBranch(id, branchId);
+    setBusy(false);
+    if (!res.ok) { setErr(res.error || 'تعذّر الربط'); return; }
+    onChanged();
   };
   const makeMain = async (id: number) => {
     if (!orgId) return;
@@ -3123,6 +3131,7 @@ function WarehousesModal({ orgId, warehouses, t, isRTL, onClose, onChanged }: {
                 ) : (
                   <>
                     <span className="flex-1 text-sm text-white">{w.name}{w.is_default && <span className="ms-2 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-full px-2 py-0.5">{t('Main', 'رئيسي')}</span>}</span>
+                    {branchId != null && w.branch_id !== branchId && <button onClick={() => linkHere(w.id)} disabled={busy} data-testid={`wh-link-${w.id}`} className="text-[10px] font-bold text-sky-300 hover:text-sky-200 px-2 py-1 rounded-lg hover:bg-sky-500/10">{t('Link to my branch', 'ربط بفرعي')}</button>}
                     {!w.is_default && <button onClick={() => makeMain(w.id)} disabled={busy} data-testid={`wh-main-${w.id}`} className="text-[10px] font-bold text-slate-400 hover:text-emerald-400 px-2 py-1 rounded-lg hover:bg-emerald-500/10">{t('Set as main', 'تعيين كرئيسي')}</button>}
                     <button onClick={() => { setEditId(w.id); setEditName(w.name); }} className="p-2 text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg"><Edit2 size={15} /></button>
                     <button onClick={() => del(w.id)} className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg"><Trash2 size={15} /></button>

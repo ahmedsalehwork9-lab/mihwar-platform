@@ -556,6 +556,7 @@ export default function SalesInvoicePage({ onNavigate, onSection }: Props) {
                 {payOptions.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
               </select>
             </div>
+            {!warehouses.length && !whMissing && <div className="md:col-span-6 text-xs text-amber-300" data-testid="wh-link-hint">{t("No warehouse is linked to this branch. Open Company & Branch Settings → Warehouses and link one to this branch.", "لا يوجد مستودع مرتبط بهذا الفرع. افتح «إعدادات الشركة والفروع» ← «المخازن» واربط مستودعًا بهذا الفرع.")}</div>}
             <div><label className={labelCls}>{t("Salesperson", "مندوب المبيعات")}</label><input className={inputCls} value={salesperson} onChange={(e) => setSalesperson(e.target.value)} /></div>
             <div><label className={labelCls}>{t("Customer reference", "مرجع العميل")}</label><input className={inputCls} dir="ltr" value={customerRef} onChange={(e) => setCustomerRef(e.target.value)} /></div>
             <div className="flex items-end"><label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={taxInclusive} onChange={(e) => setTaxInclusive(e.target.checked)} data-testid="tax-inclusive" />{t("Prices include VAT", "الأسعار شاملة الضريبة")}</label></div>

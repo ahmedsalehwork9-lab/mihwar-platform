@@ -33,7 +33,7 @@ export async function updateShop(id: number, patch: Record<string, string | numb
   const { data, error } = await supabase.from("shops").update(patch).eq("id", id).select("id"); if (error) return fail(error, "update failed");
   return (data as unknown[] | null)?.length ? { ok: true } : { ok: false, error: DENIED, denied: true };
 }
-export async function updateWarehouse(orgId: number, id: number, patch: Partial<Pick<Wh, "name" | "code" | "is_active" | "is_default" | "inventory_account_id">>): Promise<Res> {
+export async function updateWarehouse(orgId: number, id: number, patch: Partial<Pick<Wh, "name" | "code" | "is_active" | "is_default" | "inventory_account_id" | "branch_id">>): Promise<Res> {
   const { data, error } = await supabase.from("warehouses").update(patch).eq("id", id).eq("organization_id", orgId).select("id"); if (error) return fail(error, "update failed");
   return (data as unknown[] | null)?.length ? { ok: true } : { ok: false, error: DENIED, denied: true };
 }

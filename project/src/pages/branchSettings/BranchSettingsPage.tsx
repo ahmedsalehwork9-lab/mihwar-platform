@@ -115,6 +115,12 @@ export default function BranchSettingsPage() {
     if (r.ok) r = await API.updateWarehouse(org.id, w.id, { name: d.name.trim(), code: (d.code ?? "").trim() || null, is_active: d.is_active, inventory_account_id: d.inventory_account_id });
     setBusy(false); setWhMsg((m) => ({ ...m, [w.id]: r.ok ? { ok: true, text: t("Saved.", "تم الحفظ.") } : { ok: false, text: r.error } })); if (r.ok) await reload();
   };
+  const linkWh = async (w: Wh) => {
+    if (!org || !sh) return;
+    if (!window.confirm(t(`Link warehouse "${w.name}" to branch "${sh.shop_name}"? Sales invoices of this branch will then accept it.`, `ربط المخزن «${w.name}» بالفرع «${sh.shop_name}»؟ بعدها تقبله فواتير مبيعات هذا الفرع.`))) return;
+    setBusy(true); const r = await API.updateWarehouse(org.id, w.id, { branch_id: sh.id }); setBusy(false);
+    setWhMsg((m) => ({ ...m, [w.id]: r.ok ? { ok: true, text: t("Linked to this branch.", "تم الربط بهذا الفرع.") } : { ok: false, text: r.error } })); if (r.ok) await reload();
+  };
   const accOpts = (type: string) => accounts.filter((a) => !a.is_group && a.type === type);
   const invAccs = useMemo(() => accounts.filter((a) => !a.is_group && a.type === "asset"), [accounts]);
   const accName = (id: number | null | undefined) => { const a = accounts.find((x) => x.id === id); return a ? `${a.code} · ${a.name}` : "—"; };
@@ -193,7 +199,7 @@ export default function BranchSettingsPage() {
               {myWhs.length === 0 && <div className="text-sm text-slate-500 py-6 text-center" data-testid="wh-none">{t("No warehouses are linked to this branch.", "لا توجد مخازن مرتبطة بهذا الفرع.")}</div>}
               {myWhs.map((w) => { const d = whDraft[w.id] ?? w; const ch = d.name !== w.name || (d.code ?? "") !== (w.code ?? "") || d.is_active !== w.is_active || d.is_default !== w.is_default || d.inventory_account_id !== w.inventory_account_id; const m = whMsg[w.id]; return (
                 <div key={w.id} className="rounded-xl border border-slate-800 p-3 grid gap-3 md:grid-cols-4" data-testid="wh-row" data-id={w.id}>
-                  {w.branch_id !== selId && <div className="md:col-span-4 text-[11px] text-sky-300" data-testid="wh-shared">{w.branch_id == null ? t("Company-wide warehouse (shared by all branches)", "مخزن عام للشركة (مشترك بين كل الفروع)") : t("Not linked to an existing branch", "غير مرتبط بفرع موجود")}</div>}
+                  {w.branch_id !== selId && <div className="md:col-span-4 text-[11px] text-sky-300" data-testid="wh-shared">{w.branch_id == null ? t("Company-wide warehouse (shared by all branches)", "مخزن عام للشركة (مشترك بين كل الفروع)") : t("Not linked to an existing branch", "غير مرتبط بفرع موجود")}<button type="button" onClick={() => void linkWh(w)} disabled={busy} data-testid="wh-link" className="ms-3 px-2 py-1 rounded-lg border border-sky-500/40 text-sky-200 hover:bg-sky-500/10 font-bold">{t("Link to this branch", "ربط بهذا الفرع")}</button></div>}
                   <div><label className={LBL}>{t("Name", "الاسم")}{w.branch_id == null && <span className="ms-2 text-[10px] font-bold text-sky-300 bg-sky-500/10 border border-sky-500/30 rounded-full px-2 py-0.5" data-testid="wh-org">{t("Company-wide", "عام للشركة")}</span>}</label><input value={d.name} onChange={(e) => setWhDraft((x) => ({ ...x, [w.id]: { ...d, name: e.target.value } }))} className={INP} data-testid="wh-name" /></div>
                   <div><label className={LBL}>{t("Code", "الكود")}</label><input value={d.code ?? ""} onChange={(e) => setWhDraft((x) => ({ ...x, [w.id]: { ...d, code: e.target.value } }))} dir="ltr" className={INP} data-testid="wh-code" /></div>
                   <div className="md:col-span-2"><label className={LBL}>{t("Inventory account", "حساب المخزون")}</label><select value={d.inventory_account_id ?? ""} onChange={(e) => setWhDraft((x) => ({ ...x, [w.id]: { ...d, inventory_account_id: e.target.value ? Number(e.target.value) : null } }))} className={INP} data-testid="wh-acc"><option value="">{t("— not set —", "— غير محدد —")}</option>{invAccs.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}</select></div>

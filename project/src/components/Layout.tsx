@@ -225,10 +225,12 @@ type OpEntry =
 const OPERATIONS: OpEntry[] = [
   { type: 'item', id: 'dashboard', icon: <LayoutDashboard size={17} />, labelEn: 'Dashboard', labelAr: 'الرئيسية' },
   { type: 'item', id: 'search',    icon: <Search size={17} />,          labelEn: 'Store',     labelAr: 'المتجر' },
-  { type: 'item', id: 'inventory', icon: <Package size={17} />,         labelEn: 'Inventory', labelAr: 'المخزون' },
-  { type: 'item', id: 'stock-adjustments', icon: <ClipboardCheck size={17} />, labelEn: 'Stock Count', labelAr: 'الجرد والتسويات' },
-  { type: 'item', id: 'item-movement', icon: <Boxes size={17} />, labelEn: 'Item Movement', labelAr: 'حركة الصنف' },
-  { type: 'item', id: 'inventory-analytics', icon: <BarChart3 size={17} />, labelEn: 'Inventory Reports', labelAr: 'تقارير المخزون' },
+  { type: 'group', key: 'inventory', icon: <Package size={17} />, labelEn: 'Inventory', labelAr: 'المخزون', homePage: 'inventory', children: [
+    { labelEn: 'Inventory',           labelAr: 'المخزون',          page: 'inventory' },
+    { labelEn: 'Stock Count',         labelAr: 'الجرد والتسويات',  page: 'stock-adjustments' },
+    { labelEn: 'Item Movement',       labelAr: 'حركة الصنف',       page: 'item-movement' },
+    { labelEn: 'Inventory Reports',   labelAr: 'تقارير المخزون',   page: 'inventory-analytics' },
+  ] },
   { type: 'item', id: 'orders',    icon: <ShoppingCart size={17} />,    labelEn: 'Orders',    labelAr: 'الطلبات' },
 
   { type: 'group', key: 'sales', icon: <TrendingUp size={17} />, labelEn: 'Sales', labelAr: 'المبيعات', homePage: 'sales-reconciliation', children: [

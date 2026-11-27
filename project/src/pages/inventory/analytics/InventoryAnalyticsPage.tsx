@@ -270,7 +270,7 @@ export default function InventoryAnalyticsPage({ onNavigate, onSection }: { onNa
   const noData = !loading && prods.length === 0;
 
   return (
-    <div dir={dir} className="p-4 sm:p-6 max-w-[1500px] mx-auto space-y-4" data-testid="inv-analytics">
+    <div dir={dir} className="p-3 sm:p-4 max-w-[1600px] mx-auto space-y-3" data-testid="inv-analytics">
       <style>{IA_CSS}</style>
       {/* العنوان */}
       <header className="flex items-start justify-between gap-3 flex-wrap">
@@ -333,7 +333,7 @@ export default function InventoryAnalyticsPage({ onNavigate, onSection }: { onNa
       {noData && <div className={`${CARD} p-10 text-center text-sm text-slate-300`}>{t("No products found for your organization.", "لا توجد أصناف لهذه المؤسسة.")}</div>}
 
       {!loading && !noData && S.tab === "stagnant" && (
-        <div className="space-y-4" data-testid="pane-stagnant">
+        <div className="space-y-3" data-testid="pane-stagnant">
           <div className={`${CARD} p-3`}>
             <div className="flex flex-wrap gap-3 items-end">
               <div><span className={LABEL}>{t("Idle period", "فترة الركود")}</span>
@@ -355,7 +355,7 @@ export default function InventoryAnalyticsPage({ onNavigate, onSection }: { onNa
             </div>
             <p className="text-[11px] text-slate-400 mt-2">{t(`Idle days = days since the last sale (sales invoice or sale movement). Transfers, adjustments, counts and sales returns are not sales. Items never sold are measured from their last receipt. Items with no recorded history are not classified unless you enable the estimate. Slow ≥ ${th.slow}, Dead ≥ ${th.dead}, Severe ≥ ${th.severe} days.`, `أيام الركود = الأيام منذ آخر بيع (فاتورة مبيعات أو حركة بيع). التحويل والتسوية والجرد ومرتجع المبيعات ليست بيعًا. الصنف الذي لم يُبَع يُقاس من آخر استلام. الصنف بلا سجل حركة لا يُصنَّف إلا إذا فعّلت التقدير. بطيء ≥ ${th.slow}، راكد ≥ ${th.dead}، شديد ≥ ${th.severe} يوم.`)}</p>
           </div>
-          <div className="grid lg:grid-cols-3 gap-4">
+          <div className="grid lg:grid-cols-3 gap-3 items-start">
             <div className="lg:col-span-2"><Panel title={`${t("Stagnant items list", "قائمة الأصناف الراكدة")} (${fmt.int(stagRows.length)})`} icon={<Package size={16} className="text-blue-400" />} pad={false}>
               <DataGrid<Row> {...grid} rows={stagRows} cols={stagCols} rowKey={(r) => String(r.p.id)} title={t("Stagnant items", "الأصناف الراكدة")} fileName="stagnant_items" selectable onRow={(r) => openItem(r.p)} defaultSort={{ id: "days", desc: true }} onReport={onReport} testId="grid-stagnant" />
             </Panel></div>
@@ -373,7 +373,7 @@ export default function InventoryAnalyticsPage({ onNavigate, onSection }: { onNa
       )}
 
       {!loading && !noData && S.tab === "movement" && (
-        <div className="space-y-4" data-testid="pane-movement">
+        <div className="space-y-3" data-testid="pane-movement">
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3" data-testid="mv-sum">
             {[[t("Opening balance", "الرصيد الافتتاحي"), mvSum.opening, "text-slate-100"], [t("Total in", "إجمالي الوارد"), mvSum.inQ, "text-emerald-400"], [t("Total out", "إجمالي الصادر"), mvSum.outQ, "text-orange-400"], [t("Closing balance", "الرصيد الختامي"), mvSum.closing, "text-slate-100"], [t("Current balance", "الرصيد الحالي"), mvSum.cur, "text-blue-400"]].map(([l, v, c], i) => (
               <div key={i} className={`${CARD} p-3`}><div className="text-xs text-slate-300 font-bold">{l as string}</div><div className={`text-xl font-black tabular-nums [direction:ltr] ${c as string}`}>{fmt.qty(v as number)}</div></div>))}
@@ -389,9 +389,9 @@ export default function InventoryAnalyticsPage({ onNavigate, onSection }: { onNa
       )}
 
       {!loading && !noData && S.tab === "aging" && (
-        <div className="space-y-4" data-testid="pane-aging">
+        <div className="space-y-3" data-testid="pane-aging">
           <div className="flex gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs" data-testid="aging-basis"><AlertTriangle size={15} className="shrink-0 mt-0.5" /><div>{t("Basis: estimate, not an accounting-grade age. No cost layers exist, so current quantity is matched to the most recent receipts (oldest sold first, FIFO assumption). Quantity not covered by any recorded receipt is shown as “no receipt date” (opening stock).", "الأساس: تقدير وليس عمرًا محاسبيًا دقيقًا. لا توجد طبقات تكلفة، لذا تُطابَق الكمية الحالية بأحدث الاستلامات (الأقدم يُصرف أولًا — افتراض FIFO). الكمية التي لا يغطيها استلام مسجَّل تظهر «بلا تاريخ استلام» (رصيد افتتاحي).")}</div></div>
-          <div className="grid lg:grid-cols-3 gap-4">
+          <div className="grid lg:grid-cols-3 gap-3 items-start">
             <Panel title={t("Aging distribution (value)", "توزيع أعمار المخزون (القيمة)")} icon={<Clock size={16} className="text-blue-400" />}>
               <DonutChart empty={L.empty} data={ageSum.map((a, i) => ({ label: ageLabel(a.bucket), value: a.value, color: a.bucket === "unknown" ? "#64748b" : PALETTE[i % PALETTE.length], text: fmt.pct(a.pct) }))} />
             </Panel>
@@ -408,7 +408,7 @@ export default function InventoryAnalyticsPage({ onNavigate, onSection }: { onNa
       )}
 
       {!loading && !noData && S.tab === "sales" && (
-        <div className="space-y-4" data-testid="pane-sales">
+        <div className="space-y-3" data-testid="pane-sales">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[[t("Net sales (period)", "صافي المبيعات (الفترة)"), cur(salesTot.net), "text-blue-400"], [t("Previous period", "الفترة السابقة"), cur(salesTot.prev), "text-slate-100"], [t("Qty sold (net)", "الكمية المباعة (صافي)"), fmt.qty(salesTot.qty), "text-emerald-400"], [t("In-stock items with no sales", "أصناف بالمخزون بلا مبيعات"), fmt.int(salesTot.unsold), "text-orange-400"]].map(([l, v, c], i) => (
               <div key={i} className={`${CARD} p-3`}><div className="text-xs text-slate-300 font-bold">{l}</div><div className={`text-xl font-black tabular-nums [direction:ltr] ${c}`}>{v}</div>{i === 0 && <div className="text-[11px] mt-0.5">{delta(salesTot.net, salesTot.prev)}</div>}</div>))}
@@ -418,7 +418,7 @@ export default function InventoryAnalyticsPage({ onNavigate, onSection }: { onNa
             {(["best", "worst", "none"] as const).map((m) => <button key={m} type="button" data-testid={`sm-${m}`} onClick={() => setSMode(m)} className={`px-4 py-2 rounded-xl border text-xs font-bold ${sMode === m ? "bg-[#0a58ca] border-[#0a58ca] text-[#fff]" : "bg-slate-900 border-slate-700 text-slate-300"}`}>{m === "best" ? t("Top sellers", "الأعلى مبيعًا") : m === "worst" ? t("Lowest sellers", "الأقل مبيعًا") : t("No sales in period", "بلا مبيعات في الفترة")}</button>)}
             <select className={`${INPUT} !w-auto`} value={sMetric} onChange={(e) => setSMetric(e.target.value as "net" | "qty")} aria-label="metric" disabled={sMode === "none"}><option value="net">{t("Rank by net sales", "الترتيب بصافي المبيعات")}</option><option value="qty">{t("Rank by quantity", "الترتيب بالكمية")}</option></select>
           </div>
-          <div className="grid lg:grid-cols-3 gap-4">
+          <div className="grid lg:grid-cols-3 gap-3 items-start">
             <div className="lg:col-span-2"><Panel title={sMode === "best" ? t("Top selling items", "أعلى الأصناف مبيعًا") : sMode === "worst" ? t("Lowest selling items", "أقل الأصناف مبيعًا") : t("Items with no sales", "أصناف بلا مبيعات")} icon={<BarChart3 size={16} className="text-blue-400" />} pad={false}>
               <DataGrid<RankRow> key={`${sMode}${sMetric}`} {...grid} rows={rankRows} cols={rankCols} rowKey={(r) => String(r.p.id)} title={t("Sales ranking", "ترتيب المبيعات")} fileName="sales_ranking" selectable onRow={(r) => openItem(r.p)} onReport={onReport} testId="grid-sales" />
             </Panel></div>
@@ -432,7 +432,7 @@ export default function InventoryAnalyticsPage({ onNavigate, onSection }: { onNa
       )}
 
       {!loading && !noData && S.tab === "valuation" && (
-        <div className="space-y-4" data-testid="pane-valuation">
+        <div className="space-y-3" data-testid="pane-valuation">
           <div className="grid grid-cols-3 gap-3">
             <div className={`${CARD} p-3`}><div className="text-xs text-slate-300 font-bold">{t("Total inventory value", "إجمالي قيمة المخزون")}</div><div className="text-xl font-black text-blue-400 tabular-nums [direction:ltr]" data-testid="val-total">{cur(kpis.value)}</div></div>
             <div className={`${CARD} p-3`}><div className="text-xs text-slate-300 font-bold">{t("Total quantity", "إجمالي الكميات")}</div><div className="text-xl font-black text-slate-100 tabular-nums [direction:ltr]">{fmt.qty(valRows.reduce((s, r) => s + r.p.qty, 0))}</div></div>
@@ -448,7 +448,7 @@ export default function InventoryAnalyticsPage({ onNavigate, onSection }: { onNa
               ? <DataGrid<Row> {...grid} rows={valItems} cols={itemCols} rowKey={(r) => String(r.p.id)} title={t("Inventory valuation", "تقييم المخزون")} fileName="inventory_valuation_items" onRow={(r) => openItem(r.p)} defaultSort={{ id: "value", desc: true }} onReport={onReport} testId="grid-val-items" />
               : <DataGrid<Agg2> {...grid} rows={drill.branch == null ? byBranch : byWh} cols={aggCols(drill.branch == null ? t("Branch", "الفرع") : t("Warehouse", "المخزن"))} rowKey={(r) => r.key} title={drill.branch == null ? t("Value by branch", "القيمة حسب الفرع") : t("Value by warehouse", "القيمة حسب المخزن")} fileName="inventory_valuation" onRow={(r) => (drill.branch == null ? setDrill({ branch: r.key === "" ? null : Number(r.key), wh: undefined }) : setDrill({ branch: drill.branch, wh: r.key === "" ? null : Number(r.key) }))} defaultSort={{ id: "value", desc: true }} onReport={onReport} testId="grid-val" />}
           </Panel>
-          <div className="grid lg:grid-cols-3 gap-4">
+          <div className="grid lg:grid-cols-3 gap-3 items-start">
             <Panel title={t("Value by group", "القيمة حسب المجموعة")}><HBars fmt={cur} empty={L.empty} data={byGroup.slice(0, 8).map((g) => ({ label: g.label, value: g.value }))} /></Panel>
             <Panel title={t("Value by supplier (last purchase)", "القيمة حسب المورد (آخر شراء)")}><HBars fmt={cur} empty={L.empty} color="#a855f7" data={bySupplier.slice(0, 8).map((g) => ({ label: g.label, value: g.value }))} /></Panel>
             <Panel title={t("Highest-value items", "الأصناف الأعلى قيمة")}><HBars fmt={cur} empty={L.empty} color="#10b981" data={[...valRows].sort((a, b) => b.value - a.value).slice(0, 8).map((r) => ({ label: r.p.name, value: r.value }))} /></Panel>
@@ -461,12 +461,12 @@ export default function InventoryAnalyticsPage({ onNavigate, onSection }: { onNa
       )}
 
       {!loading && !noData && S.tab === "suppliers" && (
-        <div className="space-y-4" data-testid="pane-suppliers">
+        <div className="space-y-3" data-testid="pane-suppliers">
           <div className="flex gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs" data-testid="sup-basis"><AlertTriangle size={15} className="shrink-0 mt-0.5" />{t("There is no item↔supplier master link in the database. An item is attributed to the supplier of its most recent posted purchase invoice (document-based). Items never purchased through an invoice have no supplier.", "لا توجد علاقة رئيسية صنف↔مورد في قاعدة البيانات. يُنسَب الصنف لمورد آخر فاتورة شراء مرحّلة تحتويه (أساس مستندي). الأصناف التي لم تُشترَ بفاتورة بلا مورد.")}</div>
           <Panel title={t("Supplier inventory analysis", "تحليل مخزون الموردين")} icon={<Truck size={16} className="text-blue-400" />} pad={false}>
             <DataGrid<SupRow> {...grid} rows={supRows} cols={supCols} rowKey={(r) => r.supplier} title={t("Supplier analysis", "تحليل الموردين")} fileName="supplier_analysis" defaultSort={{ id: "p", desc: true }} onReport={onReport} testId="grid-suppliers" />
           </Panel>
-          <div className="grid md:grid-cols-2 gap-4">
+          <div className="grid md:grid-cols-2 gap-3 items-start">
             <Panel title={t("Stock value by supplier", "قيمة المخزون حسب المورد")}><HBars fmt={cur} empty={L.empty} data={supRows.filter((r) => r.value > 0).slice(0, 8).map((r) => ({ label: r.supplier, value: r.value }))} /></Panel>
             <Panel title={t("Stagnant value by supplier", "قيمة الراكد حسب المورد")}><HBars fmt={cur} empty={L.empty} color="#ef4444" data={[...supRows].filter((r) => r.stagnantValue > 0).sort((a, b) => b.stagnantValue - a.stagnantValue).slice(0, 8).map((r) => ({ label: r.supplier, value: r.stagnantValue }))} /></Panel>
           </div>
@@ -474,7 +474,7 @@ export default function InventoryAnalyticsPage({ onNavigate, onSection }: { onNa
       )}
 
       {!loading && !noData && S.tab === "insights" && (
-        <div className="space-y-4" data-testid="pane-insights">
+        <div className="space-y-3" data-testid="pane-insights">
           <Panel title={t("Inventory Insights & Recommendations", "التوصيات وقرارات المخزون")} icon={<Lightbulb size={16} className="text-amber-400" />}>
             <p className="text-[11px] text-slate-400 mb-3">{t("Recommendations are computed from actual data and are advisory only — nothing is executed automatically.", "التوصيات مبنية على البيانات الفعلية وهي استشارية فقط — لا يُنفَّذ أي إجراء تلقائيًا.")}</p>
             {recs.length === 0 && <div className="p-6 text-center text-xs text-slate-400">{t("No recommendations for the current data.", "لا توصيات للبيانات الحالية.")}</div>}
@@ -490,7 +490,7 @@ export default function InventoryAnalyticsPage({ onNavigate, onSection }: { onNa
                       <td className="p-2 text-end tabular-nums [direction:ltr] font-semibold text-slate-100">{fmt.qty(r.qty)}</td><td className="p-2 text-end tabular-nums [direction:ltr] font-semibold text-slate-100">{fmt.money(r.value)}</td><td className="p-2 text-slate-200">{x.action}</td></tr>); })}</tbody></table></div>
               </div>); })}
           </Panel>
-          <div className="grid lg:grid-cols-3 gap-4" data-testid="insight-charts">
+          <div className="grid lg:grid-cols-3 gap-3 items-start" data-testid="insight-charts">
             <Panel title={t("Stagnant items by group", "توزيع الراكد حسب المجموعة")}><DonutChart empty={L.empty} size={150} data={aggregate(rows.filter((r) => isStagnant(r.st.status)).map((r) => r.p), (p) => groupOf(p, S.groupBy), gl).slice(0, 6).map((g) => ({ label: g.label, value: g.items }))} /></Panel>
             <Panel title={t("Stock value by branch", "قيمة المخزون حسب الفرع")}><HBars fmt={cur} empty={L.empty} data={byBranch.slice(0, 8).map((g) => ({ label: g.label, value: g.value }))} /></Panel>
             <Panel title={t("Stock value by supplier", "قيمة المخزون حسب المورد")}><HBars fmt={cur} empty={L.empty} color="#a855f7" data={bySupplier.slice(0, 8).map((g) => ({ label: g.label, value: g.value }))} /></Panel>

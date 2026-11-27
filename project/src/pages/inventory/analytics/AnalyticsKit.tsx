@@ -34,6 +34,7 @@ export type Opt = { value: string; label: string };
 export function MultiSelect({ label, allLabel, options, selected, onChange, testId }: { label: string; allLabel: string; options: Opt[]; selected: Set<string> | null; onChange: (s: Set<string> | null) => void; testId?: string }) {
   const [open, setOpen] = useState(false); const [q, setQ] = useState(""); const ref = useRef<HTMLDivElement>(null);
   useEffect(() => { const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); }; document.addEventListener("mousedown", h); return () => document.removeEventListener("mousedown", h); }, []);
+  const isAr = /[\u0600-\u06FF]/.test(allLabel);
   const shown = options.filter((o) => o.label.toLowerCase().includes(q.trim().toLowerCase()));
   const text = !selected ? allLabel : selected.size === 1 ? options.find((o) => o.value === [...selected][0])?.label || "…" : `${selected.size} / ${options.length}`;
   const toggle = (v: string) => { const s = new Set(selected ?? options.map((o) => o.value)); if (s.has(v)) s.delete(v); else s.add(v); onChange(s.size === 0 || s.size === options.length ? null : s); };
@@ -46,11 +47,16 @@ export function MultiSelect({ label, allLabel, options, selected, onChange, test
       {open && (
         <div className="absolute z-30 mt-1 w-full min-w-[220px] max-h-72 overflow-auto bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-2" role="listbox">
           <div className="relative mb-2"><Search size={13} className="absolute top-1/2 -translate-y-1/2 start-2 text-slate-500" /><input className={`${INPUT} ps-7`} value={q} onChange={(e) => setQ(e.target.value)} /></div>
-          <button type="button" onClick={() => { onChange(null); setOpen(false); }} className={`w-full text-start px-2 py-1.5 rounded-lg text-xs font-bold ${!selected ? "bg-blue-500/15 text-blue-300" : "text-slate-300 hover:bg-slate-800"}`}>{allLabel}</button>
+          <div className="flex items-center gap-1 mb-1">
+            <button type="button" data-testid="ms-all" onClick={() => { onChange(null); setOpen(false); }} className={`flex-1 text-start px-2 py-1.5 rounded-lg text-xs font-bold ${!selected ? "bg-blue-500/15 text-blue-300" : "text-slate-300 hover:bg-slate-800"}`}>{allLabel}</button>
+          </div>
           {shown.map((o) => (
-            <label key={o.value} className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-slate-200 hover:bg-slate-800 cursor-pointer">
-              <input type="checkbox" checked={!selected || selected.has(o.value)} onChange={() => toggle(o.value)} className="accent-blue-500" /><span className="truncate">{o.label}</span>
-            </label>
+            <div key={o.value} className="group flex items-center gap-1 rounded-lg hover:bg-slate-800">
+              <label className="flex-1 min-w-0 flex items-center gap-2 px-2 py-1.5 text-xs text-slate-200 cursor-pointer">
+                <input type="checkbox" checked={!selected || selected.has(o.value)} onChange={() => toggle(o.value)} className="accent-blue-500" /><span className="truncate">{o.label}</span>
+              </label>
+              <button type="button" data-testid="ms-only" onClick={() => { onChange(new Set([o.value])); setOpen(false); }} className="shrink-0 px-2 py-1 me-1 rounded-md text-[10px] font-bold text-blue-300 border border-blue-500/30 hover:bg-blue-500/15">{isAr ? "هذا فقط" : "Only"}</button>
+            </div>
           ))}
           {shown.length === 0 && <div className="px-2 py-3 text-xs text-slate-500">—</div>}
         </div>
@@ -169,7 +175,7 @@ export function printSpec(spec: ReportSpec, o: { orgName: string; taxNumber?: st
 export const PALETTE = ["#3b82f6", "#10b981", "#f59e0b", "#a855f7", "#ef4444", "#06b6d4", "#ec4899", "#84cc16"];
 export function DonutChart({ data, center, size = 170, empty }: { data: { label: string; value: number; color?: string; text?: string }[]; center?: ReactNode; size?: number; empty: string }) {
   const clean = data.filter((d) => d.value > 0); const total = clean.reduce((s, d) => s + d.value, 0);
-  if (!total) return <div className="p-8 text-center text-xs text-slate-500">{empty}</div>;
+  if (!total) return <div className="py-3 text-center text-xs text-slate-500">{empty}</div>;
   const R = size / 2 - 14, C = 2 * Math.PI * R; let off = 0;
   return (
     <div className="flex items-center gap-4 flex-wrap justify-center">
@@ -189,7 +195,7 @@ export function DonutChart({ data, center, size = 170, empty }: { data: { label:
   );
 }
 export function HBars({ data, fmt, color = "#3b82f6", empty }: { data: { label: string; value: number; color?: string; right?: string }[]; fmt: (n: number) => string; color?: string; empty: string }) {
-  if (!data.length) return <div className="p-8 text-center text-xs text-slate-500">{empty}</div>;
+  if (!data.length) return <div className="py-3 text-center text-xs text-slate-500">{empty}</div>;
   const max = Math.max(...data.map((d) => d.value), 1);
   return (
     <div className="space-y-2.5">
@@ -203,8 +209,8 @@ export function HBars({ data, fmt, color = "#3b82f6", empty }: { data: { label: 
   );
 }
 export function FlowChart({ labels, a, b, aName, bName, empty }: { labels: string[]; a: number[]; b: number[]; aName: string; bName: string; empty: string }) {
-  if (!labels.length) return <div className="p-8 text-center text-xs text-slate-500">{empty}</div>;
-  const W = Math.max(labels.length * 64, 340), H = 200, P = 28; const max = Math.max(...a, ...b, 1);
+  if (!labels.length) return <div className="py-3 text-center text-xs text-slate-500">{empty}</div>;
+  const W = Math.max(labels.length * 64, 340), H = 150, P = 24; const max = Math.max(...a, ...b, 1);
   const x = (i: number) => (labels.length === 1 ? W / 2 : P + (i * (W - P * 2)) / (labels.length - 1)); const y = (v: number) => H - P - (v / max) * (H - P * 2);
   const path = (arr: number[]) => arr.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
   return (

@@ -58,6 +58,10 @@ export function BrandSplash({ label }: { label?: string }) {
     <div className="min-h-screen bg-slate-950 flex items-center justify-center" role="status" aria-live="polite" data-testid="brand-splash">
       <div className="flex flex-col items-center gap-5">
         <div className="animate-pulse"><BrandMark size={84} onDark /></div>
+        <div dir="ltr" className="text-center leading-none font-brand" data-testid="brand-splash-name">
+          <div className="font-extrabold tracking-tight text-white text-xl">MIHWAR CLOUD</div>
+          <div className="mt-1.5 font-bold text-brand-blue text-[11px]" style={{ letterSpacing: "0.32em" }}>ERP</div>
+        </div>
         <div className="h-1 w-28 rounded-full bg-slate-800 overflow-hidden"><div className="h-full w-1/2 rounded-full bg-brand-cyan animate-[brandbar_1.1s_ease-in-out_infinite]" /></div>
         {label && <div className="text-xs text-slate-400">{label}</div>}
       </div>

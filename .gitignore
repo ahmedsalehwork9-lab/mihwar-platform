@@ -9,3 +9,6 @@ MIHWAR_BACKUP_*/
 *.backup*
 project/results/
 project/tests/
+
+backup-*/
+**/backup-*/

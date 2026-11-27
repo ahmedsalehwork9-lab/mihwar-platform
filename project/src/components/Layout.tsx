@@ -250,7 +250,6 @@ const OPERATIONS: OpEntry[] = [
 
   { type: 'group', key: 'reports', icon: <FileBarChart size={17} />, labelEn: 'Reports', labelAr: 'التقارير', homePage: 'reports-center', children: [
     { labelEn: 'Reports Center',   labelAr: 'مركز التقارير',  page: 'reports-center' },
-    { labelEn: 'Inventory Reports', labelAr: 'تقارير المخزون والأصناف', page: 'inventory-analytics' },
     { labelEn: 'Business Analytics', labelAr: 'تحليلات الأعمال', page: 'business-analytics' },
     { labelEn: 'Monthly Financial', labelAr: 'التقرير المالي الشهري', page: 'monthly-financial' },
     { labelEn: 'Report Builder', labelAr: 'مُنشئ التقارير', page: 'report-builder' },

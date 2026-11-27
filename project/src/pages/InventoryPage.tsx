@@ -3,6 +3,7 @@ import { supabase } from "./lib/supabase";
 import * as DB from "./lib/accountingDb";
 import { useAuth } from "../context/AuthContext";
 import { useLang } from "../context/LanguageContext";
+import CategoryField from "./inventory/CategoryField";
 import {
   Package, Plus, Search, RefreshCw, Trash2,
   Edit2, X, Save, AlertCircle, ChevronLeft,
@@ -592,6 +593,20 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
     })();
     return () => { alive = false; };
   }, [ownedShopId]);
+
+  // نشاط الشركة (نص حر) لاقتراح التصنيفات؛ فشل القراءة لا يمنع شيئاً (اقتراحات عامة)
+  const [activityText, setActivityText] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    if (!orgId) { setActivityText(null); return; }
+    (async () => {
+      try {
+        const { data } = await supabase.from("organizations").select("business_activity").eq("id", orgId).maybeSingle();
+        if (alive) setActivityText(((data as { business_activity?: string | null } | null)?.business_activity ?? null) || null);
+      } catch { if (alive) setActivityText(null); }
+    })();
+    return () => { alive = false; };
+  }, [orgId]);
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [products, setProducts]         = useState<Product[]>([]);
@@ -2586,11 +2601,15 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
                 {/* ── إدارة المخزون: التصنيف + المستودع + حدود المخزون ── */}
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">{t('Category', 'التصنيف')}</label>
-                  <input
-                    type="text"
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-emerald-500 focus:outline-none transition-colors text-sm"
+                  <CategoryField
                     value={form.category}
-                    onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+                    onChange={v => setForm(f => ({ ...f, category: v }))}
+                    activityText={activityText}
+                    used={categoryOptions}
+                    orgKey={orgId}
+                    lang={isRTL ? 'ar' : 'en'}
+                    t={t}
+                    inputClass="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-emerald-500 focus:outline-none transition-colors text-sm"
                     placeholder={t('e.g. Filters, Oils…', 'مثال: فلاتر، زيوت…')}
                   />
                 </div>

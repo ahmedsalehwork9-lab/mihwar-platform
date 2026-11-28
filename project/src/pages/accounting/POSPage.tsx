@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Search, Barcode, Trash2, Plus, Minus, ShoppingCart, X, Printer, Wallet, Clock, RotateCcw, LayoutGrid, List, PauseCircle, User, Store, Tag, Percent, PlayCircle, Power, Banknote, AlertTriangle } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useOrgConfig } from "../../context/OrgConfigContext";
@@ -8,6 +8,7 @@ import { cashBankOptions } from "../lib/cashAccounts";
 import { channelAssigned, limitToChannel } from "../lib/channelTreasury";
 import { fetchAccountMap } from "../sales/salesInvoiceApi";
 import type { MapRow } from "../sales/salesInvoiceApi";
+const PosReturnsDialog = lazy(() => import("./AccountingPage").then((m) => ({ default: m.PosReturnsDialog })));
 import type { GLAccount, GLParty, GLTreasury, POSProduct, SalesItem, ShopInfo } from "../lib/accountingDb";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -62,6 +63,7 @@ export default function POSPage() {
   // الورديات
   const [shift, setShift] = useState<DB.GLShift | null>(null);
   const [shiftModal, setShiftModal] = useState<null | "open" | "expense" | "close">(null);
+  const [retOpen, setRetOpen] = useState(false);
   const [openCash, setOpenCash] = useState("");
   const [expAmount, setExpAmount] = useState("");
   const [expReason, setExpReason] = useState("");
@@ -441,6 +443,7 @@ export default function POSPage() {
           <span className="text-slate-500">{t("Warehouse", "المستودع")}: {branchName}</span>
           {user?.email && <span className="flex items-center gap-1 text-slate-400"><User size={12} /> {user.email}</span>}
           <span className="flex items-center gap-1 text-slate-400"><Tag size={12} /> {t("Price list: Retail", "قائمة الأسعار: قطاعي")}</span>
+          <button onClick={() => setRetOpen(true)} disabled={!org || !ownedShopId} data-testid="pos-return-btn" className="px-3 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-300 text-[11px] font-bold hover:bg-amber-500/25 flex items-center gap-1 disabled:opacity-40"><RotateCcw size={13} /> {t("Sales return", "مرتجع مبيعات")}</button>
           {shift ? (
             <span className="flex items-center gap-2">
               <span className="flex items-center gap-1 text-emerald-300"><PlayCircle size={13} /> {t("Shift open · opening", "وردية مفتوحة · افتتاحي")} {fmt(shift.opening_cash)}</span>
@@ -639,6 +642,9 @@ export default function POSPage() {
       )}
 
       {/* فتح وردية */}
+      {retOpen && org && ownedShopId && (
+        <Suspense fallback={null}><PosReturnsDialog org={org} branchId={Number(ownedShopId)} accounts={accounts} parties={parties} branchName={branchName} shop={shop} onClose={() => setRetOpen(false)} /></Suspense>
+      )}
       {shiftModal === "open" && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" dir={dir} onClick={() => setShiftModal(null)}>
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>

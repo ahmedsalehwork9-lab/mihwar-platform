@@ -855,6 +855,25 @@ function isDedicatedSalesReturnsAccount(account: GLAccount) {
 }
 
 // ══════════════ مرتجعات المبيعات — مستند مستقل SR ══════════════
+/** مرتجع مبيعات من شاشة نقطة البيع: يعيد استخدام نفس نموذج مرتجعات المبيعات (نفس القيود والمخزون والتكلفة) داخل نافذة. */
+export function PosReturnsDialog({ org, branchId, accounts, parties, branchName, shop, onClose, onDone }: { org: any; branchId: number; accounts: GLAccount[]; parties: DB.GLParty[]; branchName: string; shop: any; onClose: () => void; onDone?: () => void }) {
+  const { lang: dl } = useLang(); const den = dl === "en";
+  const [invoices, setInvoices] = useState<DB.GLSalesInvoice[]>([]); const [treasuries, setTreasuries] = useState<DB.GLTreasury[]>([]); const [loading, setLoading] = useState(true);
+  const postable = useMemo(() => accounts.filter((a) => !a.is_group).sort((a, b) => a.code.localeCompare(b.code)), [accounts]);
+  const load = useCallback(async () => {
+    setLoading(true);
+    const from = new Date(Date.now() - 180 * 864e5).toISOString().slice(0, 10);
+    const [inv, tr] = await Promise.all([DB.fetchSalesInvoices(org.id, from, today(), branchId), DB.fetchTreasuries(org.id)]);
+    setInvoices(inv); setTreasuries(tr); setLoading(false);
+  }, [org.id, branchId]);
+  useEffect(() => { void load(); }, [load]);
+  const treasuryAccounts = (() => { const ids = new Set(cashBankOptions(postable, treasuries.filter((x) => x.branch_id == null || x.branch_id === branchId)).map((o) => o.id)); return postable.filter((a: GLAccount) => ids.has(a.id)); })();
+  // نموذج المرتجع نفسه نافذة كاملة الشاشة بزر «إلغاء» خاص به؛ نعرض فقط حالة التحميل قبله
+  if (loading) return <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70" role="dialog" data-testid="pos-returns-dialog" dir={den ? "ltr" : "rtl"}><div className={`${CARD} px-8 py-6 text-sm text-slate-200`}>{den ? "Loading invoices…" : "جارٍ تحميل الفواتير…"}</div></div>;
+  return <div data-testid="pos-returns-dialog"><SalesReturnsPanel org={org} invoices={invoices} parties={parties} postable={postable} treasuryAccounts={treasuryAccounts} branchName={branchName} shop={shop}
+    reloadInvoices={async () => { await load(); onDone?.(); }} open={true} setOpen={(v: boolean) => { if (!v) onClose(); }} /></div>;
+}
+
 function SalesReturnsPanel({ org, invoices, parties, postable, treasuryAccounts, branchName, reloadInvoices, open, setOpen, returnsMode = false, shop }: any) {
   const { lang: rl } = useLang(); const ren = rl === "en";
   const [rows, setRows] = useState<DB.GLSalesReturn[]>([]);

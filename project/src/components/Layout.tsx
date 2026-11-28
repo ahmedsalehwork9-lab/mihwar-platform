@@ -1,6 +1,7 @@
 import { prefetchRemotePrefs } from '../pages/branchSettings/printPrefsApi';
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { BrandLogo } from './brand/BrandLogo';
+import { useTheme } from '../context/ThemeContext';
 import {
   LayoutDashboard,
   Package,
@@ -326,6 +327,8 @@ const NavButton = ({
 }) => (
   <button
     onClick={onClick}
+    data-nav-item
+    data-active={isActive ? 'true' : 'false'}
     className={`group w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 relative ${
       isActive
         ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25'
@@ -457,6 +460,7 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
   }, [isAdmin]);
   // تفضيلات الطباعة المحفوظة على الخادم (تُحمَّل مرة لتسري على كل الأجهزة)
   useEffect(() => { void prefetchRemotePrefs(true); }, [ownedShopId]);
+  const { theme } = useTheme();
   const [sidebarOpen, setSidebarOpen]     = useState(false);
   const [showMore,    setShowMore]         = useState(false);
   const [cmdOpen,     setCmdOpen]          = useState(false);
@@ -548,7 +552,7 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
 
         {/* Logo */}
         <div className="flex-shrink-0 px-5 py-4 border-b border-slate-700/50" data-testid="sidebar-logo">
-          <BrandLogo size={46} onDark />
+          <BrandLogo size={46} onDark={theme === 'dark'} />
         </div>
 
         {/* Nav */}
@@ -627,6 +631,8 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
                             return (
                               <button
                                 key={i}
+                                data-nav-sub
+                                data-active={active ? 'true' : 'false'}
                                 onClick={() => { if (c.section) { setAccSection?.(c.section); setPage('accounting'); } else { setPage(c.page!); } setSidebarOpen(false); }}
                                 className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${active ? 'bg-blue-500/15 text-blue-300' : 'text-slate-500 hover:text-slate-200 hover:bg-slate-800/50'}`}
                               >
@@ -648,6 +654,7 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
 
         {/* Footer */}
         <div
+          data-sidebar-footer
           className="flex-shrink-0 px-3 py-4 border-t border-slate-700/50 space-y-2"
           style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
         >
@@ -876,6 +883,7 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
 
       {/* Sidebar */}
       <aside
+        data-app-sidebar
         className={`fixed top-0 ${isRTL ? 'right-0' : 'left-0'} z-50 h-full w-72 bg-slate-900 border-r border-slate-700/60 transition-transform duration-300 lg:static lg:translate-x-0 ${
           sidebarOpen
             ? 'translate-x-0'
@@ -890,7 +898,7 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
       <div className="flex-1 flex flex-col overflow-hidden">
 
         {/* Top header */}
-        <header className="h-16 border-b border-slate-800 bg-slate-950/90 backdrop-blur-xl flex items-center justify-between px-4 lg:px-6">
+        <header data-app-header className="h-16 border-b border-slate-800 bg-slate-950/90 backdrop-blur-xl flex items-center justify-between px-4 lg:px-6">
           <button
             onClick={() => setSidebarOpen(true)}
             className="lg:hidden text-slate-400 active:scale-90 transition-transform"

@@ -19,7 +19,7 @@ export function LandingTopNav({ onLogin, onJoin }: { onLogin: () => void; onJoin
     { h: "#reports", l: t("Reports", "التقارير") }, { h: "#demo", l: t("Demo", "تجربة النظام") }, { h: "#print", l: t("Printing", "الطباعة") }, { h: "#pricing", l: t("Plans", "الاشتراكات") }, { h: "#faq", l: t("FAQ", "الأسئلة") },
   ];
   return (
-    <header className="fixed inset-x-0 top-0 z-50 border-b border-[#ffffff1a] bg-[#0B1F44]/90 backdrop-blur-md">
+    <header className="fixed inset-x-0 top-0 z-50 border-b border-[#ffffff1a] bg-[#0B1F44]/90 backdrop-blur-md" style={{ paddingTop: "env(safe-area-inset-top)" }}>
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6">
         <a href="#top" aria-label="MIHWAR CLOUD ERP"><BrandLogo size={36} onDark /></a>
         <nav className="hidden items-center gap-6 text-sm font-semibold text-[#d6e0f5] lg:flex" aria-label={t("Main", "التنقل الرئيسي")}>
@@ -51,7 +51,7 @@ export function Hero({ onJoin }: { onJoin: OnPlan }) {
   const { t, isRTL } = useLang();
   const Arrow = isRTL ? ArrowLeft : ArrowRight;
   return (
-    <section id="top" className="relative overflow-hidden bg-[#0B1F44] pb-16 pt-28 sm:pb-24 sm:pt-36">
+    <section id="top" className="relative overflow-hidden bg-[#0B1F44] pb-16 pt-[calc(7rem+env(safe-area-inset-top))] sm:pb-24 sm:pt-[calc(9rem+env(safe-area-inset-top))]">
       <div aria-hidden className="pointer-events-none absolute inset-0 opacity-60" style={{ background: "radial-gradient(60% 50% at 80% 10%, rgba(0,123,255,.35), transparent 70%), radial-gradient(40% 40% at 10% 90%, rgba(0,194,255,.18), transparent 70%)" }} />
       <div className="relative mx-auto grid max-w-7xl items-center gap-12 px-4 sm:px-6 lg:grid-cols-[1fr_1.15fr]">
         <div>

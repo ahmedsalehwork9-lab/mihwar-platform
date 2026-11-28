@@ -899,6 +899,7 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
             ? 'translate-x-full'
             : '-translate-x-full'
         }`}
+        style={{ paddingTop: 'env(safe-area-inset-top)' }}
       >
         <Sidebar />
       </aside>
@@ -906,7 +907,7 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
       <div className="flex-1 flex flex-col overflow-hidden">
 
         {/* Top header */}
-        <header data-app-header className="h-16 border-b border-slate-800 bg-slate-950/90 backdrop-blur-xl flex items-center justify-between px-4 lg:px-6">
+        <header data-app-header className="h-16 border-b border-slate-800 bg-slate-950/90 backdrop-blur-xl flex items-center justify-between px-4 lg:px-6" style={{ paddingTop: 'env(safe-area-inset-top)', height: 'calc(4rem + env(safe-area-inset-top))' }}>
           <button
             onClick={() => setSidebarOpen(true)}
             className="lg:hidden text-slate-400 active:scale-90 transition-transform"

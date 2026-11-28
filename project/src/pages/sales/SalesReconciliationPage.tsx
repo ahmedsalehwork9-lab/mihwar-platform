@@ -18,6 +18,7 @@ import {
 import { logoBox, contactFooter, waQrDataUrl, SUPPORT_WA } from "../lib/reportChrome";
 
 import { curAr } from "../lib/orgConfig";
+import { exportHtmlTablesXlsx } from "../accounting/journal/exportKit";
 type ShiftId = "am" | "pm";
 type Channel = { id: string; icon: string; nm: string; base?: boolean; sign?: number };
 
@@ -431,10 +432,10 @@ export default function SalesReconciliationPage() {
     w.document.close();
   };
   const exportExcel = () => {
-    const html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"></head><body style="margin:0;background:#fff;">${buildExportHTML()}</body></html>`;
-    const blob = new Blob(["﻿" + html], { type: "application/vnd.ms-excel;charset=utf-8" });
-    const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-    a.download = `${t("Reconciliation", "تسوية")}_${branch || t("branch", "فرع")}_${from}_${to}.xls`; a.click(); URL.revokeObjectURL(a.href);
+    exportHtmlTablesXlsx(`${t("Reconciliation", "تسوية")}_${branch || t("branch", "فرع")}_${from}_${to}.xlsx`, buildExportHTML(), {
+      rtl: isRTL, sheetNames: [t("Reconciliation", "تسوية")],
+      meta: [t("Sales reconciliation report", "تقرير تسوية المبيعات"), `${t("Branch", "الفرع")}: ${branch || "—"} | ${t("Period:", "الفترة:")} ${from} ${t("To", "إلى")} ${to}`],
+    });
   };
 
   // ================= UI =================

@@ -7,6 +7,7 @@ import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { ArrowDown, ArrowUp, ChevronDown, ChevronLeft, ChevronRight, Columns3, Download, Printer, Search, X } from "lucide-react";
 import { buildReportHTML, openPrint } from "../../accounting/shared/printReport";
+import { smartMatch } from "../../lib/smartSearch";
 
 // ── منسّق الأرقام ───────────────────────────────────────────
 export type Digits = "en" | "ar";
@@ -35,7 +36,7 @@ export function MultiSelect({ label, allLabel, options, selected, onChange, test
   const [open, setOpen] = useState(false); const [q, setQ] = useState(""); const ref = useRef<HTMLDivElement>(null);
   useEffect(() => { const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); }; document.addEventListener("mousedown", h); return () => document.removeEventListener("mousedown", h); }, []);
   const isAr = /[\u0600-\u06FF]/.test(allLabel);
-  const shown = options.filter((o) => o.label.toLowerCase().includes(q.trim().toLowerCase()));
+  const shown = options.filter((o) => smartMatch(q, o.label));
   const text = !selected ? allLabel : selected.size === 1 ? options.find((o) => o.value === [...selected][0])?.label || "…" : `${selected.size} / ${options.length}`;
   const toggle = (v: string) => { const s = new Set(selected ?? options.map((o) => o.value)); if (s.has(v)) s.delete(v); else s.add(v); onChange(s.size === 0 || s.size === options.length ? null : s); };
   return (

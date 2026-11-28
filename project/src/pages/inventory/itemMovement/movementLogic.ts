@@ -1,4 +1,5 @@
 // =============================================================
+import { smartMatch } from "../../lib/smartSearch";
 // src/pages/inventory/itemMovement/movementLogic.ts
 // منطق نقي لتقرير حركة الصنف: دفتر الحركة بالرصيد الجاري، الرصيد الافتتاحي المُستنتج،
 // الملخصات (حسب النوع/المخزن)، متوسط التكلفة، وتغيّر أسعار الشراء.
@@ -58,7 +59,7 @@ export function buildLedger(moves: Move[], currentQty: number, f: LedgerFilter, 
     if (f.types && !f.types.has(m.move_type)) continue;
     if (f.kind !== "all" && kindOf(m) !== f.kind) continue;
     if (f.warehouse === "none" ? m.warehouse_id != null : typeof f.warehouse === "number" && m.warehouse_id !== f.warehouse) continue;
-    if (q && !(`${m.move_type} ${m.notes || ""} ${refText(m)} ${d}`.toLowerCase().includes(q))) continue;
+    if (q && !smartMatch(q, m.move_type, m.notes, refText(m), d)) continue;
     const value = r2(Math.abs(qty) * (Number(m.unit_cost) || 0));
     if (qty >= 0) { totalIn += qty; valueIn += value; } else { totalOut += -qty; valueOut += value; }
     rows.push({ m, date: d, kind: kindOf(m), inQty: qty > 0 ? qty : 0, outQty: qty < 0 ? -qty : 0, balance: bal, value });

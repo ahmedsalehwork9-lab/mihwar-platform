@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { curAr } from "./lib/orgConfig";
+import { smartMatch } from "./lib/smartSearch";
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 type VisibilityScope = 'public' | 'group' | 'specific' | 'private';
@@ -1489,12 +1490,7 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
       const matchesBrand = !filterBrand || (p.brand || '') === filterBrand;
       const matchesWh    = !filterWarehouse || (filterWarehouse === 'none' ? (p.warehouse_id == null) : String(p.warehouse_id ?? '') === filterWarehouse);
       const matchesBranch = !allBranches || !filterBranch || String(p.shop_id) === filterBranch;
-      const matchesSearch = !q
-        || p.product_code?.toLowerCase().includes(q)
-        || p.product_name?.toLowerCase().includes(q)
-        || p.brand?.toLowerCase().includes(q)
-        || p.barcode?.toLowerCase().includes(q)
-        || p.category?.toLowerCase().includes(q);
+      const matchesSearch = !q || smartMatch(q, p.product_code, p.product_name, p.brand, p.barcode, p.category);
 
       if (matchesFilter && matchesCat && matchesBrand && matchesWh && matchesBranch && matchesSearch) allFiltered.push(p);
     }

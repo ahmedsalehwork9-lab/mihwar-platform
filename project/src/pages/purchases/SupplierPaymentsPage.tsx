@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import {
-  Plus, Package, Calendar, ArrowRight, Save, RotateCcw, HandCoins,
+  Plus, Package, Calendar, ArrowRight, Save, RotateCcw, HandCoins, Search, X, Download, Printer,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useLang } from "../../context/LanguageContext";
 import * as DB from "../lib/accountingDb";
 import { cashBankOptions } from "../lib/cashAccounts";
 import type { GLAccount, GLTreasury, GLPurchaseInvoice, GLSupplierPayment, SupplierPaymentAlloc } from "../lib/accountingDb";
+import { smartMatch } from "../lib/smartSearch";
+import { exportXlsx, printTable, type TableSpec } from "../accounting/journal/exportKit";
+import { fetchPrintOrg } from "../sales/salesInvoiceApi";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const daysAgo = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
@@ -24,6 +27,7 @@ export default function SupplierPaymentsPage() {
   const [loading, setLoading] = useState(true);
   const [from, setFrom] = useState(daysAgo(30));
   const [to, setTo] = useState(today());
+  const [q, setQ] = useState("");
 
   const [mode, setMode] = useState<"list" | "new">("list");
   const [saving, setSaving] = useState(false);
@@ -60,6 +64,24 @@ export default function SupplierPaymentsPage() {
     setList(await DB.fetchSupplierPayments(org.id, from, to, ownedShopId ? Number(ownedShopId) : null));
   }, [org, from, to, ownedShopId]);
   useEffect(() => { loadList(); }, [loadList]);
+
+  const voucherNo = (p: GLSupplierPayment) => `PV-${p.payment_year}-${String(p.payment_no).padStart(4, "0")}`;
+  const shown = useMemo(() => list.filter((p) => smartMatch(q, voucherNo(p), p.payment_no, p.date, p.supplier_name, p.notes, p.amount)), [list, q]);
+  const shownTotal = useMemo(() => shown.reduce((s, p) => s + (Number(p.amount) || 0), 0), [shown]);
+  const tableSpec = (): TableSpec => ({
+    title: t("Supplier payments", "سداد الموردين"),
+    subtitle: `${org?.name ?? ""} — ${from} ${t("To", "إلى")} ${to}`,
+    cols: [{ label: t("Voucher", "السند") }, { label: t("Date", "التاريخ") }, { label: t("Supplier", "المورد") }, { label: t("Invoices", "عدد الفواتير"), num: true }, { label: t("Amount", "المبلغ"), num: true }, { label: t("Notes", "ملاحظات") }],
+    rows: shown.map((p) => [voucherNo(p), p.date, p.supplier_name || "—", (p.allocations || []).length, r2(p.amount), p.notes || ""]),
+    totals: [t("Total", "الإجمالي"), "", "", "", r2(shownTotal), ""],
+  });
+  const doExcel = () => exportXlsx(`supplier_payments_${from}_${to}.xlsx`, tableSpec(), isRTL);
+  const doPrint = async () => {
+    if (!org) return;
+    const po = await fetchPrintOrg(org.id, ownedShopId ? Number(ownedShopId) : null).catch(() => null);
+    const ok = printTable(tableSpec(), { orgName: po?.name || org.name, taxNumber: po?.tax_number ?? null, logoUrl: po?.logo_url ?? null, address: po?.address ?? null, dir, lang: isRTL ? "ar" : "en" });
+    if (!ok) alert(t("Allow pop-ups to print", "اسمح بالنوافذ المنبثقة للطباعة"));
+  };
 
   const byCode = useCallback((c: string) => accounts.find((a) => a.code === c && !a.is_group), [accounts]);
   const supplierParent = useMemo(() => byCode("2101") ?? accounts.find((a) => a.type === "liability" && /مورد/.test(a.name)), [accounts, byCode]);
@@ -266,6 +288,14 @@ export default function SupplierPaymentsPage() {
         <span className="text-slate-600 text-sm">←</span>
         <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-sm text-white" />
         <button onClick={loadList} className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg text-sm"><RotateCcw size={14} /> {t("Refresh", "تحديث")}</button>
+        <div className="relative flex-1 min-w-[180px]">
+          <Search size={14} className="absolute top-1/2 -translate-y-1/2 start-3 text-slate-400" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Search voucher, supplier, notes or amount…", "بحث برقم السند أو المورد أو الملاحظات أو المبلغ…")} aria-label={t("Search", "بحث")}
+            className="w-full bg-slate-800 border border-slate-700 rounded-lg ps-9 pe-8 py-1.5 text-sm text-white placeholder:text-slate-500 outline-none focus:border-emerald-500" />
+          {q && <button type="button" onClick={() => setQ("")} aria-label={t("Clear", "مسح")} className="absolute top-1/2 -translate-y-1/2 end-2 text-slate-400 hover:text-white"><X size={14} /></button>}
+        </div>
+        <button type="button" onClick={doExcel} disabled={!shown.length} className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-3 py-1.5 rounded-lg text-sm font-bold disabled:opacity-40"><Download size={14} /> Excel</button>
+        <button type="button" onClick={doPrint} disabled={!shown.length} className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 px-3 py-1.5 rounded-lg text-sm font-bold disabled:opacity-40"><Printer size={14} /> {t("Print / PDF", "طباعة / PDF")}</button>
       </div>
 
       <div className="bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden">
@@ -273,27 +303,33 @@ export default function SupplierPaymentsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-slate-400 text-xs border-b border-slate-800 bg-slate-900">
-                <th className="text-right font-semibold px-3 py-2.5">{t("Voucher", "السند")}</th>
-                <th className="text-right font-semibold px-3 py-2.5">{t("Date", "التاريخ")}</th>
-                <th className="text-right font-semibold px-3 py-2.5">{t("Supplier", "المورد")}</th>
+                <th className="text-start font-semibold px-3 py-2.5">{t("Voucher", "السند")}</th>
+                <th className="text-start font-semibold px-3 py-2.5">{t("Date", "التاريخ")}</th>
+                <th className="text-start font-semibold px-3 py-2.5">{t("Supplier", "المورد")}</th>
                 <th className="text-center font-semibold px-3 py-2.5">{t("Invoices", "عدد الفواتير")}</th>
-                <th className="text-left font-semibold px-3 py-2.5">{t("Amount", "المبلغ")}</th>
+                <th className="text-end font-semibold px-3 py-2.5">{t("Amount", "المبلغ")}</th>
               </tr>
             </thead>
             <tbody>
-              {list.length === 0 && (
-                <tr><td colSpan={5} className="text-center text-slate-600 py-10"><Package size={30} className="mx-auto mb-2 opacity-40" />{t("No payment vouchers in this period.", "لا توجد سندات صرف في هذه الفترة.")}</td></tr>
+              {shown.length === 0 && (
+                <tr><td colSpan={5} className="text-center text-slate-600 py-10"><Package size={30} className="mx-auto mb-2 opacity-40" />{list.length === 0 ? t("No payment vouchers in this period.", "لا توجد سندات صرف في هذه الفترة.") : t("No vouchers match your search.", "لا توجد سندات مطابقة للبحث.")}</td></tr>
               )}
-              {list.map((p) => (
+              {shown.map((p) => (
                 <tr key={p.id} className="border-b border-slate-800/60 hover:bg-slate-800/30">
-                  <td className="px-3 py-2.5 text-slate-300 font-mono">PV-{p.payment_year}-{String(p.payment_no).padStart(4, "0")}</td>
+                  <td className="px-3 py-2.5 text-slate-300 font-mono">{voucherNo(p)}</td>
                   <td className="px-3 py-2.5 text-slate-400">{p.date}</td>
                   <td className="px-3 py-2.5 text-white">{p.supplier_name || "—"}</td>
                   <td className="px-3 py-2.5 text-center text-slate-400">{(p.allocations || []).length}</td>
-                  <td className="px-3 py-2.5 text-left text-emerald-400 font-semibold">{fmt(p.amount)}</td>
+                  <td className="px-3 py-2.5 text-end text-emerald-400 font-semibold">{fmt(p.amount)}</td>
                 </tr>
               ))}
             </tbody>
+            {shown.length > 0 && (
+              <tfoot><tr className="border-t border-slate-700 bg-slate-900 font-bold">
+                <td className="px-3 py-2.5 text-slate-300" colSpan={4}>{t("Total", "الإجمالي")} ({shown.length})</td>
+                <td className="px-3 py-2.5 text-end text-emerald-400 font-semibold">{fmt(shownTotal)}</td>
+              </tr></tfoot>
+            )}
           </table>
         </div>
       </div>

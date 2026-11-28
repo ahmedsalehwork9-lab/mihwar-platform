@@ -4,6 +4,7 @@
 // =============================================================
 import { buildRows, EPS, type AssetLike } from "../accounting/assets/assetsLogic";
 import { enrich, daysBetween, type PInv } from "../purchases/list/purchasesLogic";
+import { smartMatch } from "../lib/smartSearch";
 
 export type Cat = "stock" | "suppliers" | "customers" | "journal" | "assets" | "orders";
 export type Prio = "critical" | "warning" | "info";
@@ -166,5 +167,5 @@ export const DEFAULT_AFILTER: AFilter = { cat: "all", prio: "all", status: "open
 export function filterViews(v: View[], f: AFilter): View[] {
   const s = f.q.trim().toLowerCase();
   return v.filter((a) => (f.cat === "all" || a.cat === f.cat) && (f.prio === "all" || a.prio === f.prio) && (f.status === "all" || a.status === f.status)
-    && (!s || `${a.name} ${a.ref}`.toLowerCase().includes(s)));
+    && (!s || smartMatch(s, a.name, a.ref)));
 }

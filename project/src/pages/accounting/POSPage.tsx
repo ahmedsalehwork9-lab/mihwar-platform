@@ -10,6 +10,7 @@ import { fetchAccountMap } from "../sales/salesInvoiceApi";
 import type { MapRow } from "../sales/salesInvoiceApi";
 const PosReturnsDialog = lazy(() => import("./AccountingPage").then((m) => ({ default: m.PosReturnsDialog })));
 import type { GLAccount, GLParty, GLTreasury, POSProduct, SalesItem, ShopInfo } from "../lib/accountingDb";
+import { smartMatch } from "../lib/smartSearch";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const fmt = (n: number) => (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -142,10 +143,7 @@ export default function POSPage() {
     return products.filter((p) => {
       if (brand && p.brand !== brand) return false;
       if (!q) return true;
-      return (p.product_name || "").toLowerCase().includes(q)
-        || (p.product_code || "").toLowerCase().includes(q)
-        || (p.barcode || "").toLowerCase().includes(q)
-        || (p.brand || "").toLowerCase().includes(q);
+      return smartMatch(q, p.product_name, p.product_code, p.barcode, p.brand);
     });
   }, [products, search, brand]);
   const shown = useMemo(() => filtered.slice(0, visible), [filtered, visible]);

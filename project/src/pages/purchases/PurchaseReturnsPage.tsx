@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import {
-  RotateCcw, Plus, Package, Calendar, ArrowRight, Save, Search, Undo2, Wallet,
+  RotateCcw, Plus, Package, Calendar, ArrowRight, Save, Search, Undo2, Wallet, X, Download, Printer,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useLang } from "../../context/LanguageContext";
 import * as DB from "../lib/accountingDb";
+import { smartMatch } from "../lib/smartSearch";
+import { exportXlsx, printTable, type TableSpec } from "../accounting/journal/exportKit";
+import { fetchPrintOrg } from "../sales/salesInvoiceApi";
 import type {
   GLAccount, GLTreasury, GLPurchaseInvoice, GLPurchaseReturn,
   PurchaseReturnItem, PurchaseKind,
@@ -30,6 +33,7 @@ export default function PurchaseReturnsPage() {
   const [loading, setLoading] = useState(true);
   const [from, setFrom] = useState(daysAgo(30));
   const [to, setTo] = useState(today());
+  const [q, setQ] = useState("");
 
   const [mode, setMode] = useState<"list" | "new">("list");
   const [saving, setSaving] = useState(false);
@@ -68,6 +72,25 @@ export default function PurchaseReturnsPage() {
   }, [org, from, to, ownedShopId]);
   useEffect(() => { loadList(); }, [loadList]);
 
+  const returnNo = (r: GLPurchaseReturn) => `PR-${r.return_year}-${String(r.return_no).padStart(4, "0")}`;
+  const refundTxt = (r: GLPurchaseReturn) => (r.refund_mode === "cash" ? t("Cash", "نقدي") : t("Supplier credit", "خصم مورد"));
+  const shown = useMemo(() => list.filter((r) => smartMatch(q, returnNo(r), r.return_no, r.date, r.supplier_name, `${r.original_invoice_no}/${r.original_invoice_year}`, r.notes, r.total, r.refund_mode === "cash" ? "نقدي cash" : "خصم مورد supplier credit")), [list, q]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shownTotal = useMemo(() => shown.reduce((s, r) => s + (Number(r.total) || 0), 0), [shown]);
+  const tableSpec = (): TableSpec => ({
+    title: t("Purchase returns", "مرتجعات المشتريات"),
+    subtitle: `${org?.name ?? ""} — ${from} ${t("To", "إلى")} ${to}`,
+    cols: [{ label: t("Return", "المرتجع") }, { label: t("Date", "التاريخ") }, { label: t("Supplier", "المورد") }, { label: t("Invoice", "الفاتورة") }, { label: t("Refund", "الاسترداد") }, { label: t("Total", "الإجمالي"), num: true }],
+    rows: shown.map((r) => [returnNo(r), r.date, r.supplier_name || "—", `#${r.original_invoice_no}/${r.original_invoice_year}`, refundTxt(r), r2(r.total)]),
+    totals: [t("Total", "الإجمالي"), "", "", "", "", r2(shownTotal)],
+  });
+  const doExcel = () => exportXlsx(`purchase_returns_${from}_${to}.xlsx`, tableSpec(), isRTL);
+  const doPrint = async () => {
+    if (!org) return;
+    const po = await fetchPrintOrg(org.id, ownedShopId ? Number(ownedShopId) : null).catch(() => null);
+    const ok = printTable(tableSpec(), { orgName: po?.name || org.name, taxNumber: po?.tax_number ?? null, logoUrl: po?.logo_url ?? null, address: po?.address ?? null, dir, lang: isRTL ? "ar" : "en" });
+    if (!ok) alert(t("Allow pop-ups to print", "اسمح بالنوافذ المنبثقة للطباعة"));
+  };
+
   const cashTreasuries = useMemo(() => treasuries.filter((x) => x.account_id && x.kind === "cash"), [treasuries]);
   const bankTreasuries = useMemo(() => treasuries.filter((x) => x.account_id && (x.kind === "bank" || /شبكة|مدى|mada|visa|بنك|card/i.test(x.name))), [treasuries]);
   useEffect(() => { if (refundMode === "cash") setRefundAcc(cashTreasuries[0]?.id ?? bankTreasuries[0]?.id ?? ""); }, [refundMode, cashTreasuries, bankTreasuries]);
@@ -96,11 +119,7 @@ export default function PurchaseReturnsPage() {
   const filteredInvoices = useMemo(() => {
     const s = invSearch.trim().toLowerCase();
     if (!s) return invoices.slice(0, 30);
-    return invoices.filter((i) =>
-      String(i.invoice_no).includes(s) ||
-      (i.supplier_name || "").toLowerCase().includes(s) ||
-      (i.supplier_invoice_no || "").toLowerCase().includes(s)
-    ).slice(0, 30);
+    return invoices.filter((i) => smartMatch(s, i.invoice_no, i.supplier_name, i.supplier_invoice_no)).slice(0, 30);
   }, [invSearch, invoices]);
 
   // return totals (preview) — uses original tax method
@@ -291,6 +310,14 @@ export default function PurchaseReturnsPage() {
         <span className="text-slate-600 text-sm">←</span>
         <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-sm text-white" />
         <button onClick={loadList} className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg text-sm"><RotateCcw size={14} /> {t("Refresh", "تحديث")}</button>
+        <div className="relative flex-1 min-w-[180px]">
+          <Search size={14} className="absolute top-1/2 -translate-y-1/2 start-3 text-slate-400" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Search return, supplier, invoice or amount…", "بحث برقم المرتجع أو المورد أو الفاتورة أو المبلغ…")} aria-label={t("Search", "بحث")}
+            className="w-full bg-slate-800 border border-slate-700 rounded-lg ps-9 pe-8 py-1.5 text-sm text-white placeholder:text-slate-500 outline-none focus:border-orange-500" />
+          {q && <button type="button" onClick={() => setQ("")} aria-label={t("Clear", "مسح")} className="absolute top-1/2 -translate-y-1/2 end-2 text-slate-400 hover:text-white"><X size={14} /></button>}
+        </div>
+        <button type="button" onClick={doExcel} disabled={!shown.length} className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-3 py-1.5 rounded-lg text-sm font-bold disabled:opacity-40"><Download size={14} /> Excel</button>
+        <button type="button" onClick={doPrint} disabled={!shown.length} className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 px-3 py-1.5 rounded-lg text-sm font-bold disabled:opacity-40"><Printer size={14} /> {t("Print / PDF", "طباعة / PDF")}</button>
       </div>
 
       <div className="bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden">
@@ -298,29 +325,35 @@ export default function PurchaseReturnsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-slate-400 text-xs border-b border-slate-800 bg-slate-900">
-                <th className="text-right font-semibold px-3 py-2.5">{t("Return", "المرتجع")}</th>
-                <th className="text-right font-semibold px-3 py-2.5">{t("Date", "التاريخ")}</th>
-                <th className="text-right font-semibold px-3 py-2.5">{t("Supplier", "المورد")}</th>
-                <th className="text-right font-semibold px-3 py-2.5">{t("Invoice", "الفاتورة")}</th>
+                <th className="text-start font-semibold px-3 py-2.5">{t("Return", "المرتجع")}</th>
+                <th className="text-start font-semibold px-3 py-2.5">{t("Date", "التاريخ")}</th>
+                <th className="text-start font-semibold px-3 py-2.5">{t("Supplier", "المورد")}</th>
+                <th className="text-start font-semibold px-3 py-2.5">{t("Invoice", "الفاتورة")}</th>
                 <th className="text-center font-semibold px-3 py-2.5">{t("Refund", "الاسترداد")}</th>
-                <th className="text-left font-semibold px-3 py-2.5">{t("Total", "الإجمالي")}</th>
+                <th className="text-end font-semibold px-3 py-2.5">{t("Total", "الإجمالي")}</th>
               </tr>
             </thead>
             <tbody>
-              {list.length === 0 && (
-                <tr><td colSpan={6} className="text-center text-slate-600 py-10"><Package size={30} className="mx-auto mb-2 opacity-40" />{t("No returns in this period.", "لا توجد مرتجعات في هذه الفترة.")}</td></tr>
+              {shown.length === 0 && (
+                <tr><td colSpan={6} className="text-center text-slate-600 py-10"><Package size={30} className="mx-auto mb-2 opacity-40" />{list.length === 0 ? t("No returns in this period.", "لا توجد مرتجعات في هذه الفترة.") : t("No returns match your search.", "لا توجد مرتجعات مطابقة للبحث.")}</td></tr>
               )}
-              {list.map((r) => (
+              {shown.map((r) => (
                 <tr key={r.id} className="border-b border-slate-800/60 hover:bg-slate-800/30">
-                  <td className="px-3 py-2.5 text-slate-300 font-mono">PR-{r.return_year}-{String(r.return_no).padStart(4, "0")}</td>
+                  <td className="px-3 py-2.5 text-slate-300 font-mono">{returnNo(r)}</td>
                   <td className="px-3 py-2.5 text-slate-400">{r.date}</td>
                   <td className="px-3 py-2.5 text-white">{r.supplier_name || "—"}</td>
                   <td className="px-3 py-2.5 text-slate-400 font-mono text-xs">#{r.original_invoice_no}/{r.original_invoice_year}</td>
                   <td className="px-3 py-2.5 text-center"><span className={`inline-block px-2 py-0.5 rounded-lg text-xs font-bold ${r.refund_mode === "cash" ? "bg-emerald-500/15 text-emerald-400" : "bg-amber-500/15 text-amber-400"}`}>{r.refund_mode === "cash" ? t("Cash", "نقدي") : t("Supplier credit", "خصم مورد")}</span></td>
-                  <td className="px-3 py-2.5 text-left text-white font-semibold">{fmt(r.total)}</td>
+                  <td className="px-3 py-2.5 text-end text-white font-semibold">{fmt(r.total)}</td>
                 </tr>
               ))}
             </tbody>
+            {shown.length > 0 && (
+              <tfoot><tr className="border-t border-slate-700 bg-slate-900 font-bold">
+                <td className="px-3 py-2.5 text-slate-300" colSpan={5}>{t("Total", "الإجمالي")} ({shown.length})</td>
+                <td className="px-3 py-2.5 text-end text-white font-semibold">{fmt(shownTotal)}</td>
+              </tr></tfoot>
+            )}
           </table>
         </div>
       </div>

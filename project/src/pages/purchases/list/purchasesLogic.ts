@@ -1,4 +1,5 @@
 // =============================================================
+import { smartMatch } from "../../lib/smartSearch";
 // src/pages/purchases/list/purchasesLogic.ts
 // منطق قائمة فواتير المشتريات (نقي): الإثراء، الفلترة، الترتيب، المؤشرات، الفترة السابقة،
 // السلسلة الشهرية، حصص الموردين، والأصناف التي تغيّر سعرها.
@@ -45,7 +46,7 @@ export function filterRows(rows: PRow[], f: PFilter): PRow[] {
     if (f.state !== "all" && r.state !== f.state) return false;
     if (f.returned === "any" && r.retStatus === "none") return false;
     if (!s) return true;
-    return r.label.toLowerCase().includes(s) || `${r.inv.invoice_no}/${r.inv.invoice_year}`.includes(s) || (r.inv.supplier_name ?? "").toLowerCase().includes(s) || (r.inv.supplier_invoice_no ?? "").toLowerCase().includes(s) || (r.inv.notes ?? "").toLowerCase().includes(s);
+    return smartMatch(s, r.label, `${r.inv.invoice_no}/${r.inv.invoice_year}`, r.inv.supplier_name, r.inv.supplier_invoice_no, r.inv.notes);
   });
 }
 

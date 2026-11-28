@@ -44,6 +44,7 @@ import BranchSwitcher from './BranchSwitcher';
 import TrialBanner from './TrialBanner';
 import InstallAppButton from '../pwa/InstallAppButton';
 import { registerNavPages, type NavPageInput } from '../pages/lib/permModel';
+import { smartMatch } from "../pages/lib/smartSearch";
 
 // ══════════════════════════════════════════════════════════════════════
 // PAGE TYPE
@@ -368,7 +369,7 @@ function CommandPalette({ commands, onClose, lang }: { commands: Cmd[]; onClose:
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return commands;
-    return commands.filter((c) => (c.labelAr + ' ' + c.labelEn + ' ' + c.group).toLowerCase().includes(s));
+    return commands.filter((c) => smartMatch(s, c.labelAr, c.labelEn, c.group));
   }, [q, commands]);
 
   useEffect(() => { setIdx(0); }, [q]);

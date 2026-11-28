@@ -23,6 +23,7 @@ import type { InvoiceLine, PayMethod, SaleType } from "./salesInvoiceCalc";
 import { buildInvoiceHTML, printHTML } from "./salesInvoicePrint";
 
 import { curAr, curEn } from "../lib/orgConfig";
+import { smartMatch } from "../lib/smartSearch";
 const today = (): string => new Date().toISOString().slice(0, 10);
 const monthStart = (): string => `${today().slice(0, 8)}01`;
 const fmt = (n: number): string => (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -427,7 +428,7 @@ export default function SalesInvoicePage({ onNavigate, onSection }: Props) {
   const shownHistory = useMemo(() => {
     const q = hQ.trim().toLowerCase();
     if (!q) return history;
-    return history.filter((i) => String(i.invoice_no).includes(q) || (i.customer_name || "").toLowerCase().includes(q));
+    return history.filter((i) => smartMatch(q, i.invoice_no, i.customer_name));
   }, [history, hQ]);
 
   const custList = useMemo(() => API.filterCustomers(parties, custQ), [parties, custQ]);

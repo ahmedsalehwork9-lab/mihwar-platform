@@ -22,6 +22,8 @@ import { fetchPurchasesWithMigration, upsertPurchase, deletePurchase } from "../
 import { logoBox, contactFooter, waQrDataUrl, SUPPORT_WA } from "../lib/reportChrome";
 
 import { curAr } from "../lib/orgConfig";
+import { smartMatch } from "../lib/smartSearch";
+import { exportHtmlTablesXlsx } from "../accounting/journal/exportKit";
 type PItem = { id: number; name: string; category: string; qty: string; unit: string; price: string };
 type Purchase = {
   id: string; internalNo?: string; branchId: number | null; branch: string; date: string;
@@ -429,10 +431,10 @@ export default function PurchasesPage() {
   // بحث داخل التقرير (بالفواتير أو بالأصناف)
   const q = search.trim().toLowerCase();
   const shownRows = q
-    ? report.rows.filter((e) => (e.invoiceNo || "").toLowerCase().includes(q) || ((e as any).internalNo || "").toLowerCase().includes(q) || (e.supplier || "").toLowerCase().includes(q))
+    ? report.rows.filter((e) => smartMatch(q, e.invoiceNo, (e as any).internalNo, e.supplier))
     : report.rows;
   const shownItems = q
-    ? report.itemAgg.filter((g) => g.name.toLowerCase().includes(q) || (g.category || "").toLowerCase().includes(q))
+    ? report.itemAgg.filter((g) => smartMatch(q, g.name, g.category))
     : report.itemAgg;
   const shownTotal = shownRows.reduce((s, e) => s + e.total, 0);
   const shownVat = shownRows.reduce((s, e) => s + (e.vat || 0), 0);
@@ -578,10 +580,11 @@ export default function PurchasesPage() {
     w.document.close();
   };
   const exportExcel = () => {
-    const html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"></head><body style="margin:0;background:#fff;">${exportHTML()}</body></html>`;
-    const blob = new Blob(["﻿" + html], { type: "application/vnd.ms-excel;charset=utf-8" });
-    const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-    a.download = `${t("Purchases", "مشتريات")}_${reportView === "items" ? t("items", "أصناف") : t("invoices", "فواتير")}_${branch || t("branch", "فرع")}_${from}_${to}.xls`; a.click(); URL.revokeObjectURL(a.href);
+    const isItems = reportView === "items";
+    exportHtmlTablesXlsx(`${t("Purchases", "مشتريات")}_${isItems ? t("items", "أصناف") : t("invoices", "فواتير")}_${branch || t("branch", "فرع")}_${from}_${to}.xlsx`, exportHTML(), {
+      rtl: isRTL, sheetNames: [isItems ? t("Items", "الأصناف") : t("Invoices", "الفواتير")],
+      meta: [isItems ? t("Purchases report — by item", "تقرير المشتريات — بالأصناف") : t("Purchases report — by invoice", "تقرير المشتريات — بالفواتير"), `${t("Branch", "الفرع")}: ${branch || "—"} | ${t("Period:", "الفترة:")} ${from} ${t("To", "إلى")} ${to}`],
+    });
   };
 
   // ================= UI =================

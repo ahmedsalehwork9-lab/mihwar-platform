@@ -13,6 +13,7 @@ import { ReviewPanel, ReportsPanel, TemplatesPanel, RecurringPanel, SettingsPane
 import { computeKpis, stateOf, type JEntry, type StatusFilter } from "./reviewLogic";
 import { fmtCents } from "./money";
 import * as API from "./journalApi";
+import { smartMatch } from "../../lib/smartSearch";
 
 type TabKey = "journal" | "reports" | "trial" | "ledger" | "review" | "recurring" | "templates" | "settings";
 type Props = { org: { id: number; name: string }; postable: GLAccount[]; accById: Map<number, GLAccount>; branches: { id: number; name: string }[]; branchName: (id: number) => string; parties: DB.GLParty[]; ui: JUi; onSection?: (s: string) => void; shopInfo: { id?: number; shop_name?: string; logo_url?: string; address?: string; commercial_registration?: string } | null; isAdmin: boolean };
@@ -57,7 +58,7 @@ export default function JournalCenter(P: Props) {
     { k: "templates", label: tr("Entry templates", "قوالب القيود"), icon: <Copy size={14} /> }, { k: "settings", label: tr("Settings", "الإعدادات"), icon: <Settings size={14} /> },
   ];
   const goTab = (k: TabKey) => { if (k === "trial" || k === "ledger") P.onSection?.(k); else setTab(k); };
-  const pickList = useMemo(() => { const q = pickQ.trim().toLowerCase(); return rows.filter((e) => (pick === "reverse" ? stateOf(e) === "posted" && e.reversed_of == null : true)).filter((e) => !q || jv(e).toLowerCase().includes(q) || (e.description || "").toLowerCase().includes(q)).slice(0, 30); }, [rows, pick, pickQ, jv]);
+  const pickList = useMemo(() => { const q = pickQ.trim().toLowerCase(); return rows.filter((e) => (pick === "reverse" ? stateOf(e) === "posted" && e.reversed_of == null : true)).filter((e) => !q || smartMatch(q, jv(e), e.description)).slice(0, 30); }, [rows, pick, pickQ, jv]);
   const common = { tr, lang, entries: rows, jv, userName, branchName: P.branchName, printInfo };
 
   return (

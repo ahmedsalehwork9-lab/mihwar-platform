@@ -13,6 +13,7 @@ import * as DB from "../../lib/accountingDb";
 import { buildReportHTML, openPrint, type ReportCol } from "../../accounting/shared/printReport";
 import { fetchShopHead, type ShopHead } from "../itemMovement/movementApi";
 import * as API from "./stocktakeApi";
+import { smartMatch } from "../../lib/smartSearch";
 import {
   DEFAULT_SCOPE, adjustable, countNo, diffRows, drifted, glPlan, groupHistory, groupValues, loadDrafts, parseQty, saveDrafts, scanFind, scopeItems, totals, upsertDraft,
   type CountItem, type CountScope, type Draft, type DiffKind, type DiffRow, type HistMove, type Step, type Uncounted,
@@ -105,7 +106,7 @@ export default function StocktakePage() {
       const has = Object.prototype.hasOwnProperty.call(counts, String(i.id));
       if (rowFilter === "uncounted" && has) return false; if (rowFilter === "counted" && !has) return false;
       if (rowFilter === "diff" && !(has && counts[String(i.id)] !== i.book)) return false;
-      return !s || i.name.toLowerCase().includes(s) || (i.code ?? "").toLowerCase().includes(s) || (i.barcode ?? "").toLowerCase().includes(s);
+      return !s || smartMatch(s, i.name, i.code, i.barcode);
     });
   }, [inScope, counts, q, rowFilter]);
   const pages = Math.max(1, Math.ceil(visible.length / PAGE)); const pageRows = visible.slice(page * PAGE, page * PAGE + PAGE);
@@ -172,7 +173,7 @@ export default function StocktakePage() {
   const steps: { n: Step; label: string }[] = [{ n: 1, label: t("Count data", "بيانات الجرد") }, { n: 2, label: t("Enter quantities", "إدخال الكميات") }, { n: 3, label: t("Review differences", "مراجعة الفروقات") }, { n: 4, label: t("Approve settlement", "اعتماد التسوية") }];
   const statusLabel = result ? t("Approved", "معتمد") : step === 1 ? t("New", "جديد") : t("Draft", "مسودة");
   const toggleVal = (key: "values", v: string) => setScope((s) => ({ ...s, [key]: s.values.includes(v) ? s.values.filter((x) => x !== v) : [...s.values, v] }));
-  const pickHits = useMemo(() => { const s = pickQ.trim().toLowerCase(); return s ? items.filter((i) => i.name.toLowerCase().includes(s) || (i.code ?? "").toLowerCase().includes(s) || (i.barcode ?? "").toLowerCase().includes(s)).slice(0, 8) : []; }, [items, pickQ]);
+  const pickHits = useMemo(() => { const s = pickQ.trim().toLowerCase(); return s ? items.filter((i) => smartMatch(s, i.name, i.code, i.barcode)).slice(0, 8) : []; }, [items, pickQ]);
 
   return (
     <div className="p-4 md:p-6 max-w-[1500px] mx-auto" dir={isRTL ? "rtl" : "ltr"} data-testid="stocktake">

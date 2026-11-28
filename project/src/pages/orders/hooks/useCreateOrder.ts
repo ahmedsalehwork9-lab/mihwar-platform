@@ -21,6 +21,7 @@ import {
   type ProcurementContext,
 } from "../../lib/procurementEngine";
 import type { CartItem, Product, Shop } from "../types";
+import { smartMatch } from "../../lib/smartSearch";
 
 type UseCreateOrderArgs = {
   isAdmin: boolean;
@@ -128,7 +129,7 @@ export function useCreateOrder({
     if (!productSearch.trim()) return visibleSupplierProducts;
     const q = productSearch.toLowerCase();
     return visibleSupplierProducts.filter(p =>
-      p.product_name.toLowerCase().includes(q) || p.product_code.toLowerCase().includes(q)
+      smartMatch(q, p.product_name, p.product_code)
     );
   }, [visibleSupplierProducts, productSearch]);
 

@@ -4,6 +4,7 @@
 // كل المبالغ بالهللات. يعتمد على بيانات القيود الحقيقية فقط.
 // =============================================================
 import { toCents } from "./money";
+import { smartMatch } from "../../lib/smartSearch";
 
 export type JLineRow = { account_id: number; debit: number | string; credit: number | string; branch_id?: number | null; note?: string | null; party_id?: number | null };
 export type JEntry = {
@@ -47,8 +48,8 @@ export function filterEntries(es: JEntry[], f: EntryFilters, accName: (id: numbe
     const { d } = sumCents(e);
     if (f.amountFromC != null && d < f.amountFromC) return false;
     if (f.amountToC != null && d > f.amountToC) return false;
-    if (aq && !(e.lines || []).some((l) => accName(l.account_id).toLowerCase().includes(aq))) return false;
-    if (q) { const hay = `${e.entry_no} ${e.description || ""} ${e.notes || ""} ${e.external_ref || ""} ${jv(e)}`.toLowerCase(); if (!hay.includes(q)) return false; }
+    if (aq && !(e.lines || []).some((l) => smartMatch(aq, accName(l.account_id)))) return false;
+    if (q && !smartMatch(q, e.entry_no, e.description, e.notes, e.external_ref, jv(e))) return false;
     return true;
   });
 }

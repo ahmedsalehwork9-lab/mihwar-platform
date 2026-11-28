@@ -34,6 +34,7 @@ import JournalCenter from "./journal/JournalCenter";
 import AccountingDashboard from "./dash/AccountingDashboard";
 import { cashBankOptions } from "../lib/cashAccounts";
 import type { GLAccount, GLLine, EntryWithLines, AccType } from "../lib/accountingDb";
+import { smartMatch } from "../lib/smartSearch";
 
 const fmt = (n: number) => (Math.round(n * 100) / 100).toLocaleString("en-US", { maximumFractionDigits: 2 });
 const today = () => new Date().toISOString().slice(0, 10);
@@ -164,7 +165,7 @@ function AccountPicker({ value, onChange, options, placeholder = "— اختر �
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return options;
-    return options.filter((a) => (a.code + " " + a.name + " " + (a.name_en || "")).toLowerCase().includes(s));
+    return options.filter((a) => smartMatch(s, a.code, a.name, a.name_en));
   }, [q, options]);
   const openIt = () => {
     const r = btnRef.current?.getBoundingClientRect();
@@ -233,7 +234,7 @@ function PartyPicker({ parties, onPick, value, placeholder = "— اختر طر�
   const searching = q.trim().length > 0;
   const searchResults = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return actives.filter((p) => (p.name + " " + (p.phone || "")).toLowerCase().includes(s));
+    return actives.filter((p) => smartMatch(s, p.name, p.phone));
   }, [q, actives]);
   const selected = value ? parties.find((p) => p.id === value) : null;
   const openIt = () => { const r = btnRef.current?.getBoundingClientRect(); if (r) setRect({ top: r.bottom + 4, left: r.left, width: r.width }); setQ(""); setDrill(null); setOpen(true); };
@@ -452,12 +453,20 @@ function TrialTab({ org, shop, accById, branches }: any) {
   const totC = rows.reduce((s, r) => s + r.credit, 0);
 
   const exportExcel = () => {
-    const head = [t("Code", "الكود"), t("Account", "الحساب"), t("Debit", "مدين"), t("Credit", "دائن"), t("Balance", "الرصيد")];
-    const body = rows.map((r) => [r.code, r.name, fmt(r.debit), fmt(r.credit), fmt(r.debit - r.credit)]);
-    const rowsHtml = body.map((c) => `<tr>${c.map((v, i) => `<td style="border:1px solid #e5e7eb;padding:5px 8px;font-size:11px;text-align:${i === 1 ? "right" : "center"};">${v}</td>`).join("")}</tr>`).join("");
-    const html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"></head><body dir="${dir}"><h3>${t("Trial balance —", "ميزان المراجعة —")} ${org.name} — ${from} ${t("To", "إلى")} ${to}</h3><table style="border-collapse:collapse"><tr>${head.map((h) => `<th style="border:1px solid #d1d5db;padding:6px 8px;background:#14304d;color:#fff;font-size:11px;">${h}</th>`).join("")}</tr>${rowsHtml}<tr><td colspan="2" style="border:1px solid #cbd5e1;padding:6px;font-weight:800;text-align:right;">${t("Total", "الإجمالي")}</td><td style="border:1px solid #cbd5e1;padding:6px;text-align:center;font-weight:800;">${fmt(totD)}</td><td style="border:1px solid #cbd5e1;padding:6px;text-align:center;font-weight:800;">${fmt(totC)}</td><td></td></tr></table></body></html>`;
-    const blob = new Blob(["﻿" + html], { type: "application/vnd.ms-excel;charset=utf-8" });
-    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `${t("Trial_balance", "ميزان_المراجعة")}_${from}_${to}.xls`; a.click(); URL.revokeObjectURL(a.href);
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const aoa: (string | number)[][] = [
+      [t("Trial balance", "ميزان المراجعة")],
+      [`${org.name} — ${from} ${t("To", "إلى")} ${to}`],
+      [],
+      [t("Code", "الكود"), t("Account", "الحساب"), t("Debit", "مدين"), t("Credit", "دائن"), t("Balance", "الرصيد")],
+      ...rows.map((r) => [r.code, r.name, r2(r.debit), r2(r.credit), r2(r.debit - r.credit)]),
+      [],
+      [t("Total", "الإجمالي"), "", r2(totD), r2(totC), r2(totD - totC)],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(aoa); ws["!cols"] = [{ wch: 14 }, { wch: 42 }, { wch: 16 }, { wch: 16 }, { wch: 16 }];
+    const wb = XLSX.utils.book_new(); (wb as unknown as { Workbook: unknown }).Workbook = { Views: [{ RTL: dir === "rtl" }] };
+    XLSX.utils.book_append_sheet(wb, ws, t("Trial balance", "ميزان المراجعة").slice(0, 31));
+    XLSX.writeFile(wb, `${t("Trial_balance", "ميزان_المراجعة")}_${from}_${to}.xlsx`);
   };
 
   const printTrial = () => {

@@ -1,4 +1,5 @@
 // =============================================================
+import { smartMatch } from "../../lib/smartSearch";
 // src/pages/inventory/analytics/analyticsLogic.ts
 // منطق نقي (بلا Supabase/React) لمركز تقارير المخزون والأصناف.
 // الأساس المحاسبي:
@@ -119,7 +120,7 @@ export function filterProds(prods: Prod[], sc: Scope, by: GroupBy, supplierOf: M
     if (sc.warehouses) { const eff = p.whId ?? (p.branchId != null ? defaultWhByBranch.get(p.branchId) ?? null : null); if (eff == null || !sc.warehouses.has(eff)) return false; }
     if (sc.groups && !sc.groups.has(groupOf(p, by))) return false;
     if (sc.suppliers && !sc.suppliers.has(supplierOf.get(p.id) || UNCLASSIFIED)) return false;
-    if (q && !`${p.name} ${p.code || ""} ${p.brand || ""}`.toLowerCase().includes(q)) return false;
+    if (q && !smartMatch(q, p.name, p.code, p.brand)) return false;
     return true;
   });
 }

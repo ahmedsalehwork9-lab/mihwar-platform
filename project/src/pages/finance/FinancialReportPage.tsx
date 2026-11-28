@@ -18,6 +18,7 @@ import {
 import { logoBox, contactFooter, waQrDataUrl, SUPPORT_WA } from "../lib/reportChrome";
 
 import { curAr, curEn } from "../lib/orgConfig";
+import { exportHtmlTablesXlsx } from "../accounting/journal/exportKit";
 const VAT_DIV = 1.15;
 
 const fmt = (n: number) => (Math.round(n * 100) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -280,9 +281,10 @@ export default function FinancialReportPage() {
     w.document.close();
   };
   const exportExcel = () => {
-    const html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"></head><body style="margin:0;background:#fff;">${buildHTML()}</body></html>`;
-    const blob = new Blob(["﻿" + html], { type: "application/vnd.ms-excel;charset=utf-8" });
-    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `${t("Financial_report", "التقرير_المالي")}_${branch || t("branch", "فرع")}_${month}.xls`; a.click(); URL.revokeObjectURL(a.href);
+    exportHtmlTablesXlsx(`${t("Financial_report", "التقرير_المالي")}_${branch || t("branch", "فرع")}_${month}.xlsx`, buildHTML(), {
+      rtl: isRTL, sheetNames: [t("Financial report", "التقرير المالي")],
+      meta: [t("Financial report", "التقرير المالي"), `${t("Branch", "الفرع")}: ${branch || "—"} | ${month}`],
+    });
   };
 
   const hasData = cur.gross > 0 || prev.gross > 0 || cur.totalFixed > 0;

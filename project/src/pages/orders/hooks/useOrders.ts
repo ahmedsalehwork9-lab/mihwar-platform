@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "../../lib/supabase";
 import type { Order, Shop, OrderTab, OrderStatusFilter, OrderCounts } from "../types";
 import { PAGE_SIZE } from "../types";
+import { smartMatch } from "../../lib/smartSearch";
  
 type UseOrdersArgs = {
   isAdmin: boolean;
@@ -92,7 +93,7 @@ export function useOrders({ isAdmin, ownedShopId, t }: UseOrdersArgs) {
       }
       const matchesTab    = isAdmin ? true : tab === "incoming" ? o.to_shop_id === ownedShopId : tab === "outgoing" ? o.from_shop_id === ownedShopId : true;
       const matchesStatus = statusFilter === "all" || o.status === statusFilter;
-      const matchesSearch = !q || String(o.id).includes(q) || o.from_shop?.shop_name?.toLowerCase().includes(q) || o.to_shop?.shop_name?.toLowerCase().includes(q);
+      const matchesSearch = !q || smartMatch(q, o.id, o.from_shop?.shop_name, o.to_shop?.shop_name);
       if (matchesTab && matchesStatus && matchesSearch) result.push(o);
     }
     const counts: OrderCounts = {

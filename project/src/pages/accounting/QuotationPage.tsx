@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { FilePlus2, Printer, Search, Trash2, RefreshCw, ArrowRightLeft, Plus, X } from "lucide-react";
+import { FilePlus2, Printer, Search, Trash2, RefreshCw, ArrowRightLeft, Plus, X, Download } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useLang } from "../../context/LanguageContext";
 import { fetchPrintOrg } from "../sales/salesInvoiceApi";
@@ -11,6 +11,8 @@ import type { GLAccount, GLParty, GLQuotation, GLTreasury, SalesItem } from "../
 import { cashBankOptions } from "../lib/cashAccounts";
 
 import { curAr } from "../lib/orgConfig";
+import { smartMatch } from "../lib/smartSearch";
+import { exportXlsx } from "./journal/exportKit";
 const today = () => new Date().toISOString().slice(0, 10);
 const firstDay = () => `${today().slice(0, 8)}01`;
 const money = (v: number) => (Number(v) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -136,8 +138,18 @@ export default function QuotationPage() {
 
   const filtered=rows.filter(q=>{
     const name=q.customer_name||parties.find(p=>p.id===q.party_id)?.name||"";
-    return !search||`${q.quotation_no} ${name}`.toLowerCase().includes(search.toLowerCase());
+    return !search||smartMatch(search, q.quotation_no, `QT-${q.quotation_year}-${String(q.quotation_no).padStart(4,"0")}`, name);
   });
+  const exportExcel=()=>{
+    const stTxt=(x:string)=>x==="converted"?t("Converted", "تم التحويل"):x==="accepted"?t("Accepted", "مقبول"):x==="rejected"?t("Rejected", "مرفوض"):x==="sent"?t("Sent", "مرسل"):t("Draft", "مسودة");
+    const r2=(n:number)=>Math.round((Number(n)||0)*100)/100;
+    exportXlsx(`quotations_${from}_${to}.xlsx`,{
+      title:t("Quotations log", "سجل عروض الأسعار"),
+      cols:[{label:t("Quotation no.", "رقم العرض")},{label:t("Date", "التاريخ")},{label:t("Customer", "العميل")},{label:t("Total", "الإجمالي"),num:true},{label:t("Validity", "الصلاحية")},{label:t("Status", "الحالة")}],
+      rows:filtered.map(q=>[`QT-${q.quotation_year}-${String(q.quotation_no).padStart(4,"0")}`,q.date,q.customer_name||parties.find(p=>p.id===q.party_id)?.name||"—",r2(q.total),q.valid_until||"—",stTxt(q.status)]),
+      totals:[t("Total", "الإجمالي"),"","",r2(filtered.reduce((a,q)=>a+(Number(q.total)||0),0)),"",""],
+    },isRTL);
+  };
   const postable=accounts.filter(a=>!a.is_group);
   if(loading&&!org)return <div className="p-8 text-center text-slate-400">{t("Loading organization data…", "جارٍ تحميل بيانات المؤسسة…")}</div>;
   if(!org)return <div className="m-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-6 text-center text-amber-300" dir={isRTL ? "rtl" : "ltr"}>{t("The current branch is not linked to an organization. Link it to an organization first to enable quotations.", "الفرع الحالي غير مرتبط بمؤسسة. اربط الفرع بمؤسسة أولًا لتفعيل عروض الأسعار.")}</div>;
@@ -155,7 +167,7 @@ export default function QuotationPage() {
       <label className="text-xs text-slate-400 md:col-span-2">{t("Search by quotation no. or customer", "بحث برقم العرض أو العميل")}<div className="relative mt-1"><Search className="absolute right-3 top-2.5 text-slate-500" size={15}/><input className={`${input} pr-9`} value={search} onChange={e=>setSearch(e.target.value)} placeholder={t("Search...", "بحث...")}/></div></label>
     </div>
     <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
-      <div className="flex items-center justify-between border-b border-slate-800 p-4"><b className="text-sm">{t("Quotations log", "سجل عروض الأسعار")}</b><button className={`${btn} bg-slate-800 text-slate-300`} onClick={()=>void reload()}><RefreshCw size={14}/> {t("Refresh", "تحديث")}</button></div>
+      <div className="flex items-center justify-between border-b border-slate-800 p-4"><b className="text-sm">{t("Quotations log", "سجل عروض الأسعار")}</b><div className="flex gap-2"><button className={`${btn} bg-emerald-500/10 text-emerald-400`} disabled={!filtered.length} onClick={exportExcel}><Download size={14}/> Excel</button><button className={`${btn} bg-slate-800 text-slate-300`} onClick={()=>void reload()}><RefreshCw size={14}/> {t("Refresh", "تحديث")}</button></div></div>
       <div className="overflow-x-auto"><table className="w-full min-w-[850px] text-right text-xs"><thead className="bg-slate-950 text-slate-400"><tr>{[t("Quotation no.", "رقم العرض"),t("Date", "التاريخ"),t("Customer", "العميل"),t("Total", "الإجمالي"),t("Validity", "الصلاحية"),t("Status", "الحالة"),t("Actions", "الإجراءات")].map(x=><th className="p-3" key={x}>{x}</th>)}</tr></thead><tbody>
         {filtered.map(q=><tr className="border-t border-slate-800" key={q.id}><td className="p-3 font-bold">QT-{q.quotation_year}-{String(q.quotation_no).padStart(4,"0")}</td><td className="p-3">{q.date}</td><td className="p-3">{q.customer_name||parties.find(p=>p.id===q.party_id)?.name||"—"}</td><td className="p-3 font-bold">{money(q.total)} {curAr()}</td><td className="p-3">{q.valid_until||"—"}</td><td className="p-3"><span className="rounded-lg bg-slate-800 px-2 py-1">{q.status==="converted"?t("Converted", "تم التحويل"):q.status==="accepted"?t("Accepted", "مقبول"):q.status==="rejected"?t("Rejected", "مرفوض"):q.status==="sent"?t("Sent", "مرسل"):t("Draft", "مسودة")}</span></td><td className="p-3"><div className="flex gap-2"><button title={t("Print", "طباعة")} className="rounded-lg bg-slate-800 p-2 text-blue-300" onClick={()=>print(q)}><Printer size={15}/></button>{!q.invoice_id&&q.status!=="converted"&&<><button title={t("Convert to invoice", "تحويل إلى فاتورة")} className="rounded-lg bg-emerald-500/10 p-2 text-emerald-300" onClick={()=>{setConvertRow(q);setPayType("cash");setTreasuryAcc("");setCustomerAcc(String(parties.find(p=>p.id===q.party_id)?.account_id||""));setRevenueAcc("");setTaxAcc("");}}><ArrowRightLeft size={15}/></button><button title={t("Delete", "حذف")} className="rounded-lg bg-red-500/10 p-2 text-red-300" onClick={async()=>{if(confirm(t("Delete this quotation?", "حذف عرض السعر؟"))){const r=await DB.deleteQuotation(q.id);if(!r.ok)alert(r.error);await reload();}}}><Trash2 size={15}/></button></>}</div></td></tr>)}
         {!filtered.length&&<tr><td colSpan={7} className="p-10 text-center text-slate-500">{loading?t("Loading…", "جارٍ التحميل…"):t("No quotations in the selected period.", "لا توجد عروض أسعار خلال الفترة المحددة.")}</td></tr>}

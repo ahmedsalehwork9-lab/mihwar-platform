@@ -8,6 +8,8 @@
 
 import { useMemo, useState, useEffect, useCallback } from "react";
 import { useAuth } from "../../context/AuthContext";
+import { useLang } from "../../context/LanguageContext";
+import { dl } from "../lib/dispLabels";
 import { supabase } from "../lib/supabase";
 import {
   fetchSalesWithMigration, upsertSale, deleteSale,
@@ -75,6 +77,8 @@ const migrateVals = (v: Record<string, string>): Record<string, string> => {
 const newReason = (): Reason => ({ id: Date.now() + Math.random(), shift: "", employees: "", reason: REASON_OPTS[0], amount: "", note: "" });
 
 export default function SalesReconciliationPage() {
+  const { t, isRTL } = useLang();
+  const dir = isRTL ? "rtl" : "ltr";
   const { ownedShopId } = (useAuth() as any) ?? {};
   const [branch, setBranch] = useState<string>("");
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
@@ -169,7 +173,7 @@ export default function SalesReconciliationPage() {
   const addChannel = (id: string) => {
     if (!id) return;
     if (id === "__custom__") {
-      const name = (window.prompt("اسم القناة الجديدة (مثال: مرسول، نون، تطبيق خاص):") || "").trim();
+      const name = (window.prompt(t("New channel name (e.g. Mrsool, Noon, own app):", "اسم القناة الجديدة (مثال: مرسول، نون، تطبيق خاص):")) || "").trim();
       if (!name) return;
       const cid = "custom-" + Date.now();
       const nc = [...customChannels, { id: cid, icon: "🏷️", nm: name }];
@@ -228,7 +232,7 @@ export default function SalesReconciliationPage() {
 
   const diffColor = (v: number) => (v > 0.009 ? "text-emerald-400" : v < -0.009 ? "text-red-400" : "text-slate-500");
   const diffTxt = (v: number) => (v > 0 ? "+" : "") + fmt(v);
-  const shiftLbl = (v: string) => { const o = SHIFT_OPTS.find((x) => x.v === v); return o && o.v ? o.l : ""; };
+  const shiftLbl = (v: string) => { const o = SHIFT_OPTS.find((x) => x.v === v); return o && o.v ? dl(o.l) : ""; };
   const noteOf = (e: SavedEntry) => {
     const parts: string[] = [];
     if (e.note && e.note.trim()) parts.push(e.note.trim());
@@ -274,7 +278,7 @@ export default function SalesReconciliationPage() {
     const reDating = editingDate != null && editingDate !== date;
     // تنبيه لو التاريخ الجديد له تسوية محفوظة بالفعل
     if (reDating && allEntries.some((x) => x.date === date)) {
-      if (!window.confirm(`يوجد تسوية محفوظة بالفعل بتاريخ ${date} — هل تريد استبدالها بهذه؟`)) return;
+      if (!window.confirm(t(`A reconciliation is already saved for ${date} — replace it with this one?`, `يوجد تسوية محفوظة بالفعل بتاريخ ${date} — هل تريد استبدالها بهذه؟`))) return;
     }
     const entry: SavedEntry = {
       branchId: ownedShopId ?? null, branch, date, channels: activeIds, customChannels, vals, reasons, note,
@@ -285,10 +289,10 @@ export default function SalesReconciliationPage() {
     // عند إعادة التأريخ: احذف صف التاريخ القديم بعد نجاح الحفظ على التاريخ الجديد
     if (ok && reDating) { await deleteSale(ownedShopId ?? null, editingDate as string); }
     setSaving(false);
-    if (!ok) { alert("تعذّر حفظ التسوية — تأكد من اتصالك بالإنترنت وأن لديك صلاحية على هذا الفرع."); return; }
+    if (!ok) { alert(t("Could not save the reconciliation — check your internet connection and that you have permission on this branch.", "تعذّر حفظ التسوية — تأكد من اتصالك بالإنترنت وأن لديك صلاحية على هذا الفرع.")); return; }
     setEditingDate(null);
     await reloadEntries();
-    alert(reDating ? `✓ تم نقل التسوية إلى ${date}` : "✓ تم حفظ تسوية اليوم");
+    alert(reDating ? t(`✓ Reconciliation moved to ${date}`, `✓ تم نقل التسوية إلى ${date}`) : t("✓ Day reconciliation saved", "✓ تم حفظ تسوية اليوم"));
   };
   const clearForm = () => { setVals({}); setReasons([newReason()]); setNote(""); };
 
@@ -342,12 +346,12 @@ export default function SalesReconciliationPage() {
     const header = `
       <div style="background:#0f1b2b;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;">
         <div style="text-align:left;">
-          <div style="font-size:20px;font-weight:800;color:#34d399;">تقرير تسوية المبيعات</div>
-          <div style="font-size:12px;color:#9fb3c8;">الفترة: ${from} إلى ${to} — ${now}</div>
+          <div style="font-size:20px;font-weight:800;color:#34d399;">${t("Sales reconciliation report", "تقرير تسوية المبيعات")}</div>
+          <div style="font-size:12px;color:#9fb3c8;">${t("Period:", "الفترة:")} ${from} ${t("To", "إلى")} ${to} — ${now}</div>
         </div>
         <div style="display:flex;align-items:center;gap:10px;">
           <div style="text-align:right;">
-            <div style="font-size:18px;font-weight:800;color:#ffffff;">محور</div>
+            <div style="font-size:18px;font-weight:800;color:#ffffff;">${t("MIHWAR", "محور")}</div>
             <div style="font-size:9px;letter-spacing:3px;color:#9fb3c8;">MIHWAR PLATFORM</div>
           </div>
           ${logoBox(logoUrl)}
@@ -356,14 +360,14 @@ export default function SalesReconciliationPage() {
 
     const cards = `
       <div style="display:flex;gap:10px;padding:14px 20px;background:#f8fafc;">
-        ${card("الفرع", branch || "—")}
-        ${card("عدد الأيام", String(n))}
-        ${card("الإجمالي قبل الضريبة", fmt(grandBefore) + " " + curAr())}
-        ${card("ضريبة القيمة المضافة", fmt(grandVat) + " " + curAr())}
-        ${card("شامل الضريبة", fmt(grandActual) + " " + curAr(), true)}
+        ${card(t("Branch", "الفرع"), branch || "—")}
+        ${card(t("Days", "عدد الأيام"), String(n))}
+        ${card(t("Total before tax", "الإجمالي قبل الضريبة"), fmt(grandBefore) + " " + curAr())}
+        ${card(t("VAT", "ضريبة القيمة المضافة"), fmt(grandVat) + " " + curAr())}
+        ${card(t("Incl. tax", "شامل الضريبة"), fmt(grandActual) + " " + curAr(), true)}
       </div>`;
 
-    const ths = ["التاريخ", ...cols.map((c) => c.nm), "الفعلي", "السيستم", "الفرق", "قبل الضريبة", "الضريبة", "شامل الضريبة", "الخطأ %", "الحالة", "ملاحظات"];
+    const ths = [t("Date", "التاريخ"), ...cols.map((c) => dl(c.nm)), t("Actual", "الفعلي"), t("System", "السيستم"), t("Difference", "الفرق"), t("Before tax", "قبل الضريبة"), t("Tax", "الضريبة"), t("Incl. tax", "شامل الضريبة"), t("Error %", "الخطأ %"), t("Status", "الحالة"), t("Notes", "ملاحظات")];
     const thead = `<tr>${ths.map((h) => `<th style="border:1px solid #d1d5db;padding:7px 8px;background:#14304d;color:#fff;font-size:11px;font-weight:700;white-space:nowrap;">${h}</th>`).join("")}</tr>`;
 
     const body = rows.map((e, idx) => {
@@ -381,7 +385,7 @@ export default function SalesReconciliationPage() {
         `<span style="color:#b45309;">${fmt(vat)}</span>`,
         `<b style="color:#0f1b2b;">${fmt(e.gAct)}</b>`,
         (e.err > 0 ? "+" : "") + e.err.toFixed(1) + "%",
-        warn ? "⚠️ مراجعة" : "OK",
+        warn ? t("⚠️ Review", "⚠️ مراجعة") : "OK",
         noteOf(e).replace(/</g, "&lt;"),
       ];
       return `<tr style="background:${bg};">${cells.map((v, i) =>
@@ -389,14 +393,14 @@ export default function SalesReconciliationPage() {
       ).join("")}</tr>`;
     }).join("");
 
-    const totalCells = ["الإجمالي", ...cols.map((c) => fmt(colTotals[c.id])), fmt(grandActual), fmt(grandSystem),
+    const totalCells = [t("Total", "الإجمالي"), ...cols.map((c) => fmt(colTotals[c.id])), fmt(grandActual), fmt(grandSystem),
       (grandDiff > 0 ? "+" : "") + fmt(grandDiff), fmt(grandBefore), fmt(grandVat), fmt(grandActual),
       (grandErr > 0 ? "+" : "") + grandErr.toFixed(1) + "%", "", ""];
     const totalRow = `<tr>${totalCells.map((v, i) =>
       `<td style="border:1px solid #cbd5e1;padding:6px 8px;font-size:11px;font-weight:800;text-align:${i === 0 ? "right" : "center"};background:#eef2f7;color:#0f1b2b;">${v}</td>`
     ).join("")}</tr>`;
 
-    const pctCells = ["نسبة القناة %", ...cols.map((c) => pct(colTotals[c.id]).toFixed(1) + "%"), "100%", "", "", "", "", "", "", ""];
+    const pctCells = [t("Channel share %", "نسبة القناة %"), ...cols.map((c) => pct(colTotals[c.id]).toFixed(1) + "%"), "100%", "", "", "", "", "", "", ""];
     const pctRow = `<tr>${pctCells.map((v, i) =>
       `<td style="border:1px solid #cbd5e1;padding:6px 8px;font-size:11px;font-weight:800;text-align:${i === 0 ? "right" : "center"};background:#15a06a;color:#ffffff;">${v}</td>`
     ).join("")}</tr>`;
@@ -408,51 +412,51 @@ export default function SalesReconciliationPage() {
           <tbody>${body}${totalRow}${pctRow}</tbody>
         </table>
         <div style="margin-top:10px;font-size:11px;color:#374151;">
-          أعلى يوم: <b style="color:#15a06a;">${fmt(report.max)}</b> · المتوسط: <b>${fmt(report.avg)}</b> · أقل يوم: <b style="color:#dc2626;">${fmt(report.min)}</b> · عدد الأيام: <b>${n}</b>
+          ${t("Highest day:", "أعلى يوم:")} <b style="color:#15a06a;">${fmt(report.max)}</b> ${t("· Average:", "· المتوسط:")} <b>${fmt(report.avg)}</b> ${t("· Lowest day:", "· أقل يوم:")} <b style="color:#dc2626;">${fmt(report.min)}</b> ${t("· Days:", "· عدد الأيام:")} <b>${n}</b>
         </div>
-        <div style="margin-top:4px;font-size:10px;color:#9ca3af;">«شامل الضريبة» = التحصيل الفعلي · «قبل الضريبة» = الفعلي ÷ ${(1 + VAT_RATE / 100).toFixed(2)} · الضريبة ${VAT_RATE}%</div>
+        <div style="margin-top:4px;font-size:10px;color:#9ca3af;">${t("“Incl. tax” = actual collection · “Before tax” = actual ÷", "«شامل الضريبة» = التحصيل الفعلي · «قبل الضريبة» = الفعلي ÷")} ${(1 + VAT_RATE / 100).toFixed(2)} ${t("· Tax", "· الضريبة")} ${VAT_RATE}%</div>
       </div>`;
 
     const footer = `
       <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:10px;gap:12px;">
-        <div><div>تم إنشاء هذا التقرير آليًا من صفحة تسوية المبيعات</div><div>منصة محور — MIHWAR B2B Marketplace</div></div>
+        <div><div>${t("This report was generated automatically from the Sales Reconciliation page", "تم إنشاء هذا التقرير آليًا من صفحة تسوية المبيعات")}</div><div>${t("MIHWAR platform — MIHWAR B2B Marketplace", "منصة محور — MIHWAR B2B Marketplace")}</div></div>
         ${contactFooter(waNum, qr)}
       </div>`;
 
-    return `<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;color:#1f2937;background:#fff;">${header}${cards}${table}${footer}</div>`;
+    return `<div dir="${dir}" style="font-family:Tahoma,Arial,sans-serif;color:#1f2937;background:#fff;">${header}${cards}${table}${footer}</div>`;
   };
   const exportPDF = () => {
     const w = window.open("", "_blank", "width=1000,height=900"); if (!w) return;
-    w.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar" style="color-scheme:light;background:#fff;"><head><meta charset="UTF-8"><meta name="color-scheme" content="light"><style>@page{size:A4 landscape;margin:8mm}@media print{html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style><title>تقرير تسوية — ${branch}</title></head><body style="margin:0;background:#fff;">${buildExportHTML()}<script>window.onload=function(){window.print();}<\/script></body></html>`);
+    w.document.write(`<!DOCTYPE html><html dir="${dir}" lang="${isRTL ? 'ar' : 'en'}" style="color-scheme:light;background:#fff;"><head><meta charset="UTF-8"><meta name="color-scheme" content="light"><style>@page{size:A4 landscape;margin:8mm}@media print{html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style><title>${t("Reconciliation report —", "تقرير تسوية —")} ${branch}</title></head><body style="margin:0;background:#fff;">${buildExportHTML()}<script>window.onload=function(){window.print();}<\/script></body></html>`);
     w.document.close();
   };
   const exportExcel = () => {
     const html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"></head><body style="margin:0;background:#fff;">${buildExportHTML()}</body></html>`;
     const blob = new Blob(["﻿" + html], { type: "application/vnd.ms-excel;charset=utf-8" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-    a.download = `تسوية_${branch || "فرع"}_${from}_${to}.xls`; a.click(); URL.revokeObjectURL(a.href);
+    a.download = `${t("Reconciliation", "تسوية")}_${branch || t("branch", "فرع")}_${from}_${to}.xls`; a.click(); URL.revokeObjectURL(a.href);
   };
 
   // ================= UI =================
   return (
-    <div className="p-4 lg:p-6 min-h-screen" dir="rtl">
+    <div className="p-4 lg:p-6 min-h-screen" dir={dir}>
       <style>{`input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input[type=number]{-moz-appearance:textfield}`}</style>
       <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
         <div>
           <h1 className="text-2xl font-black text-white flex items-center gap-3">
             <span className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-xl">📊</span>
-            تسوية المبيعات اليومية
+            {t("Daily sales reconciliation", "تسوية المبيعات اليومية")}
           </h1>
-          <p className="text-slate-500 text-sm mt-1">مطابقة مبيعات السيستم مع التحصيل الفعلي</p>
+          <p className="text-slate-500 text-sm mt-1">{t("Matching system sales with actual collection", "مطابقة مبيعات السيستم مع التحصيل الفعلي")}</p>
         </div>
         <div className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-2">
-          <div className="text-[10px] text-slate-500 font-bold">الفرع</div>
+          <div className="text-[10px] text-slate-500 font-bold">{t("Branch", "الفرع")}</div>
           <div className="text-sm font-bold text-white">{branch || "—"}</div>
         </div>
       </div>
 
       <div className="inline-flex gap-1 bg-slate-900 border border-slate-800 rounded-2xl p-1 mb-5">
-        {([["entry", "📝 إدخال اليوم"], ["report", "📊 التقرير المجمّع"]] as const).map(([k, label]) => (
+        {([["entry", t("📝 Daily entry", "📝 إدخال اليوم")], ["report", t("📊 Combined report", "📊 التقرير المجمّع")]] as const).map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} className={`px-5 py-2.5 rounded-xl font-bold text-sm transition-all ${tab === k ? "bg-blue-600 text-white" : "text-slate-400 hover:text-slate-200"}`}>{label}</button>
         ))}
       </div>
@@ -462,44 +466,44 @@ export default function SalesReconciliationPage() {
         <>
           {editingDate && (
             <div className="flex flex-wrap items-center gap-3 mb-4 bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-2.5">
-              <span className="text-amber-300 text-sm font-bold">✏️ وضع تعديل: يوم {editingDate}{date !== editingDate ? ` ← سيُنقل إلى ${date}` : ""}</span>
-              <button onClick={cancelEdit} className="mr-auto px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 text-xs font-bold">إلغاء التعديل</button>
+              <span className="text-amber-300 text-sm font-bold">{t("✏️ Edit mode: day", "✏️ وضع تعديل: يوم")} {editingDate}{date !== editingDate ? ` ← ${t("will be moved to", "سيُنقل إلى")} ${date}` : ""}</span>
+              <button onClick={cancelEdit} className="mr-auto px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 text-xs font-bold">{t("Cancel edit", "إلغاء التعديل")}</button>
             </div>
           )}
           <div className="flex flex-wrap items-end gap-3 mb-4">
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] text-slate-500 font-bold">التاريخ</label>
-              <div className="flex items-center gap-1"><button type="button" onClick={() => shiftDate(-1)} title="اليوم السابق" className="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-base leading-none hover:bg-slate-700 shrink-0">‹</button><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark]" /><button type="button" onClick={() => shiftDate(1)} title="اليوم التالي" className="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-base leading-none hover:bg-slate-700 shrink-0">›</button></div>
+              <label className="text-[10px] text-slate-500 font-bold">{t("Date", "التاريخ")}</label>
+              <div className="flex items-center gap-1"><button type="button" onClick={() => shiftDate(-1)} title={t("Previous day", "اليوم السابق")} className="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-base leading-none hover:bg-slate-700 shrink-0">‹</button><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark]" /><button type="button" onClick={() => shiftDate(1)} title={t("Next day", "اليوم التالي")} className="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-base leading-none hover:bg-slate-700 shrink-0">›</button></div>
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] text-slate-500 font-bold">إضافة قناة</label>
+              <label className="text-[10px] text-slate-500 font-bold">{t("Add channel", "إضافة قناة")}</label>
               <select value="" onChange={(e) => addChannel(e.target.value)} className="bg-blue-600/10 border border-dashed border-blue-500 rounded-xl text-blue-300 px-3 py-2 text-sm">
-                <option value="">+ اختر قناة…</option>
-                {availableToAdd.map((c) => <option key={c.id} value={c.id}>{c.icon} {c.nm}</option>)}
-                <option value="__custom__">➕ قناة مخصصة (اكتب الاسم)…</option>
+                <option value="">{t("+ Choose channel…", "+ اختر قناة…")}</option>
+                {availableToAdd.map((c) => <option key={c.id} value={c.id}>{c.icon} {dl(c.nm)}</option>)}
+                <option value="__custom__">{t("➕ Custom channel (type the name)…", "➕ قناة مخصصة (اكتب الاسم)…")}</option>
               </select>
             </div>
           </div>
 
           {/* ① مبيعات السيستم */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden mb-4">
-            <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-emerald-500" /><h2 className="text-sm font-bold text-white">① مبيعات السيستم (الإجمالي لليوم)</h2><span className="text-[11px] text-slate-500 mr-auto">قيمة واحدة لكل قناة</span></div>
+            <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-emerald-500" /><h2 className="text-sm font-bold text-white">{t("① System sales (day total)", "① مبيعات السيستم (الإجمالي لليوم)")}</h2><span className="text-[11px] text-slate-500 mr-auto">{t("One value per channel", "قيمة واحدة لكل قناة")}</span></div>
             <div className="overflow-x-auto">
               <table className="w-full border-collapse" style={{ minWidth: 120 + activeChannels.length * 110 }}>
                 <thead>
                   <tr className="bg-slate-950">
-                    <th className="text-right text-[10px] font-bold text-slate-500 uppercase px-3 py-2">البند</th>
+                    <th className="text-right text-[10px] font-bold text-slate-500 uppercase px-3 py-2">{t("Item", "البند")}</th>
                     {activeChannels.map((c) => (
                       <th key={c.id} className="text-center text-[10px] font-bold text-slate-500 px-2 py-2 whitespace-nowrap">
-                        <div className="flex items-center justify-center gap-1"><span>{c.icon} {c.nm}</span>{!c.base && <button onClick={() => removeChannel(c.id)} title="إزالة" className="text-red-400 text-[11px] leading-none">✕</button>}</div>
+                        <div className="flex items-center justify-center gap-1"><span>{c.icon} {dl(c.nm)}</span>{!c.base && <button onClick={() => removeChannel(c.id)} title={t("Remove", "إزالة")} className="text-red-400 text-[11px] leading-none">✕</button>}</div>
                       </th>
                     ))}
-                    <th className="text-center text-[10px] font-bold text-slate-500 px-2 py-2">الإجمالي</th>
+                    <th className="text-center text-[10px] font-bold text-slate-500 px-2 py-2">{t("Total", "الإجمالي")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
-                    <td className="text-right font-bold text-xs text-slate-400 bg-slate-950 px-3 py-2 whitespace-nowrap">السيستم</td>
+                    <td className="text-right font-bold text-xs text-slate-400 bg-slate-950 px-3 py-2 whitespace-nowrap">{t("System", "السيستم")}</td>
                     {activeChannels.map((c) => (
                       <td key={c.id} className="px-1.5 py-2 text-center border-t border-slate-800">
                         <input type="number" step="0.01" placeholder="0" value={getSys(c.id)} onKeyDown={onCellEnter} onChange={(e) => setSys(c.id, e.target.value)} className="w-24 sales-cell bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr] focus:outline-none focus:border-emerald-500" />
@@ -514,16 +518,16 @@ export default function SalesReconciliationPage() {
 
           {/* ② التحصيل الفعلي حسب الشفت */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden mb-4">
-            <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-blue-500" /><h2 className="text-sm font-bold text-white">② التحصيل الفعلي (حسب الشفت)</h2><span className="text-[11px] text-slate-500 mr-auto">صباحي + مسائي = الفعلي</span></div>
+            <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-blue-500" /><h2 className="text-sm font-bold text-white">{t("② Actual collection (by shift)", "② التحصيل الفعلي (حسب الشفت)")}</h2><span className="text-[11px] text-slate-500 mr-auto">{t("Morning + evening = actual", "صباحي + مسائي = الفعلي")}</span></div>
             <div className="overflow-x-auto">
               <table className="w-full border-collapse" style={{ minWidth: 120 + activeChannels.length * 110 }}>
                 <thead>
                   <tr className="bg-slate-950">
-                    <th className="text-right text-[10px] font-bold text-slate-500 uppercase px-3 py-2">الشفت</th>
+                    <th className="text-right text-[10px] font-bold text-slate-500 uppercase px-3 py-2">{t("Shift", "الشفت")}</th>
                     {activeChannels.map((c) => (
-                      <th key={c.id} className="text-center text-[10px] font-bold text-slate-500 px-2 py-2 whitespace-nowrap">{c.icon} {c.nm}</th>
+                      <th key={c.id} className="text-center text-[10px] font-bold text-slate-500 px-2 py-2 whitespace-nowrap">{c.icon} {dl(c.nm)}</th>
                     ))}
-                    <th className="text-center text-[10px] font-bold text-slate-500 px-2 py-2">إجمالي الشفت</th>
+                    <th className="text-center text-[10px] font-bold text-slate-500 px-2 py-2">{t("Shift total", "إجمالي الشفت")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -531,7 +535,7 @@ export default function SalesReconciliationPage() {
                     const shTotal = activeChannels.reduce((s, c) => s + num(getAct(sh.id, c.id)) * (c.sign ?? 1), 0);
                     return (
                       <tr key={sh.id}>
-                        <td className="text-right font-bold text-xs text-slate-400 bg-slate-950 px-3 py-2 whitespace-nowrap"><span className={`inline-block w-1.5 h-1.5 rounded-full ${sh.bar} ml-1`} />{sh.nm}</td>
+                        <td className="text-right font-bold text-xs text-slate-400 bg-slate-950 px-3 py-2 whitespace-nowrap"><span className={`inline-block w-1.5 h-1.5 rounded-full ${sh.bar} ml-1`} />{dl(sh.nm)}</td>
                         {activeChannels.map((c) => (
                           <td key={c.id} className="px-1.5 py-2 text-center border-t border-slate-800">
                             <input type="number" step="0.01" placeholder="0" value={getAct(sh.id, c.id)} onKeyDown={onCellEnter} onChange={(e) => setAct(sh.id, c.id, e.target.value)} className="w-24 sales-cell bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr] focus:outline-none focus:border-blue-500" />
@@ -542,14 +546,14 @@ export default function SalesReconciliationPage() {
                     );
                   })}
                   <tr className="bg-slate-950">
-                    <td className="text-right font-bold text-xs text-slate-300 px-3 py-2 whitespace-nowrap">إجمالي الفعلي</td>
+                    <td className="text-right font-bold text-xs text-slate-300 px-3 py-2 whitespace-nowrap">{t("Total actual", "إجمالي الفعلي")}</td>
                     {activeChannels.map((c) => (
                       <td key={c.id} className="text-center border-t border-slate-700 font-mono font-bold text-emerald-400 text-xs [direction:ltr]">{fmt(calc.perChannelActual[c.id] || 0)}</td>
                     ))}
                     <td className="text-center border-t border-slate-700 font-mono font-bold text-emerald-400 text-xs [direction:ltr]">{fmt(calc.gAct)}</td>
                   </tr>
                   <tr className="bg-white/[0.012]">
-                    <td className="text-right font-bold text-xs text-slate-400 px-3 py-2 whitespace-nowrap">الفرق (فعلي − سيستم)</td>
+                    <td className="text-right font-bold text-xs text-slate-400 px-3 py-2 whitespace-nowrap">{t("Difference (actual − system)", "الفرق (فعلي − سيستم)")}</td>
                     {activeChannels.map((c) => {
                       const d = (calc.perChannelActual[c.id] || 0) - (calc.perChannelSys[c.id] || 0);
                       return <td key={c.id} className={`text-center border-t border-slate-800 font-mono font-bold text-xs [direction:ltr] ${diffColor(d)}`}>{diffTxt(d)}</td>;
@@ -562,24 +566,24 @@ export default function SalesReconciliationPage() {
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4"><div className="text-[10px] text-slate-500 font-bold">مبيعات السيستم</div><div className="text-xl font-black font-mono mt-1 text-white [direction:ltr]">{fmt(calc.gSys)} <span className="text-[11px] text-slate-500">{curAr()}</span></div></div>
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4"><div className="text-[10px] text-slate-500 font-bold">التحصيل الفعلي</div><div className="text-xl font-black font-mono mt-1 text-white [direction:ltr]">{fmt(calc.gAct)} <span className="text-[11px] text-slate-500">{curAr()}</span></div></div>
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4"><div className="text-[10px] text-slate-500 font-bold">الفرق</div><div className={`text-xl font-black font-mono mt-1 [direction:ltr] ${diffColor(calc.net)}`}>{diffTxt(calc.net)} <span className="text-[11px] text-slate-500">{curAr()}</span></div></div>
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4"><div className="text-[10px] text-slate-500 font-bold">نسبة الخطأ + الحالة</div><div className="text-lg font-black font-mono mt-1 text-white [direction:ltr]">{(calc.err > 0 ? "+" : "") + calc.err.toFixed(1)}%</div><span className={`inline-flex items-center gap-1.5 mt-1.5 text-xs font-extrabold px-3 py-1 rounded-full ${calc.warn ? "bg-amber-500/15 text-amber-400" : "bg-emerald-500/15 text-emerald-400"}`}>{calc.warn ? "⚠️ يحتاج مراجعة" : "✓ مطابق"}</span></div>
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4"><div className="text-[10px] text-slate-500 font-bold">{t("System sales", "مبيعات السيستم")}</div><div className="text-xl font-black font-mono mt-1 text-white [direction:ltr]">{fmt(calc.gSys)} <span className="text-[11px] text-slate-500">{curAr()}</span></div></div>
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4"><div className="text-[10px] text-slate-500 font-bold">{t("Actual collection", "التحصيل الفعلي")}</div><div className="text-xl font-black font-mono mt-1 text-white [direction:ltr]">{fmt(calc.gAct)} <span className="text-[11px] text-slate-500">{curAr()}</span></div></div>
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4"><div className="text-[10px] text-slate-500 font-bold">{t("Difference", "الفرق")}</div><div className={`text-xl font-black font-mono mt-1 [direction:ltr] ${diffColor(calc.net)}`}>{diffTxt(calc.net)} <span className="text-[11px] text-slate-500">{curAr()}</span></div></div>
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4"><div className="text-[10px] text-slate-500 font-bold">{t("Error % + status", "نسبة الخطأ + الحالة")}</div><div className="text-lg font-black font-mono mt-1 text-white [direction:ltr]">{(calc.err > 0 ? "+" : "") + calc.err.toFixed(1)}%</div><span className={`inline-flex items-center gap-1.5 mt-1.5 text-xs font-extrabold px-3 py-1 rounded-full ${calc.warn ? "bg-amber-500/15 text-amber-400" : "bg-emerald-500/15 text-emerald-400"}`}>{calc.warn ? t("⚠️ Needs review", "⚠️ يحتاج مراجعة") : t("✓ Matched", "✓ مطابق")}</span></div>
           </div>
 
           {/* reasons */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden mb-4">
-            <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-amber-500" /><h2 className="text-sm font-bold text-white">أسباب الفروقات والمبالغ المستردة</h2>{calc.hasDiff && <span className="text-[11px] text-amber-400 font-bold mr-auto">إلزامي: حدّد الشفت واسم الموظف لكل فرق</span>}</div>
+            <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-amber-500" /><h2 className="text-sm font-bold text-white">{t("Reasons for differences and refunded amounts", "أسباب الفروقات والمبالغ المستردة")}</h2>{calc.hasDiff && <span className="text-[11px] text-amber-400 font-bold mr-auto">{t("Required: select the shift and employee for each difference", "إلزامي: حدّد الشفت واسم الموظف لكل فرق")}</span>}</div>
 
             {/* إدارة أسماء الكاشير لهذا الفرع */}
             <div className="px-4 py-2.5 border-b border-slate-800 bg-slate-950/40 flex items-center gap-2 flex-wrap">
-              <span className="text-[11px] text-slate-400 font-bold">أسماء الكاشير (هذا الفرع):</span>
+              <span className="text-[11px] text-slate-400 font-bold">{t("Cashier names (this branch):", "أسماء الكاشير (هذا الفرع):")}</span>
               {staff.map((n) => (
-                <span key={n} className="inline-flex items-center gap-1 bg-slate-800 text-slate-200 text-[11px] rounded-full px-2.5 py-1">{n}<button onClick={() => removeStaff(n)} title="حذف" className="text-red-400 leading-none">✕</button></span>
+                <span key={n} className="inline-flex items-center gap-1 bg-slate-800 text-slate-200 text-[11px] rounded-full px-2.5 py-1">{n}<button onClick={() => removeStaff(n)} title={t("Delete", "حذف")} className="text-red-400 leading-none">✕</button></span>
               ))}
-              <input value={staffInput} onChange={(e) => setStaffInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addStaff(); } }} placeholder="أضف اسم…" className="bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1 text-[11px] w-28" />
-              <button onClick={addStaff} className="text-[11px] bg-blue-600/15 border border-blue-500/30 text-blue-300 rounded-lg px-2.5 py-1 font-bold">+ إضافة</button>
+              <input value={staffInput} onChange={(e) => setStaffInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addStaff(); } }} placeholder={t("Add a name…", "أضف اسم…")} className="bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1 text-[11px] w-28" />
+              <button onClick={addStaff} className="text-[11px] bg-blue-600/15 border border-blue-500/30 text-blue-300 rounded-lg px-2.5 py-1 font-bold">{t("+ Add", "+ إضافة")}</button>
             </div>
 
             <datalist id="staffList">{staff.map((s) => <option key={s} value={s} />)}</datalist>
@@ -588,36 +592,36 @@ export default function SalesReconciliationPage() {
               const bad = calc.hasDiff && num(r.amount) !== 0 && (!r.shift || !r.employees.trim());
               return (
                 <div key={r.id} className={`flex flex-wrap gap-2 items-center px-4 py-2 border-b border-dashed last:border-b-0 ${bad ? "border-red-500/40 bg-red-500/[0.04]" : "border-slate-800"}`}>
-                  <select value={r.shift} onChange={(e) => editReason(r.id, { shift: e.target.value })} className={`w-24 bg-slate-950 border rounded-lg text-white px-2 py-1.5 text-xs ${bad && !r.shift ? "border-red-500" : "border-slate-700"}`}>{SHIFT_OPTS.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}</select>
-                  <input list="staffList" placeholder="اسم الموظف (أو أكثر بفاصلة)" value={r.employees} onChange={(e) => editReason(r.id, { employees: e.target.value })} className={`flex-1 min-w-[150px] bg-slate-950 border rounded-lg text-white px-2 py-1.5 text-xs ${bad && !r.employees.trim() ? "border-red-500" : "border-slate-700"}`} />
-                  <select value={r.reason} onChange={(e) => editReason(r.id, { reason: e.target.value })} className="flex-1 min-w-[140px] bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs">{REASON_OPTS.map((o) => <option key={o}>{o}</option>)}</select>
-                  <input type="number" step="0.01" placeholder="المبلغ" value={r.amount} onChange={(e) => editReason(r.id, { amount: e.target.value })} className="w-24 bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr]" />
-                  <input placeholder="ملاحظة" value={r.note} onChange={(e) => editReason(r.id, { note: e.target.value })} className="flex-1 min-w-[100px] bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs" />
+                  <select value={r.shift} onChange={(e) => editReason(r.id, { shift: e.target.value })} className={`w-24 bg-slate-950 border rounded-lg text-white px-2 py-1.5 text-xs ${bad && !r.shift ? "border-red-500" : "border-slate-700"}`}>{SHIFT_OPTS.map((o) => <option key={o.v} value={o.v}>{dl(o.l)}</option>)}</select>
+                  <input list="staffList" placeholder={t("Employee name (or several, comma-separated)", "اسم الموظف (أو أكثر بفاصلة)")} value={r.employees} onChange={(e) => editReason(r.id, { employees: e.target.value })} className={`flex-1 min-w-[150px] bg-slate-950 border rounded-lg text-white px-2 py-1.5 text-xs ${bad && !r.employees.trim() ? "border-red-500" : "border-slate-700"}`} />
+                  <select value={r.reason} onChange={(e) => editReason(r.id, { reason: e.target.value })} className="flex-1 min-w-[140px] bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs">{REASON_OPTS.map((o) => <option key={o} value={o}>{dl(o)}</option>)}</select>
+                  <input type="number" step="0.01" placeholder={t("Amount", "المبلغ")} value={r.amount} onChange={(e) => editReason(r.id, { amount: e.target.value })} className="w-24 bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr]" />
+                  <input placeholder={t("Note", "ملاحظة")} value={r.note} onChange={(e) => editReason(r.id, { note: e.target.value })} className="flex-1 min-w-[100px] bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs" />
                   <button onClick={() => delReason(r.id)} className="w-8 h-8 rounded-lg bg-red-500/10 text-red-400 shrink-0">✕</button>
                 </div>
               );
             })}
-            <button onClick={addReason} className="m-3.5 bg-blue-600/10 border border-dashed border-blue-500 text-blue-300 py-2.5 rounded-xl w-[calc(100%-28px)] font-bold text-xs">+ إضافة سبب / مبلغ مسترد</button>
+            <button onClick={addReason} className="m-3.5 bg-blue-600/10 border border-dashed border-blue-500 text-blue-300 py-2.5 rounded-xl w-[calc(100%-28px)] font-bold text-xs">{t("+ Add reason / refunded amount", "+ إضافة سبب / مبلغ مسترد")}</button>
 
             <div className="mx-3.5 mb-3.5 bg-slate-950 border border-slate-800 rounded-xl p-3.5">
-              <div className="flex justify-between text-xs mb-1.5"><span className="text-slate-400 font-semibold">الفرق المطلوب تبريره</span><span className="font-mono font-bold text-slate-200 [direction:ltr]">{fmt(calc.need)}</span></div>
-              <div className="flex justify-between text-xs mb-1.5"><span className="text-slate-400 font-semibold">المبرَّر (مجموع الأسباب)</span><span className="font-mono font-bold text-emerald-400 [direction:ltr]">{fmt(calc.reasonsSum)}</span></div>
+              <div className="flex justify-between text-xs mb-1.5"><span className="text-slate-400 font-semibold">{t("Difference to justify", "الفرق المطلوب تبريره")}</span><span className="font-mono font-bold text-slate-200 [direction:ltr]">{fmt(calc.need)}</span></div>
+              <div className="flex justify-between text-xs mb-1.5"><span className="text-slate-400 font-semibold">{t("Justified (sum of reasons)", "المبرَّر (مجموع الأسباب)")}</span><span className="font-mono font-bold text-emerald-400 [direction:ltr]">{fmt(calc.reasonsSum)}</span></div>
               <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden my-2"><div className="h-full bg-gradient-to-l from-emerald-500 to-amber-500 rounded-full transition-all" style={{ width: `${calc.need > 0 ? Math.min(100, (calc.reasonsSum / calc.need) * 100) : calc.net === 0 ? 100 : 0}%` }} /></div>
-              <div className="flex justify-between text-xs"><span className="text-slate-400 font-semibold">غير المبرَّر المتبقي</span><span className={`font-mono font-bold [direction:ltr] ${calc.left > 0.009 ? "text-red-400" : "text-emerald-400"}`}>{fmt(calc.left)}</span></div>
+              <div className="flex justify-between text-xs"><span className="text-slate-400 font-semibold">{t("Remaining unjustified", "غير المبرَّر المتبقي")}</span><span className={`font-mono font-bold [direction:ltr] ${calc.left > 0.009 ? "text-red-400" : "text-emerald-400"}`}>{fmt(calc.left)}</span></div>
               <div className="mt-2.5 text-xs font-extrabold">
-                {calc.need < 0.01 ? <span className="text-emerald-400">✅ مطابق تمامًا</span>
-                  : !calc.covered ? <span className="text-amber-400">⚠️ يتبقى {fmt(calc.left)} {curAr()} غير مبرَّر</span>
-                  : calc.badReasons.length > 0 ? <span className="text-red-400">⚠️ حدّد الشفت واسم الموظف لكل سبب</span>
-                  : <span className="text-emerald-400">✅ الفرق مبرَّر بالكامل — جاهز للحفظ</span>}
+                {calc.need < 0.01 ? <span className="text-emerald-400">{t("✅ Exact match", "✅ مطابق تمامًا")}</span>
+                  : !calc.covered ? <span className="text-amber-400">{t("⚠️ Remaining", "⚠️ يتبقى")} {fmt(calc.left)} {curAr()} {t("Unjustified", "غير مبرَّر")}</span>
+                  : calc.badReasons.length > 0 ? <span className="text-red-400">{t("⚠️ Select the shift and employee for each reason", "⚠️ حدّد الشفت واسم الموظف لكل سبب")}</span>
+                  : <span className="text-emerald-400">{t("✅ Difference fully justified — ready to save", "✅ الفرق مبرَّر بالكامل — جاهز للحفظ")}</span>}
               </div>
             </div>
 
-            <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="ملاحظة اليوم (تظهر في عمود Notes بالتقرير)…" className="w-[calc(100%-28px)] mx-3.5 mb-3.5 bg-slate-950 border border-slate-700 rounded-xl text-white p-2.5 text-sm resize-y min-h-[54px]" />
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("Day note (shown in the Notes column of the report)…", "ملاحظة اليوم (تظهر في عمود Notes بالتقرير)…")} className="w-[calc(100%-28px)] mx-3.5 mb-3.5 bg-slate-950 border border-slate-700 rounded-xl text-white p-2.5 text-sm resize-y min-h-[54px]" />
           </div>
 
           <div className="flex gap-3 justify-end flex-wrap">
-            <button onClick={clearForm} className="px-6 py-3 rounded-xl bg-slate-900 border border-slate-700 text-slate-400 font-bold text-sm">تفريغ</button>
-            <button onClick={save} disabled={!calc.justified || saving} className="px-6 py-3 rounded-xl bg-emerald-500 text-emerald-950 font-extrabold text-sm disabled:opacity-40 disabled:cursor-not-allowed">{saving ? "جاري الحفظ…" : "💾 حفظ تسوية اليوم"}</button>
+            <button onClick={clearForm} className="px-6 py-3 rounded-xl bg-slate-900 border border-slate-700 text-slate-400 font-bold text-sm">{t("Clear", "تفريغ")}</button>
+            <button onClick={save} disabled={!calc.justified || saving} className="px-6 py-3 rounded-xl bg-emerald-500 text-emerald-950 font-extrabold text-sm disabled:opacity-40 disabled:cursor-not-allowed">{saving ? t("Saving…", "جاري الحفظ…") : t("💾 Save day reconciliation", "💾 حفظ تسوية اليوم")}</button>
           </div>
         </>
       )}
@@ -626,8 +630,8 @@ export default function SalesReconciliationPage() {
       {tab === "report" && (
         <>
           <div className="flex flex-wrap items-end gap-3 mb-4">
-            <div className="flex flex-col gap-1"><label className="text-[10px] text-slate-500 font-bold">من</label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark]" /></div>
-            <div className="flex flex-col gap-1"><label className="text-[10px] text-slate-500 font-bold">إلى</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark]" /></div>
+            <div className="flex flex-col gap-1"><label className="text-[10px] text-slate-500 font-bold">{t("From", "من")}</label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark]" /></div>
+            <div className="flex flex-col gap-1"><label className="text-[10px] text-slate-500 font-bold">{t("To", "إلى")}</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark]" /></div>
             <div className="flex gap-2 mr-auto">
               <button onClick={exportPDF} disabled={!report.rows.length} className="px-4 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 font-bold text-xs disabled:opacity-40">⬇ PDF</button>
               <button onClick={exportExcel} disabled={!report.rows.length} className="px-4 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-xs disabled:opacity-40">⬇ Excel</button>
@@ -635,19 +639,19 @@ export default function SalesReconciliationPage() {
           </div>
 
           <div className="grid grid-cols-3 gap-3 mb-4">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5"><div className="text-[10px] text-slate-500 font-bold">أعلى مبيعات (MAX)</div><div className="text-xl font-black font-mono mt-1 text-emerald-400">{fmt(report.max)}</div></div>
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5"><div className="text-[10px] text-slate-500 font-bold">المتوسط (AVG)</div><div className="text-xl font-black font-mono mt-1 text-white">{fmt(report.avg)}</div></div>
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5"><div className="text-[10px] text-slate-500 font-bold">أقل مبيعات (MIN)</div><div className="text-xl font-black font-mono mt-1 text-red-400">{fmt(report.min)}</div></div>
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5"><div className="text-[10px] text-slate-500 font-bold">{t("Highest sales (MAX)", "أعلى مبيعات (MAX)")}</div><div className="text-xl font-black font-mono mt-1 text-emerald-400">{fmt(report.max)}</div></div>
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5"><div className="text-[10px] text-slate-500 font-bold">{t("Average (AVG)", "المتوسط (AVG)")}</div><div className="text-xl font-black font-mono mt-1 text-white">{fmt(report.avg)}</div></div>
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5"><div className="text-[10px] text-slate-500 font-bold">{t("Lowest sales (MIN)", "أقل مبيعات (MIN)")}</div><div className="text-xl font-black font-mono mt-1 text-red-400">{fmt(report.min)}</div></div>
           </div>
 
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-blue-500" /><h2 className="text-sm font-bold text-white">تقرير تسوية المبيعات</h2><span className="text-[11px] text-slate-500 mr-auto">{branch || "—"} · {report.rows.length} يوم</span></div>
+            <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-blue-500" /><h2 className="text-sm font-bold text-white">{t("Sales reconciliation report", "تقرير تسوية المبيعات")}</h2><span className="text-[11px] text-slate-500 mr-auto">{branch || "—"} · {report.rows.length} {t("day", "يوم")}</span></div>
             {report.rows.length === 0 ? (
-              <div className="p-10 text-center text-slate-500 text-sm">لا توجد أيام محفوظة ضمن هذا النطاق. احفظ يومًا من تبويب «إدخال اليوم» ليظهر هنا.</div>
+              <div className="p-10 text-center text-slate-500 text-sm">{t("No saved days in this range. Save a day from the “Daily entry” tab to see it here.", "لا توجد أيام محفوظة ضمن هذا النطاق. احفظ يومًا من تبويب «إدخال اليوم» ليظهر هنا.")}</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse" style={{ minWidth: 700 + report.cols.length * 80 }}>
-                  <thead><tr>{["التاريخ", ...report.cols.map((c) => c.nm), "الفعلي", "السيستم", "الفرق", "الخطأ %", "الحالة", "ملاحظات"].map((h) => <th key={h} className="text-[11px] px-2 py-2.5 bg-slate-950 text-slate-300 font-bold uppercase whitespace-nowrap border-b border-slate-700">{h}</th>)}<th className="text-[11px] px-2 py-2.5 bg-slate-950 text-slate-300 font-bold uppercase whitespace-nowrap border-b border-slate-700">تعديل</th></tr></thead>
+                  <thead><tr>{[t("Date", "التاريخ"), ...report.cols.map((c) => dl(c.nm)), t("Actual", "الفعلي"), t("System", "السيستم"), t("Difference", "الفرق"), t("Error %", "الخطأ %"), t("Status", "الحالة"), t("Notes", "ملاحظات")].map((h) => <th key={h} className="text-[11px] px-2 py-2.5 bg-slate-950 text-slate-300 font-bold uppercase whitespace-nowrap border-b border-slate-700">{h}</th>)}<th className="text-[11px] px-2 py-2.5 bg-slate-950 text-slate-300 font-bold uppercase whitespace-nowrap border-b border-slate-700">{t("Edit", "تعديل")}</th></tr></thead>
                   <tbody>
                     {report.rows.map((e) => {
                       const warn = Math.abs(e.err) > 5;
@@ -662,14 +666,14 @@ export default function SalesReconciliationPage() {
                           <td className={`px-2 py-2.5 text-[13px] text-center font-mono font-bold [direction:ltr] border-b border-slate-800 ${dc}`}>{(e.err > 0 ? "+" : "") + e.err.toFixed(1)}%</td>
                           <td className={`px-2 py-2.5 text-xs text-center font-extrabold border-b border-slate-800 ${warn ? "text-amber-400" : "text-emerald-400"}`}>{warn ? "⚠️" : "OK"}</td>
                           <td className="px-2 py-2.5 text-[12px] text-right text-slate-300 max-w-[240px] border-b border-slate-800">{noteOf(e)}</td>
-                          <td className="px-2 py-2.5 text-center border-b border-slate-800"><button onClick={() => startEdit(e)} title="تعديل / إعادة تأريخ هذا اليوم" className="px-2.5 py-1 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-300 text-[11px] font-bold whitespace-nowrap">✏️ تعديل</button></td>
+                          <td className="px-2 py-2.5 text-center border-b border-slate-800"><button onClick={() => startEdit(e)} title={t("Edit / re-date this day", "تعديل / إعادة تأريخ هذا اليوم")} className="px-2.5 py-1 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-300 text-[11px] font-bold whitespace-nowrap">{t("✏️ Edit", "✏️ تعديل")}</button></td>
                         </tr>
                       );
                     })}
                   </tbody>
                   <tfoot>
                     <tr className="bg-slate-950 font-bold">
-                      <td className="px-2 py-2.5 text-[13px] text-right text-slate-100 font-extrabold whitespace-nowrap border-t border-slate-600">الإجمالي</td>
+                      <td className="px-2 py-2.5 text-[13px] text-right text-slate-100 font-extrabold whitespace-nowrap border-t border-slate-600">{t("Total", "الإجمالي")}</td>
                       {report.cols.map((c) => <td key={c.id} className="px-2 py-2.5 text-[13px] text-center font-mono font-bold text-slate-100 [direction:ltr] border-t border-slate-600">{fmt(report.colTotals[c.id] || 0)}</td>)}
                       <td className="px-2 py-2.5 text-[13px] text-center font-mono font-extrabold text-emerald-400 [direction:ltr] border-t border-slate-600">{fmt(report.grandActual)}</td>
                       <td className="px-2 py-2.5 text-[13px] text-center font-mono font-extrabold text-white [direction:ltr] border-t border-slate-600">{fmt(report.grandSystem)}</td>
@@ -678,7 +682,7 @@ export default function SalesReconciliationPage() {
                       <td className="border-t border-slate-600" /><td className="border-t border-slate-600" /><td className="border-t border-slate-600" />
                     </tr>
                     <tr className="bg-emerald-600/15">
-                      <td className="px-2 py-2.5 text-[13px] text-right font-extrabold text-emerald-300 whitespace-nowrap">نسبة القناة %</td>
+                      <td className="px-2 py-2.5 text-[13px] text-right font-extrabold text-emerald-300 whitespace-nowrap">{t("Channel share %", "نسبة القناة %")}</td>
                       {report.cols.map((c) => <td key={c.id} className="px-2 py-2.5 text-[13px] text-center font-mono font-bold text-emerald-300 [direction:ltr]">{pctOfTotal(report.colTotals[c.id] || 0).toFixed(1)}%</td>)}
                       <td className="px-2 py-2.5 text-[13px] text-center font-mono font-bold text-emerald-300 [direction:ltr]">100%</td>
                       <td /><td /><td /><td /><td /><td />

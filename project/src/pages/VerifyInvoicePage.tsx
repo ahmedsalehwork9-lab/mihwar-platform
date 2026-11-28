@@ -1,3 +1,4 @@
+import { curNow } from "./lib/orgConfig";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "./lib/supabase";
@@ -415,7 +416,7 @@ export default function VerifyInvoicePage() {
               </div>
               <span className="text-emerald-400 font-black text-xl">
                 {order!.total_amount.toLocaleString()}
-                <span className="text-xs font-normal text-slate-500"> ر.س</span>
+                <span className="text-xs font-normal text-slate-500">{curNow()}</span>
               </span>
             </div>
 

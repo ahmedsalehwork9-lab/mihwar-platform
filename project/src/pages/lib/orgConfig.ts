@@ -6,6 +6,7 @@
 // p27: أُضيف subscription_status + trial_ends_at لعرض لافتة الفترة التجريبية للعميل.
 // =============================================================
 import { supabase } from "./supabase";
+import { isArNow } from "../../context/LanguageContext";
 
 export type OrgConfig = {
   orgId: number;
@@ -51,7 +52,9 @@ export function setActiveFromConfig(cfg: OrgConfig) {
 }
 
 /** اختصار العملة للعرض: بالعربية الرمز (ج.م / ر.س) وبالإنجليزية رمز ISO (EGP / SAR) — يتبع دولة الشركة النشطة. */
-export const curAr = (): string => ACTIVE.symbol;
+// يتبع لغة الواجهة الحالية: رمز العملة بالعربية، ورمز ISO (SAR/EGP…) بالإنجليزية.
+export const curAr = (): string => (isArNow() ? ACTIVE.symbol : ACTIVE.code);
+export const curNow = curAr;
 export const curEn = (): string => ACTIVE.code;
 export const cur = (ar: boolean): string => (ar ? ACTIVE.symbol : ACTIVE.code);
 

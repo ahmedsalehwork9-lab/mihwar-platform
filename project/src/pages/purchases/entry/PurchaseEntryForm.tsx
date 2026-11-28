@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Check, FileText, History, Keyboard, Plus, Printer, Save, ScanLine, Search, Trash2, UserPlus, X } from "lucide-react";
 import { useLang } from "../../../context/LanguageContext";
 import * as DB from "../../lib/accountingDb";
-import { ACTIVE } from "../../lib/orgConfig";
+import { ACTIVE, cur as curOf, curNow } from "../../lib/orgConfig";
 import type { GLAccount, GLTreasury, PurchaseKind, PurchasePayType } from "../../lib/accountingDb";
 import { cashBankOptions } from "../../lib/cashAccounts";
 import { fetchPrintOrg, type PrintOrg } from "../../sales/salesInvoiceApi";
@@ -181,7 +181,7 @@ export default function PurchaseEntryForm(p: PurchaseEntryProps) {
   };
   const doPrint = (inv: PurchasePrintInv, pay: PurchasePayType) => {
     const org2: PrintOrg = shop ?? { name: org.name, tax_number: null, commercial_registration: null, phone: null, address: null, logo_url: null };
-    printHTML(buildPurchaseInvoiceHTML(inv, { ...org2, name: org2.name || org.name }, { paymentLabel: PAYL[pay][l2], currency: ACTIVE.symbol }, l2));
+    printHTML(buildPurchaseInvoiceHTML(inv, { ...org2, name: org2.name || org.name }, { paymentLabel: PAYL[pay][l2], currency: curOf(l2 === "ar") }, l2));
   };
   const printSaved = () => {
     if (!saved) return;
@@ -210,7 +210,7 @@ export default function PurchaseEntryForm(p: PurchaseEntryProps) {
   const seg = (on: boolean) => `flex-1 py-2 rounded-lg text-xs font-bold border ${on ? "bg-blue-600 border-blue-500 text-white" : "bg-slate-800 border-slate-700 text-slate-400"}`;
   const totRow = (label: string, val: string, tid: string, cls = "text-slate-100") => <div className="flex justify-between py-1.5 border-b border-slate-800"><span className="text-slate-400">{label}</span><b dir="ltr" className={cls} data-testid={tid}>{val}</b></div>;
   const real = lines.filter((l) => !isBlank(l)); const cur = hits[hi]; const code = accounts.find((a) => a.id === Number(fDebitAcc));
-  const taxRate = num(fRate) ?? 0; const cur$ = ACTIVE.symbol;
+  const taxRate = num(fRate) ?? 0; const cur$ = curNow();
 
   return (
     <div className="p-4 lg:p-6 min-h-screen text-slate-100 space-y-4" dir={isRTL ? "rtl" : "ltr"} data-testid="purchase-entry">

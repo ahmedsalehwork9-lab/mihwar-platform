@@ -12,6 +12,8 @@
 import { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import * as XLSX from "xlsx";
 import { useAuth } from "../../context/AuthContext";
+import { useLang } from "../../context/LanguageContext";
+import { dl } from "../lib/dispLabels";
 import * as DB from "../lib/accountingDb";
 import PartyQuickEditor from "../lib/PartyQuickEditor";
 import type { GLAccount, GLParty } from "../lib/accountingDb";
@@ -55,6 +57,8 @@ const newItem = (): PItem => ({ id: Date.now() + Math.random(), name: "", catego
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
 export default function PurchasesPage() {
+  const { t, isRTL } = useLang();
+  const dir = isRTL ? "rtl" : "ltr";
   const { ownedShopId } = (useAuth() as any) ?? {};
   const [branch, setBranch] = useState<string>("");
   const [accountingOrg,setAccountingOrg]=useState<{id:number;name:string}|null>(null);
@@ -240,26 +244,26 @@ export default function PurchasesPage() {
         const rows = XLSX.utils.sheet_to_json<any>(ws, { defval: "" });
 
         const groups = parseGroups(rows).filter((g) => g.items.length > 0);
-        if (!groups.length) { alert("لم يتم العثور على أصناف صالحة في الملف. تأكد من أسماء الأعمدة في النموذج."); return; }
+        if (!groups.length) { alert(t("No valid items found in the file. Check the column names in the template.", "لم يتم العثور على أصناف صالحة في الملف. تأكد من أسماء الأعمدة في النموذج.")); return; }
 
         // فاتورة واحدة فقط → تُعبّأ في الفورم للمراجعة والحفظ اليدوي (السلوك الحالي)
         if (groups.length === 1) {
           const g = groups[0];
-          if (g.dup) { alert(`رقم الفاتورة «${g.invoiceNo}» مسجّل من قبل لنفس الفرع — لن يتم الاستيراد.`); return; }
+          if (g.dup) { alert(t(`Invoice no. “${g.invoiceNo}” already exists for the same branch — it will not be imported.`, `رقم الفاتورة «${g.invoiceNo}» مسجّل من قبل لنفس الفرع — لن يتم الاستيراد.`)); return; }
           if (g.supplier) setSupplier(g.supplier);
           if (g.invoiceNo) setInvoiceNo(g.invoiceNo);
           if (g.date) setDate(g.date);
           setTaxable(g.taxable);
           if (g.payment) setPayment(g.payment);
           setItems((p) => [...p.filter((r) => r.name.trim() || num(r.qty) > 0), ...g.items]);
-          alert(`✓ تم استيراد ${g.items.length} صنف${g.invoiceNo ? ` (فاتورة ${g.invoiceNo})` : ""}${g.taxable ? " · ضريبية" : " · غير ضريبية"}`);
+          alert(`${t("✓ Imported", "✓ تم استيراد")} ${g.items.length} ${t("items", "صنف")}${g.invoiceNo ? ` (${t("invoice", "فاتورة")} ${g.invoiceNo})` : ""}${g.taxable ? t(" · Taxable", " · ضريبية") : t(" · Non-taxable", " · غير ضريبية")}`);
           return;
         }
 
         // عدة فواتير → نافذة معاينة وتأكيد
         setImportGroups(groups);
       } catch {
-        alert("تعذّر قراءة الملف. استخدم نموذج الإكسيل المرفق.");
+        alert(t("Could not read the file. Use the provided Excel template.", "تعذّر قراءة الملف. استخدم نموذج الإكسيل المرفق."));
       }
     };
     reader.readAsArrayBuffer(file);
@@ -283,7 +287,7 @@ export default function PurchasesPage() {
   const confirmImport = async () => {
     if (!importGroups) return;
     const chosen = importGroups.filter((g) => g.selected && !g.dup && g.items.length > 0);
-    if (!chosen.length) { alert("لم تختر أي فاتورة للحفظ."); return; }
+    if (!chosen.length) { alert(t("You have not selected any invoice to save.", "لم تختر أي فاتورة للحفظ.")); return; }
     setSavingImport(true);
     let ok = 0, fail = 0;
     const seqByYear: Record<string, number> = {};
@@ -308,7 +312,7 @@ export default function PurchasesPage() {
     setSavingImport(false);
     await reloadPurchases();
     setImportGroups(null);
-    alert(`✓ تم حفظ ${ok} فاتورة${fail ? ` · فشل ${fail}` : ""}`);
+    alert(`${t("✓ Saved", "✓ تم حفظ")} ${ok} ${t("invoices", "فاتورة")}${fail ? ` · ${t("failed", "فشل")} ${fail}` : ""}`);
   };
 
   // تحميل فاتورة محفوظة للتعديل (من سجل التقرير أو البحث)
@@ -329,11 +333,11 @@ export default function PurchasesPage() {
 
   const canSave = supplier.trim() !== "" && filledItems.length > 0;
   const save = async () => {
-    if (!supplier.trim()) { alert("اكتب اسم المورّد أولًا"); return; }
-    if (filledItems.length === 0) { alert("أضف صنفًا واحدًا على الأقل (اسم الصنف + الكمية)"); return; }
+    if (!supplier.trim()) { alert(t("Enter the supplier name first", "اكتب اسم المورّد أولًا")); return; }
+    if (filledItems.length === 0) { alert(t("Add at least one item (item name + quantity)", "أضف صنفًا واحدًا على الأقل (اسم الصنف + الكمية)")); return; }
     // منع التكرار على مرجع المورد مع استثناء الفاتورة الجاري تعديلها
     const dupOther = invoiceNo.trim() !== "" && allPurchases.some((p) => p.id !== editingId && (p.invoiceNo || "").trim() === invoiceNo.trim());
-    if (dupOther) { alert(`مرجع المورد «${invoiceNo.trim()}» مسجّل من قبل لفاتورة أخرى. غيّر المرجع أو احذف الفاتورة القديمة.`); return; }
+    if (dupOther) { alert(t(`Supplier ref “${invoiceNo.trim()}” is already used by another invoice. Change the ref or delete the old invoice.`, `مرجع المورد «${invoiceNo.trim()}» مسجّل من قبل لفاتورة أخرى. غيّر المرجع أو احذف الفاتورة القديمة.`)); return; }
     const sub = filledItems.reduce((s, r) => s + lineTotal(r), 0);
     const v = taxable ? sub * (VAT_RATE / 100) : 0;
     const entry: Purchase = {
@@ -347,12 +351,12 @@ export default function PurchasesPage() {
     setSaving(true);
     const ok = await upsertPurchase(ownedShopId ?? null, entry);
     setSaving(false);
-    if (!ok) { alert("تعذّر حفظ الفاتورة — تأكد من اتصالك بالإنترنت وصلاحيتك على الفرع."); return; }
+    if (!ok) { alert(t("Could not save the invoice — check your internet connection and your permission on the branch.", "تعذّر حفظ الفاتورة — تأكد من اتصالك بالإنترنت وصلاحيتك على الفرع.")); return; }
     const wasEditing = !!editingId;
     setEditingId(null); setEditingInternalNo(undefined);
     await reloadPurchases();
     clearForm();
-    alert(wasEditing ? "✓ تم تحديث الفاتورة" : "✓ تم حفظ الفاتورة");
+    alert(wasEditing ? t("✓ Invoice updated", "✓ تم تحديث الفاتورة") : t("✓ Invoice saved", "✓ تم حفظ الفاتورة"));
   };
   const clearForm = () => { setSupplier(""); setInvoiceNo(""); setNote(""); setPayment(PAY_OPTS[0]); setTaxable(true); setItems([newItem()]); };
 
@@ -442,19 +446,19 @@ export default function PurchasesPage() {
     setSelIds(() => (allRowsSelected ? new Set() : new Set(report.rows.map((e) => e.id))));
   const deleteSelected = async () => {
     if (!selIds.size) return;
-    if (!window.confirm(`حذف ${selIds.size} فاتورة محددة؟ لا يمكن التراجع.`)) return;
+    if (!window.confirm(t(`Delete ${selIds.size} selected invoices? This cannot be undone.`, `حذف ${selIds.size} فاتورة محددة؟ لا يمكن التراجع.`))) return;
     let ok = 0, fail = 0;
     for (const id of Array.from(selIds)) { const d = await deletePurchase(id); if (d) ok++; else fail++; }
     await reloadPurchases();
     setSelIds(new Set());
-    if (fail) alert(`تم حذف ${ok} فاتورة · فشل ${fail}`);
+    if (fail) alert(t(`Deleted ${ok} invoices · ${fail} failed`, `تم حذف ${ok} فاتورة · فشل ${fail}`));
   };
 
   const delPurchaseRow = async (id: string) => {
-    if (!window.confirm("حذف هذه الفاتورة؟")) return;
+    if (!window.confirm(t("Delete this invoice?", "حذف هذه الفاتورة؟"))) return;
     const ok = await deletePurchase(id);
     if (ok) { await reloadPurchases(); setSelIds((s) => { const n = new Set(s); n.delete(id); return n; }); }
-    else alert("تعذّر حذف الفاتورة.");
+    else alert(t("Could not delete the invoice.", "تعذّر حذف الفاتورة."));
   };
 
   // ── تصدير (بتصميم تقارير محور) ──
@@ -468,12 +472,12 @@ export default function PurchasesPage() {
     const header = `
       <div style="background:#0f1b2b;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;">
         <div style="text-align:left;">
-          <div style="font-size:20px;font-weight:800;color:#34d399;">تقرير المشتريات</div>
-          <div style="font-size:12px;color:#9fb3c8;">الفترة: ${from} إلى ${to} — ${now}</div>
+          <div style="font-size:20px;font-weight:800;color:#34d399;">${t("Purchases report", "تقرير المشتريات")}</div>
+          <div style="font-size:12px;color:#9fb3c8;">${t("Period:", "الفترة:")} ${from} ${t("To", "إلى")} ${to} — ${now}</div>
         </div>
         <div style="display:flex;align-items:center;gap:10px;">
           <div style="text-align:right;">
-            <div style="font-size:18px;font-weight:800;color:#fff;">محور</div>
+            <div style="font-size:18px;font-weight:800;color:#fff;">${t("MIHWAR", "محور")}</div>
             <div style="font-size:9px;letter-spacing:3px;color:#9fb3c8;">MIHWAR PLATFORM</div>
           </div>
           ${logoBox(logoUrl)}
@@ -481,32 +485,32 @@ export default function PurchasesPage() {
       </div>`;
     const cards = `
       <div style="display:flex;gap:10px;padding:14px 20px;background:#f8fafc;">
-        ${card("الفرع", branch || "—")}
-        ${card("عدد الفواتير", String(report.count))}
-        ${card("إجمالي الضريبة", fmt(report.totalVat) + " " + curAr())}
-        ${card("الإجمالي شامل الضريبة", fmt(report.total) + " " + curAr(), true)}
-        ${card("متوسط الفاتورة", fmt(report.avg) + " " + curAr())}
+        ${card(t("Branch", "الفرع"), branch || "—")}
+        ${card(t("Invoices", "عدد الفواتير"), String(report.count))}
+        ${card(t("Total tax", "إجمالي الضريبة"), fmt(report.totalVat) + " " + curAr())}
+        ${card(t("Total incl. tax", "الإجمالي شامل الضريبة"), fmt(report.total) + " " + curAr(), true)}
+        ${card(t("Average invoice", "متوسط الفاتورة"), fmt(report.avg) + " " + curAr())}
       </div>`;
-    const ths = ["الرقم الداخلي", "التاريخ", "المورّد", "مرجع المورد", "النوع", "عدد الأصناف", "الضريبة", "الإجمالي (" + curAr() + ")", "طريقة الدفع", "ملاحظات"];
+    const ths = [t("Internal no.", "الرقم الداخلي"), t("Date", "التاريخ"), t("Supplier", "المورّد"), t("Supplier ref", "مرجع المورد"), t("Type", "النوع"), t("Items", "عدد الأصناف"), t("Tax", "الضريبة"), t("Total (", "الإجمالي (") + curAr() + ")", t("Payment method", "طريقة الدفع"), t("Notes", "ملاحظات")];
     const thead = `<tr>${ths.map((h) => `<th style="border:1px solid #d1d5db;padding:7px 8px;background:#14304d;color:#fff;font-size:11px;font-weight:700;white-space:nowrap;">${h}</th>`).join("")}</tr>`;
     const body = report.rows.map((e, idx) => {
       const bg = idx % 2 ? "#fff" : "#f9fafb";
-      const cells = [e.internalNo || "—", e.date, e.supplier, e.invoiceNo || "—", e.taxable ? "ضريبية" : "غير ضريبية", String((e.items || []).length),
+      const cells = [e.internalNo || "—", e.date, e.supplier, e.invoiceNo || "—", e.taxable ? t("Taxable", "ضريبية") : t("Non-taxable", "غير ضريبية"), String((e.items || []).length),
         fmt(e.vat || 0), `<b style="color:#15a06a;">${fmt(e.total)}</b>`, e.payment, (e.note || "").replace(/</g, "&lt;")];
       return `<tr style="background:${bg};">${cells.map((v, i) =>
         `<td style="border:1px solid #e5e7eb;padding:5px 8px;font-size:11px;text-align:${i === 2 || i === 9 ? "right" : "center"};">${v}</td>`).join("")}</tr>`;
     }).join("");
     const totalRow = `<tr>
-        <td colspan="6" style="border:1px solid #cbd5e1;padding:6px 8px;font-size:11px;font-weight:800;text-align:right;background:#eef2f7;color:#0f1b2b;">الإجمالي العام</td>
+        <td colspan="6" style="border:1px solid #cbd5e1;padding:6px 8px;font-size:11px;font-weight:800;text-align:right;background:#eef2f7;color:#0f1b2b;">${t("Grand total", "الإجمالي العام")}</td>
         <td style="border:1px solid #cbd5e1;padding:6px 8px;font-size:11px;font-weight:800;text-align:center;background:#eef2f7;color:#b45309;">${fmt(report.totalVat)}</td>
         <td style="border:1px solid #cbd5e1;padding:6px 8px;font-size:12px;font-weight:800;text-align:center;background:#eef2f7;color:#15a06a;">${fmt(report.total)}</td>
         <td colspan="2" style="border:1px solid #cbd5e1;background:#eef2f7;"></td>
       </tr>`;
     const catBlock = report.cats.length ? `
       <div style="padding:4px 20px 14px;">
-        <div style="font-size:13px;font-weight:800;color:#0f1b2b;margin:6px 0;">نسبة كل تصنيف من إجمالي المشتريات</div>
+        <div style="font-size:13px;font-weight:800;color:#0f1b2b;margin:6px 0;">${t("Share of each category in total purchases", "نسبة كل تصنيف من إجمالي المشتريات")}</div>
         <table style="border-collapse:collapse;width:100%;max-width:520px;">
-          <tr>${["التصنيف", "القيمة (" + curAr() + ")", "النسبة %"].map((h) => `<th style="border:1px solid #d1d5db;padding:6px 8px;background:#14304d;color:#fff;font-size:11px;">${h}</th>`).join("")}</tr>
+          <tr>${[t("Category", "التصنيف"), t("Amount (", "القيمة (") + curAr() + ")", t("Share %", "النسبة %")].map((h) => `<th style="border:1px solid #d1d5db;padding:6px 8px;background:#14304d;color:#fff;font-size:11px;">${h}</th>`).join("")}</tr>
           ${report.cats.map(([c, v]) => `<tr>
             <td style="border:1px solid #e5e7eb;padding:5px 8px;font-size:11px;text-align:right;">${c}</td>
             <td style="border:1px solid #e5e7eb;padding:5px 8px;font-size:11px;text-align:center;">${fmt(v)}</td>
@@ -516,13 +520,13 @@ export default function PurchasesPage() {
       </div>` : "";
     const priceBlock = report.priceChanges.length ? `
       <div style="padding:4px 20px 14px;">
-        <div style="font-size:13px;font-weight:800;color:#0f1b2b;margin:6px 0;">تنبيه تغيّر أسعار الأصناف (${report.priceChanges.length} صنف)</div>
+        <div style="font-size:13px;font-weight:800;color:#0f1b2b;margin:6px 0;">${t("Item price change alert (", "تنبيه تغيّر أسعار الأصناف (")}${report.priceChanges.length} ${t("items)", "صنف)")}</div>
         <table style="border-collapse:collapse;width:100%;">
-          <tr>${["الصنف", "تسلسل الأسعار", "أول سعر", "آخر سعر", "أعلى سعر", "% التغيّر"].map((h) => `<th style="border:1px solid #d1d5db;padding:6px 8px;background:#14304d;color:#fff;font-size:11px;">${h}</th>`).join("")}</tr>
+          <tr>${[t("Item", "الصنف"), t("Price sequence", "تسلسل الأسعار"), t("First price", "أول سعر"), t("Last price", "آخر سعر"), t("Highest price", "أعلى سعر"), t("% change", "% التغيّر")].map((h) => `<th style="border:1px solid #d1d5db;padding:6px 8px;background:#14304d;color:#fff;font-size:11px;">${h}</th>`).join("")}</tr>
           ${report.priceChanges.map((pc) => {
             const up = pc.change > 0;
             return `<tr>
-              <td style="border:1px solid #e5e7eb;padding:5px 8px;font-size:11px;text-align:right;">${pc.name}${pc.unit ? ` <span style="color:#9ca3af;">(${pc.unit})</span>` : ""}</td>
+              <td style="border:1px solid #e5e7eb;padding:5px 8px;font-size:11px;text-align:start;">${pc.name}${pc.unit ? ` <span style="color:#9ca3af;">(${pc.unit})</span>` : ""}</td>
               <td style="border:1px solid #e5e7eb;padding:5px 8px;font-size:11px;text-align:center;direction:ltr;">${pc.seq.map(fmt).join(" → ")}</td>
               <td style="border:1px solid #e5e7eb;padding:5px 8px;font-size:11px;text-align:center;">${fmt(pc.first)}</td>
               <td style="border:1px solid #e5e7eb;padding:5px 8px;font-size:11px;text-align:center;font-weight:800;">${fmt(pc.last)}</td>
@@ -531,15 +535,15 @@ export default function PurchasesPage() {
             </tr>`;
           }).join("")}
         </table>
-        <div style="margin-top:4px;font-size:10px;color:#9ca3af;">يعرض فقط الأصناف التي اشتُريت بأكثر من سعر خلال الفترة (السعر بدون ضريبة = صافي التكلفة).</div>
+        <div style="margin-top:4px;font-size:10px;color:#9ca3af;">${t("Shows only items bought at more than one price in the period (price excl. tax = net cost).", "يعرض فقط الأصناف التي اشتُريت بأكثر من سعر خلال الفترة (السعر بدون ضريبة = صافي التكلفة).")}</div>
       </div>` : "";
     const table = `<div style="padding:6px 20px 4px;"><table style="border-collapse:collapse;width:100%;"><thead>${thead}</thead><tbody>${body}${totalRow}</tbody></table></div>`;
     const footer = `
       <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:10px;gap:12px;">
-        <div><div>تم إنشاء هذا التقرير آليًا من صفحة المشتريات</div><div>منصة محور — MIHWAR B2B Marketplace</div></div>
+        <div><div>${t("This report was generated automatically from the Purchases page", "تم إنشاء هذا التقرير آليًا من صفحة المشتريات")}</div><div>${t("MIHWAR platform — MIHWAR B2B Marketplace", "منصة محور — MIHWAR B2B Marketplace")}</div></div>
         ${contactFooter(waNum, qr)}
       </div>`;
-    return `<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;color:#1f2937;background:#fff;">${header}${cards}${table}${catBlock}${priceBlock}${footer}</div>`;
+    return `<div dir="${dir}" style="font-family:Tahoma,Arial,sans-serif;color:#1f2937;background:#fff;">${header}${cards}${table}${catBlock}${priceBlock}${footer}</div>`;
   };
 
   // تصدير عرض «بالأصناف» (إجمالي كل صنف عبر الموردين)
@@ -550,55 +554,55 @@ export default function PurchasesPage() {
       `<div style="flex:1;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:10px 14px;"><div style="font-size:10px;color:#6b7280;font-weight:700;">${label}</div><div style="font-size:17px;font-weight:800;margin-top:3px;color:${green ? "#15a06a" : "#111827"};">${value}</div></div>`;
     const header = `
       <div style="background:#0f1b2b;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;">
-        <div style="text-align:left;"><div style="font-size:20px;font-weight:800;color:#34d399;">تقرير المشتريات — بالأصناف</div><div style="font-size:12px;color:#9fb3c8;">الفترة: ${from} إلى ${to} — ${now}</div></div>
-        <div style="display:flex;align-items:center;gap:10px;"><div style="text-align:right;"><div style="font-size:18px;font-weight:800;color:#fff;">محور</div><div style="font-size:9px;letter-spacing:3px;color:#9fb3c8;">MIHWAR PLATFORM</div></div>${logoBox(logoUrl)}</div>
+        <div style="text-align:left;"><div style="font-size:20px;font-weight:800;color:#34d399;">${t("Purchases report — by item", "تقرير المشتريات — بالأصناف")}</div><div style="font-size:12px;color:#9fb3c8;">${t("Period:", "الفترة:")} ${from} ${t("To", "إلى")} ${to} — ${now}</div></div>
+        <div style="display:flex;align-items:center;gap:10px;"><div style="text-align:right;"><div style="font-size:18px;font-weight:800;color:#fff;">${t("MIHWAR", "محور")}</div><div style="font-size:9px;letter-spacing:3px;color:#9fb3c8;">MIHWAR PLATFORM</div></div>${logoBox(logoUrl)}</div>
       </div>`;
-    const cards = `<div style="display:flex;gap:10px;padding:14px 20px;background:#f8fafc;">${card("الفرع", branch || "—")}${card("عدد الأصناف", String(report.itemAgg.length))}${card("إجمالي التكلفة (صافي)", fmt(totalCost) + " " + curAr(), true)}</div>`;
-    const ths = ["الصنف", "التصنيف", "إجمالي الكمية", "الوحدة", "متوسط السعر", "إجمالي التكلفة (" + curAr() + ")", "عدد الموردين", "عدد الفواتير"];
+    const cards = `<div style="display:flex;gap:10px;padding:14px 20px;background:#f8fafc;">${card(t("Branch", "الفرع"), branch || "—")}${card(t("Items", "عدد الأصناف"), String(report.itemAgg.length))}${card(t("Total cost (net)", "إجمالي التكلفة (صافي)"), fmt(totalCost) + " " + curAr(), true)}</div>`;
+    const ths = [t("Item", "الصنف"), t("Category", "التصنيف"), t("Total quantity", "إجمالي الكمية"), t("Unit", "الوحدة"), t("Average price", "متوسط السعر"), t("Total cost (", "إجمالي التكلفة (") + curAr() + ")", t("Suppliers", "عدد الموردين"), t("Invoices", "عدد الفواتير")];
     const thead = `<tr>${ths.map((h) => `<th style="border:1px solid #d1d5db;padding:7px 8px;background:#14304d;color:#fff;font-size:11px;font-weight:700;white-space:nowrap;">${h}</th>`).join("")}</tr>`;
     const body = report.itemAgg.map((g, idx) => {
       const bg = idx % 2 ? "#fff" : "#f9fafb";
       const cells = [g.name, g.category, fmt(g.qty), g.unit || "—", fmt(g.avg), `<b style="color:#15a06a;">${fmt(g.cost)}</b>`, String(g.supCount), String(g.invCount)];
       return `<tr style="background:${bg};">${cells.map((v, i) => `<td style="border:1px solid #e5e7eb;padding:5px 8px;font-size:11px;text-align:${i === 0 || i === 1 ? "right" : "center"};">${v}</td>`).join("")}</tr>`;
     }).join("");
-    const totalRow = `<tr><td colspan="5" style="border:1px solid #cbd5e1;padding:6px 8px;font-size:11px;font-weight:800;text-align:right;background:#eef2f7;color:#0f1b2b;">إجمالي التكلفة (صافي)</td><td style="border:1px solid #cbd5e1;padding:6px 8px;font-size:12px;font-weight:800;text-align:center;background:#eef2f7;color:#15a06a;">${fmt(totalCost)}</td><td colspan="2" style="border:1px solid #cbd5e1;background:#eef2f7;"></td></tr>`;
-    const table = `<div style="padding:6px 20px 4px;"><table style="border-collapse:collapse;width:100%;"><thead>${thead}</thead><tbody>${body}${totalRow}</tbody></table><div style="margin-top:4px;font-size:10px;color:#9ca3af;">التكلفة = مجموع (الكمية × سعر الوحدة) بدون ضريبة لكل صنف عبر كل الفواتير في الفترة.</div></div>`;
-    const footer = `<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:10px;gap:12px;"><div><div>تم إنشاء هذا التقرير آليًا من صفحة المشتريات</div><div>منصة محور — MIHWAR B2B Marketplace</div></div>${contactFooter(waNum, qr)}</div>`;
-    return `<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;color:#1f2937;background:#fff;">${header}${cards}${table}${footer}</div>`;
+    const totalRow = `<tr><td colspan="5" style="border:1px solid #cbd5e1;padding:6px 8px;font-size:11px;font-weight:800;text-align:start;background:#eef2f7;color:#0f1b2b;">${t("Total cost (net)", "إجمالي التكلفة (صافي)")}</td><td style="border:1px solid #cbd5e1;padding:6px 8px;font-size:12px;font-weight:800;text-align:center;background:#eef2f7;color:#15a06a;">${fmt(totalCost)}</td><td colspan="2" style="border:1px solid #cbd5e1;background:#eef2f7;"></td></tr>`;
+    const table = `<div style="padding:6px 20px 4px;"><table style="border-collapse:collapse;width:100%;"><thead>${thead}</thead><tbody>${body}${totalRow}</tbody></table><div style="margin-top:4px;font-size:10px;color:#9ca3af;">${t("Cost = sum of (quantity × unit price) excluding tax for each item across all invoices in the period.", "التكلفة = مجموع (الكمية × سعر الوحدة) بدون ضريبة لكل صنف عبر كل الفواتير في الفترة.")}</div></div>`;
+    const footer = `<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:10px;gap:12px;"><div><div>${t("This report was generated automatically from the Purchases page", "تم إنشاء هذا التقرير آليًا من صفحة المشتريات")}</div><div>${t("MIHWAR platform — MIHWAR B2B Marketplace", "منصة محور — MIHWAR B2B Marketplace")}</div></div>${contactFooter(waNum, qr)}</div>`;
+    return `<div dir="${dir}" style="font-family:Tahoma,Arial,sans-serif;color:#1f2937;background:#fff;">${header}${cards}${table}${footer}</div>`;
   };
 
   const exportHTML = () => (reportView === "items" ? buildItemsExportHTML() : buildExportHTML());
   const exportPDF = () => {
     const w = window.open("", "_blank", "width=1000,height=900"); if (!w) return;
-    w.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar" style="color-scheme:light;background:#fff;"><head><meta charset="UTF-8"><meta name="color-scheme" content="light"><style>@page{size:A4 landscape;margin:8mm}@media print{html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style><title>تقرير المشتريات — ${branch}</title></head><body style="margin:0;background:#fff;">${exportHTML()}<script>window.onload=function(){window.print();}<\/script></body></html>`);
+    w.document.write(`<!DOCTYPE html><html dir="${dir}" lang="${isRTL ? 'ar' : 'en'}" style="color-scheme:light;background:#fff;"><head><meta charset="UTF-8"><meta name="color-scheme" content="light"><style>@page{size:A4 landscape;margin:8mm}@media print{html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style><title>${t("Purchases report —", "تقرير المشتريات —")} ${branch}</title></head><body style="margin:0;background:#fff;">${exportHTML()}<script>window.onload=function(){window.print();}<\/script></body></html>`);
     w.document.close();
   };
   const exportExcel = () => {
     const html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"></head><body style="margin:0;background:#fff;">${exportHTML()}</body></html>`;
     const blob = new Blob(["﻿" + html], { type: "application/vnd.ms-excel;charset=utf-8" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-    a.download = `مشتريات_${reportView === "items" ? "أصناف" : "فواتير"}_${branch || "فرع"}_${from}_${to}.xls`; a.click(); URL.revokeObjectURL(a.href);
+    a.download = `${t("Purchases", "مشتريات")}_${reportView === "items" ? t("items", "أصناف") : t("invoices", "فواتير")}_${branch || t("branch", "فرع")}_${from}_${to}.xls`; a.click(); URL.revokeObjectURL(a.href);
   };
 
   // ================= UI =================
   return (
-    <div className="p-4 lg:p-6 min-h-screen" dir="rtl">
+    <div className="p-4 lg:p-6 min-h-screen" dir={dir}>
       <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
         <div>
           <h1 className="text-2xl font-black text-white flex items-center gap-3">
             <span className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-xl">🧾</span>
-            المشتريات
+            {t("Purchases", "المشتريات")}
           </h1>
-          <p className="text-slate-500 text-sm mt-1">تسجيل فواتير الشراء — صنف صنف أو دفعة واحدة من إكسيل</p>
+          <p className="text-slate-500 text-sm mt-1">{t("Record purchase invoices — item by item or a batch from Excel", "تسجيل فواتير الشراء — صنف صنف أو دفعة واحدة من إكسيل")}</p>
         </div>
         <div className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-2">
-          <div className="text-[10px] text-slate-500 font-bold">الفرع</div>
+          <div className="text-[10px] text-slate-500 font-bold">{t("Branch", "الفرع")}</div>
           <div className="text-sm font-bold text-white">{branch || "—"}</div>
         </div>
       </div>
 
       <div className="inline-flex gap-1 bg-slate-900 border border-slate-800 rounded-2xl p-1 mb-5">
-        {([["entry", "🧾 فاتورة جديدة"], ["report", "📊 تقرير المشتريات"]] as const).map(([k, label]) => (
+        {([["entry", t("🧾 New invoice", "🧾 فاتورة جديدة")], ["report", t("📊 Purchases report", "📊 تقرير المشتريات")]] as const).map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} className={`px-5 py-2.5 rounded-xl font-bold text-sm transition-all ${tab === k ? "bg-blue-600 text-white" : "text-slate-400 hover:text-slate-200"}`}>{label}</button>
         ))}
       </div>
@@ -608,74 +612,74 @@ export default function PurchasesPage() {
         <>
           {editingId ? (
             <div className="mb-3 flex flex-wrap items-center gap-3 bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-2.5">
-              <span className="text-amber-300 text-sm font-bold">✏️ تعديل فاتورة {editingInternalNo || ""}</span>
-              <button onClick={cancelEditPurchase} className="mr-auto px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 text-xs font-bold">إلغاء التعديل</button>
+              <span className="text-amber-300 text-sm font-bold">{t("✏️ Edit invoice", "✏️ تعديل فاتورة")} {editingInternalNo || ""}</span>
+              <button onClick={cancelEditPurchase} className="mr-auto px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 text-xs font-bold">{t("Cancel edit", "إلغاء التعديل")}</button>
             </div>
           ) : (
             <div className="mb-3 inline-flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5">
-              <span className="text-[10px] text-slate-500 font-bold">الرقم الداخلي التالي</span>
+              <span className="text-[10px] text-slate-500 font-bold">{t("Next internal no.", "الرقم الداخلي التالي")}</span>
               <span className="text-sm font-black font-mono text-blue-300 [direction:ltr]">{nextInternalNo(date)}</span>
-              <span className="text-[10px] text-slate-500">يُخصّص تلقائيًا عند الحفظ</span>
+              <span className="text-[10px] text-slate-500">{t("Assigned automatically on save", "يُخصّص تلقائيًا عند الحفظ")}</span>
             </div>
           )}
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] text-slate-500 font-bold">التاريخ</label>
+              <label className="text-[10px] text-slate-500 font-bold">{t("Date", "التاريخ")}</label>
               <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark]" />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] text-slate-500 font-bold">المورّد</label>
+              <label className="text-[10px] text-slate-500 font-bold">{t("Supplier", "المورّد")}</label>
               <select value={supplier} onChange={(e) => { if(e.target.value === "__create_supplier__"){setSupplierEditorRow(null);setSupplierEditorOpen(true);return;} setSupplier(e.target.value); }} className="bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm">
-                <option value="">اختر المورد</option>
+                <option value="">{t("Select supplier", "اختر المورد")}</option>
                 {[...new Set([...glParties.filter(x=>x.is_active).map(x=>x.name),...supplierSuggest])].sort((a,b)=>a.localeCompare(b,"ar")).map((name) => <option key={name} value={name}>{name}</option>)}
-                {accountingOrg&&<option value="__create_supplier__">+ إنشاء مورد جديد</option>}
+                {accountingOrg&&<option value="__create_supplier__">{t("+ Create new supplier", "+ إنشاء مورد جديد")}</option>}
               </select>
-              {accountingOrg&&<div className="mt-1 flex gap-2"><button type="button" onClick={()=>{setSupplierEditorRow(null);setSupplierEditorOpen(true);}} className="text-[11px] font-bold text-emerald-300">+ إنشاء مورد</button>{matchedSupplier&&<button type="button" onClick={()=>{setSupplierEditorRow(matchedSupplier);setSupplierEditorOpen(true);}} className="text-[11px] font-bold text-blue-300">تحرير المورد المحدد</button>}{matchedSupplier&&<span className="text-[10px] text-slate-500">مرتبط بحساب: {glAccounts.find(a=>a.id===matchedSupplier.account_id)?.code||"غير محدد"}</span>}</div>}
+              {accountingOrg&&<div className="mt-1 flex gap-2"><button type="button" onClick={()=>{setSupplierEditorRow(null);setSupplierEditorOpen(true);}} className="text-[11px] font-bold text-emerald-300">{t("+ Create supplier", "+ إنشاء مورد")}</button>{matchedSupplier&&<button type="button" onClick={()=>{setSupplierEditorRow(matchedSupplier);setSupplierEditorOpen(true);}} className="text-[11px] font-bold text-blue-300">{t("Edit selected supplier", "تحرير المورد المحدد")}</button>}{matchedSupplier&&<span className="text-[10px] text-slate-500">{t("Linked to account:", "مرتبط بحساب:")} {glAccounts.find(a=>a.id===matchedSupplier.account_id)?.code||t("Unspecified", "غير محدد")}</span>}</div>}
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] text-slate-500 font-bold">مرجع المورد</label>
-              <input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} placeholder="رقم فاتورة المورّد (اختياري)" className={`bg-slate-900 border rounded-xl text-white px-3 py-2 text-sm ${dupInvoice ? "border-red-500" : "border-slate-700"}`} />
-              {dupInvoice && <span className="text-[10px] text-red-400">⚠️ مرجع مستخدم من قبل لنفس الفرع</span>}
+              <label className="text-[10px] text-slate-500 font-bold">{t("Supplier ref", "مرجع المورد")}</label>
+              <input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} placeholder={t("Supplier invoice no. (optional)", "رقم فاتورة المورّد (اختياري)")} className={`bg-slate-900 border rounded-xl text-white px-3 py-2 text-sm ${dupInvoice ? "border-red-500" : "border-slate-700"}`} />
+              {dupInvoice && <span className="text-[10px] text-red-400">{t("⚠️ Ref already used for the same branch", "⚠️ مرجع مستخدم من قبل لنفس الفرع")}</span>}
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] text-slate-500 font-bold">نوع الفاتورة</label>
+              <label className="text-[10px] text-slate-500 font-bold">{t("Invoice type", "نوع الفاتورة")}</label>
               <select value={taxable ? "tax" : "notax"} onChange={(e) => setTaxable(e.target.value === "tax")} className="bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm">
-                <option value="tax">ضريبية ({VAT_RATE}%)</option>
-                <option value="notax">غير ضريبية</option>
+                <option value="tax">{t("Taxable (", "ضريبية (")}{VAT_RATE}%)</option>
+                <option value="notax">{t("Non-taxable", "غير ضريبية")}</option>
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] text-slate-500 font-bold">طريقة الدفع</label>
-              <select value={payment} onChange={(e) => setPayment(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm">{PAY_OPTS.map((o) => <option key={o}>{o}</option>)}</select>
+              <label className="text-[10px] text-slate-500 font-bold">{t("Payment method", "طريقة الدفع")}</label>
+              <select value={payment} onChange={(e) => setPayment(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm">{PAY_OPTS.map((o) => <option key={o} value={o}>{dl(o)}</option>)}</select>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 mb-3 bg-slate-900/60 border border-slate-800 rounded-xl p-2.5">
-            <span className="text-xs text-slate-400 font-bold mr-1">إضافة دفعة من إكسيل:</span>
-            <button onClick={downloadTemplate} className="px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-xs">⬇ تنزيل نموذج إكسيل</button>
-            <button onClick={() => fileRef.current?.click()} className="px-3 py-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-300 font-bold text-xs">⬆ استيراد ملف إكسيل</button>
+            <span className="text-xs text-slate-400 font-bold mr-1">{t("Add a batch from Excel:", "إضافة دفعة من إكسيل:")}</span>
+            <button onClick={downloadTemplate} className="px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-xs">{t("⬇ Download Excel template", "⬇ تنزيل نموذج إكسيل")}</button>
+            <button onClick={() => fileRef.current?.click()} className="px-3 py-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-300 font-bold text-xs">{t("⬆ Import Excel file", "⬆ استيراد ملف إكسيل")}</button>
             <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) importExcel(f); e.target.value = ""; }} />
-            <span className="text-[11px] text-slate-500">فاتورة واحدة تُعبّأ بالأسفل، وملف فيه عدة فواتير يفتح نافذة معاينة. الأعمدة لكل صف (المورّد · الرقم · التاريخ · النوع · الدفع · الصنف…). الأسعار بدون ضريبة = صافي التكلفة.</span>
+            <span className="text-[11px] text-slate-500">{t("A single invoice is filled in below; a file with several invoices opens a preview window. Columns per row (Supplier · No. · Date · Type · Payment · Item…). Prices exclude tax = net cost.", "فاتورة واحدة تُعبّأ بالأسفل، وملف فيه عدة فواتير يفتح نافذة معاينة. الأعمدة لكل صف (المورّد · الرقم · التاريخ · النوع · الدفع · الصنف…). الأسعار بدون ضريبة = صافي التكلفة.")}</span>
           </div>
 
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden mb-4">
-            <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-blue-500" /><h2 className="text-sm font-bold text-white">أصناف الفاتورة</h2><span className="text-[11px] text-slate-500 mr-auto">{filledItems.length} صنف</span></div>
+            <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-blue-500" /><h2 className="text-sm font-bold text-white">{t("Invoice items", "أصناف الفاتورة")}</h2><span className="text-[11px] text-slate-500 mr-auto">{filledItems.length} {t("item", "صنف")}</span></div>
             <div className="overflow-x-auto">
               <table className="w-full border-collapse" style={{ minWidth: 760 }}>
                 <thead>
                   <tr className="bg-slate-950">
-                    {["الصنف", "التصنيف", "الكمية", "الوحدة", "سعر الوحدة", "الإجمالي", ""].map((h) => (
+                    {[t("Item", "الصنف"), t("Category", "التصنيف"), t("Quantity", "الكمية"), t("Unit", "الوحدة"), t("Unit price", "سعر الوحدة"), t("Total", "الإجمالي"), ""].map((h) => (
                       <th key={h} className="text-right text-[10px] font-bold text-slate-500 uppercase px-3 py-2 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   <datalist id="itemList">{itemSuggest.map((n) => <option key={n} value={n} />)}</datalist>
-                  <datalist id="catList">{CAT_OPTS.map((c) => <option key={c} value={c} />)}</datalist>
-                  <datalist id="unitList">{UNIT_OPTS.map((u) => <option key={u} value={u} />)}</datalist>
+                  <datalist id="catList">{CAT_OPTS.map((c) => <option key={c} value={c} label={dl(c)} />)}</datalist>
+                  <datalist id="unitList">{UNIT_OPTS.map((u) => <option key={u} value={u} label={dl(u)} />)}</datalist>
                   {items.map((r) => (
                     <tr key={r.id} className="border-t border-slate-800">
-                      <td className="px-2 py-1.5"><input list="itemList" value={r.name} onChange={(e) => editItem(r.id, { name: e.target.value })} placeholder="اسم الصنف" className="w-full min-w-[150px] bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs" /></td>
+                      <td className="px-2 py-1.5"><input list="itemList" value={r.name} onChange={(e) => editItem(r.id, { name: e.target.value })} placeholder={t("Item name", "اسم الصنف")} className="w-full min-w-[150px] bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs" /></td>
                       <td className="px-2 py-1.5"><input list="catList" value={r.category} onChange={(e) => editItem(r.id, { category: e.target.value })} className="w-full min-w-[110px] bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-xs" /></td>
                       <td className="px-2 py-1.5"><input type="number" step="0.01" value={r.qty} onChange={(e) => editItem(r.id, { qty: e.target.value })} placeholder="0" className="w-20 bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center font-mono text-xs [direction:ltr]" /></td>
                       <td className="px-2 py-1.5"><input list="unitList" value={r.unit} onChange={(e) => editItem(r.id, { unit: e.target.value })} className="w-20 bg-slate-950 border border-slate-700 rounded-lg text-white px-2 py-1.5 text-center text-xs" /></td>
@@ -687,24 +691,24 @@ export default function PurchasesPage() {
                 </tbody>
               </table>
             </div>
-            <button onClick={addItem} className="m-3.5 bg-blue-600/10 border border-dashed border-blue-500 text-blue-300 py-2.5 rounded-xl w-[calc(100%-28px)] font-bold text-xs">+ إضافة صنف</button>
+            <button onClick={addItem} className="m-3.5 bg-blue-600/10 border border-dashed border-blue-500 text-blue-300 py-2.5 rounded-xl w-[calc(100%-28px)] font-bold text-xs">{t("+ Add item", "+ إضافة صنف")}</button>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-4">
             <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-3.5">
-              <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="ملاحظات الفاتورة…" className="w-full bg-slate-950 border border-slate-700 rounded-xl text-white p-2.5 text-sm resize-y min-h-[72px]" />
+              <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("Invoice notes…", "ملاحظات الفاتورة…")} className="w-full bg-slate-950 border border-slate-700 rounded-xl text-white p-2.5 text-sm resize-y min-h-[72px]" />
             </div>
             <div className="bg-gradient-to-br from-blue-600/20 to-slate-900 border border-blue-500/20 rounded-2xl p-4 flex flex-col justify-center gap-1">
-              <div className="flex justify-between text-xs"><span className="text-slate-400 font-semibold">المجموع قبل الضريبة</span><span className="font-mono text-slate-200 [direction:ltr]">{fmt(subtotal)}</span></div>
-              <div className="flex justify-between text-xs"><span className="text-slate-400 font-semibold">ضريبة القيمة المضافة {taxable ? `(${VAT_RATE}%)` : "(معفاة)"}</span><span className="font-mono text-slate-200 [direction:ltr]">{fmt(vat)}</span></div>
-              <div className="flex justify-between items-center border-t border-slate-700/60 mt-1 pt-1.5"><span className="text-slate-300 font-bold text-sm">الإجمالي</span><span className="text-2xl font-black font-mono text-white [direction:ltr]">{fmt(grandTotal)} <span className="text-xs text-slate-400">{curAr()}</span></span></div>
+              <div className="flex justify-between text-xs"><span className="text-slate-400 font-semibold">{t("Subtotal before tax", "المجموع قبل الضريبة")}</span><span className="font-mono text-slate-200 [direction:ltr]">{fmt(subtotal)}</span></div>
+              <div className="flex justify-between text-xs"><span className="text-slate-400 font-semibold">{t("VAT", "ضريبة القيمة المضافة")} {taxable ? `(${VAT_RATE}%)` : t("(exempt)", "(معفاة)")}</span><span className="font-mono text-slate-200 [direction:ltr]">{fmt(vat)}</span></div>
+              <div className="flex justify-between items-center border-t border-slate-700/60 mt-1 pt-1.5"><span className="text-slate-300 font-bold text-sm">{t("Total", "الإجمالي")}</span><span className="text-2xl font-black font-mono text-white [direction:ltr]">{fmt(grandTotal)} <span className="text-xs text-slate-400">{curAr()}</span></span></div>
             </div>
           </div>
 
           <div className="flex items-center gap-3 justify-end flex-wrap">
-            {!canSave && <span className="text-[11px] text-amber-400/80 mr-auto">لإتمام الحفظ: اكتب اسم المورّد وأضف صنفًا واحدًا على الأقل (اسم + كمية)</span>}
-            <button onClick={editingId ? cancelEditPurchase : clearForm} className="px-6 py-3 rounded-xl bg-slate-900 border border-slate-700 text-slate-400 font-bold text-sm">{editingId ? "إلغاء التعديل" : "تفريغ"}</button>
-            <button onClick={save} disabled={saving} className={`px-6 py-3 rounded-xl font-extrabold text-sm transition-all ${canSave && !saving ? "bg-emerald-500 text-emerald-950" : "bg-emerald-500/40 text-emerald-100"}`}>{saving ? "جاري الحفظ…" : (editingId ? "💾 تحديث الفاتورة" : "💾 حفظ الفاتورة")}</button>
+            {!canSave && <span className="text-[11px] text-amber-400/80 mr-auto">{t("To save: enter the supplier name and add at least one item (name + quantity)", "لإتمام الحفظ: اكتب اسم المورّد وأضف صنفًا واحدًا على الأقل (اسم + كمية)")}</span>}
+            <button onClick={editingId ? cancelEditPurchase : clearForm} className="px-6 py-3 rounded-xl bg-slate-900 border border-slate-700 text-slate-400 font-bold text-sm">{editingId ? t("Cancel edit", "إلغاء التعديل") : t("Clear", "تفريغ")}</button>
+            <button onClick={save} disabled={saving} className={`px-6 py-3 rounded-xl font-extrabold text-sm transition-all ${canSave && !saving ? "bg-emerald-500 text-emerald-950" : "bg-emerald-500/40 text-emerald-100"}`}>{saving ? t("Saving…", "جاري الحفظ…") : (editingId ? t("💾 Update invoice", "💾 تحديث الفاتورة") : t("💾 Save invoice", "💾 حفظ الفاتورة"))}</button>
           </div>
         </>
       )}
@@ -713,10 +717,10 @@ export default function PurchasesPage() {
       {tab === "report" && (
         <>
           <div className="flex flex-wrap items-end gap-3 mb-4">
-            <div className="flex flex-col gap-1"><label className="text-[10px] text-slate-500 font-bold">من</label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark]" /></div>
-            <div className="flex flex-col gap-1"><label className="text-[10px] text-slate-500 font-bold">إلى</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark]" /></div>
+            <div className="flex flex-col gap-1"><label className="text-[10px] text-slate-500 font-bold">{t("From", "من")}</label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark]" /></div>
+            <div className="flex flex-col gap-1"><label className="text-[10px] text-slate-500 font-bold">{t("To", "إلى")}</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm [color-scheme:dark]" /></div>
             <div className="flex gap-2 mr-auto">
-              {selIds.size > 0 && <button onClick={deleteSelected} className="px-4 py-2.5 rounded-xl bg-red-500/15 border border-red-500/30 text-red-300 font-bold text-xs">🗑 حذف المحدد ({selIds.size})</button>}
+              {selIds.size > 0 && <button onClick={deleteSelected} className="px-4 py-2.5 rounded-xl bg-red-500/15 border border-red-500/30 text-red-300 font-bold text-xs">{t("🗑 Delete selected (", "🗑 حذف المحدد (")}{selIds.size})</button>}
               <button onClick={exportPDF} disabled={!report.rows.length} className="px-4 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 font-bold text-xs disabled:opacity-40">⬇ PDF</button>
               <button onClick={exportExcel} disabled={!report.rows.length} className="px-4 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-xs disabled:opacity-40">⬇ Excel</button>
             </div>
@@ -724,34 +728,34 @@ export default function PurchasesPage() {
 
           <div className="flex flex-wrap items-center gap-3 mb-4">
             <div className="inline-flex gap-1 bg-slate-900 border border-slate-800 rounded-xl p-1">
-              {([["invoices", "📄 بالفواتير"], ["items", "📦 بالأصناف"]] as const).map(([k, label]) => (
+              {([["invoices", t("📄 By invoice", "📄 بالفواتير")], ["items", t("📦 By item", "📦 بالأصناف")]] as const).map(([k, label]) => (
                 <button key={k} onClick={() => setReportView(k)} className={`px-4 py-2 rounded-lg font-bold text-xs transition-all ${reportView === k ? "bg-blue-600 text-white" : "text-slate-400 hover:text-slate-200"}`}>{label}</button>
               ))}
             </div>
             <div className="relative flex-1 min-w-[180px] max-w-[320px]">
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={reportView === "items" ? "بحث باسم الصنف أو التصنيف…" : "بحث برقم داخلي / مرجع المورد / المورّد…"} className="w-full bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm" />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={reportView === "items" ? t("Search by item name or category…", "بحث باسم الصنف أو التصنيف…") : t("Search by internal no. / supplier ref / supplier…", "بحث برقم داخلي / مرجع المورد / المورّد…")} className="w-full bg-slate-900 border border-slate-700 rounded-xl text-white px-3 py-2 text-sm" />
               {search && <button onClick={() => setSearch("")} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white text-xs">✕</button>}
             </div>
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5"><div className="text-[10px] text-slate-500 font-bold">عدد الفواتير</div><div className="text-xl font-black font-mono mt-1 text-white">{report.count}</div></div>
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5"><div className="text-[10px] text-slate-500 font-bold">الإجمالي (شامل الضريبة)</div><div className="text-xl font-black font-mono mt-1 text-emerald-400 [direction:ltr]">{fmt(report.total)}</div></div>
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5"><div className="text-[10px] text-slate-500 font-bold">إجمالي الضريبة</div><div className="text-xl font-black font-mono mt-1 text-amber-400 [direction:ltr]">{fmt(report.totalVat)}</div></div>
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5"><div className="text-[10px] text-slate-500 font-bold">متوسط الفاتورة</div><div className="text-xl font-black font-mono mt-1 text-white [direction:ltr]">{fmt(report.avg)}</div></div>
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5"><div className="text-[10px] text-slate-500 font-bold">{t("Invoices", "عدد الفواتير")}</div><div className="text-xl font-black font-mono mt-1 text-white">{report.count}</div></div>
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5"><div className="text-[10px] text-slate-500 font-bold">{t("Total (incl. tax)", "الإجمالي (شامل الضريبة)")}</div><div className="text-xl font-black font-mono mt-1 text-emerald-400 [direction:ltr]">{fmt(report.total)}</div></div>
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5"><div className="text-[10px] text-slate-500 font-bold">{t("Total tax", "إجمالي الضريبة")}</div><div className="text-xl font-black font-mono mt-1 text-amber-400 [direction:ltr]">{fmt(report.totalVat)}</div></div>
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5"><div className="text-[10px] text-slate-500 font-bold">{t("Average invoice", "متوسط الفاتورة")}</div><div className="text-xl font-black font-mono mt-1 text-white [direction:ltr]">{fmt(report.avg)}</div></div>
           </div>
 
           {reportView === "invoices" && (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden mb-4">
-            <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-blue-500" /><h2 className="text-sm font-bold text-white">سجل الفواتير</h2><span className="text-[11px] text-slate-500 mr-auto">{branch || "—"} · {shownRows.length} فاتورة{q ? ` من ${report.count}` : ""}{selIds.size ? ` · محدد ${selIds.size}` : ""}</span></div>
+            <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-blue-500" /><h2 className="text-sm font-bold text-white">{t("Invoice log", "سجل الفواتير")}</h2><span className="text-[11px] text-slate-500 mr-auto">{branch || "—"} · {shownRows.length} {t("invoice", "فاتورة")}{q ? ` ${t("of", "من")} ${report.count}` : ""}{selIds.size ? ` · ${t("selected", "محدد")} ${selIds.size}` : ""}</span></div>
             {shownRows.length === 0 ? (
-              <div className="p-10 text-center text-slate-500 text-sm">{q ? "لا توجد فواتير مطابقة للبحث." : "لا توجد فواتير ضمن هذا النطاق. أضف فاتورة من تبويب «فاتورة جديدة»."}</div>
+              <div className="p-10 text-center text-slate-500 text-sm">{q ? t("No invoices match the search.", "لا توجد فواتير مطابقة للبحث.") : t("No invoices in this range. Add one from the “New invoice” tab.", "لا توجد فواتير ضمن هذا النطاق. أضف فاتورة من تبويب «فاتورة جديدة».")}</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse" style={{ minWidth: 800 }}>
                   <thead><tr>
-                    <th className="px-2 py-2.5 bg-slate-950 border-b border-slate-700 w-9"><input type="checkbox" checked={allRowsSelected} onChange={toggleSelAll} className="w-4 h-4 accent-blue-500 cursor-pointer align-middle" title="تحديد الكل" /></th>
-                    {["الرقم الداخلي", "التاريخ", "المورّد", "مرجع المورد", "النوع", "عدد الأصناف", "الضريبة", "الإجمالي", "الدفع", "ملاحظات", ""].map((h) => <th key={h} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 uppercase whitespace-nowrap border-b border-slate-700">{h}</th>)}
+                    <th className="px-2 py-2.5 bg-slate-950 border-b border-slate-700 w-9"><input type="checkbox" checked={allRowsSelected} onChange={toggleSelAll} className="w-4 h-4 accent-blue-500 cursor-pointer align-middle" title={t("Select all", "تحديد الكل")} /></th>
+                    {[t("Internal no.", "الرقم الداخلي"), t("Date", "التاريخ"), t("Supplier", "المورّد"), t("Supplier ref", "مرجع المورد"), t("Type", "النوع"), t("Items", "عدد الأصناف"), t("Tax", "الضريبة"), t("Total", "الإجمالي"), t("Payment", "الدفع"), t("Notes", "ملاحظات"), ""].map((h) => <th key={h} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 uppercase whitespace-nowrap border-b border-slate-700">{h}</th>)}
                   </tr></thead>
                   <tbody>
                     {shownRows.map((e) => (
@@ -761,19 +765,19 @@ export default function PurchasesPage() {
                         <td className="px-2 py-2 text-xs text-center font-mono [direction:ltr] whitespace-nowrap border-b border-slate-800">{e.date.slice(5)}</td>
                         <td className="px-2 py-2 text-xs text-right text-slate-200 border-b border-slate-800">{e.supplier}</td>
                         <td className="px-2 py-2 text-xs text-center text-slate-400 border-b border-slate-800">{e.invoiceNo || "—"}</td>
-                        <td className="px-2 py-2 text-center border-b border-slate-800"><span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${e.taxable ? "bg-blue-500/15 text-blue-300" : "bg-slate-500/15 text-slate-400"}`}>{e.taxable ? "ضريبية" : "غير ضريبية"}</span></td>
+                        <td className="px-2 py-2 text-center border-b border-slate-800"><span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${e.taxable ? "bg-blue-500/15 text-blue-300" : "bg-slate-500/15 text-slate-400"}`}>{e.taxable ? t("Taxable", "ضريبية") : t("Non-taxable", "غير ضريبية")}</span></td>
                         <td className="px-2 py-2 text-xs text-center text-slate-300 border-b border-slate-800">{(e.items || []).length}</td>
                         <td className="px-2 py-2 text-xs text-center font-mono text-amber-400 [direction:ltr] border-b border-slate-800">{e.vat ? fmt(e.vat) : "—"}</td>
                         <td className="px-2 py-2 text-xs text-center font-mono font-bold text-emerald-400 [direction:ltr] border-b border-slate-800">{fmt(e.total)}</td>
                         <td className="px-2 py-2 text-[11px] text-center text-slate-400 border-b border-slate-800 whitespace-nowrap">{e.payment}</td>
                         <td className="px-2 py-2 text-[11px] text-right text-slate-400 max-w-[200px] border-b border-slate-800">{e.note || ""}</td>
-                        <td className="px-2 py-2 text-center border-b border-slate-800 whitespace-nowrap"><button onClick={() => startEditPurchase(e)} title="تعديل الفاتورة" className="w-7 h-7 rounded-lg bg-blue-500/15 text-blue-300 ml-1">✏️</button><button onClick={() => delPurchaseRow(e.id)} title="حذف" className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400">✕</button></td>
+                        <td className="px-2 py-2 text-center border-b border-slate-800 whitespace-nowrap"><button onClick={() => startEditPurchase(e)} title={t("Edit invoice", "تعديل الفاتورة")} className="w-7 h-7 rounded-lg bg-blue-500/15 text-blue-300 ml-1">✏️</button><button onClick={() => delPurchaseRow(e.id)} title={t("Delete", "حذف")} className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400">✕</button></td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
                     <tr className="bg-slate-950 font-bold">
-                      <td colSpan={7} className="px-2 py-2.5 text-xs text-right text-slate-200 border-t border-slate-600">{q ? "إجمالي المعروض" : "الإجمالي العام"}</td>
+                      <td colSpan={7} className="px-2 py-2.5 text-xs text-right text-slate-200 border-t border-slate-600">{q ? t("Total shown", "إجمالي المعروض") : t("Grand total", "الإجمالي العام")}</td>
                       <td className="px-2 py-2.5 text-xs text-center font-mono text-amber-400 [direction:ltr] border-t border-slate-600">{fmt(shownVat)}</td>
                       <td className="px-2 py-2.5 text-xs text-center font-mono text-emerald-400 [direction:ltr] border-t border-slate-600">{fmt(shownTotal)}</td>
                       <td colSpan={3} className="border-t border-slate-600" />
@@ -787,13 +791,13 @@ export default function PurchasesPage() {
 
           {reportView === "items" && (
             <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden mb-4">
-              <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-emerald-500" /><h2 className="text-sm font-bold text-white">إجمالي كل صنف عبر كل الموردين</h2><span className="text-[11px] text-slate-500 mr-auto">{shownItems.length} صنف{q ? ` من ${report.itemAgg.length}` : ""}</span></div>
+              <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-emerald-500" /><h2 className="text-sm font-bold text-white">{t("Total per item across all suppliers", "إجمالي كل صنف عبر كل الموردين")}</h2><span className="text-[11px] text-slate-500 mr-auto">{shownItems.length} {t("item", "صنف")}{q ? ` ${t("of", "من")} ${report.itemAgg.length}` : ""}</span></div>
               {shownItems.length === 0 ? (
-                <div className="p-10 text-center text-slate-500 text-sm">{q ? "لا توجد أصناف مطابقة للبحث." : "لا توجد أصناف ضمن هذا النطاق."}</div>
+                <div className="p-10 text-center text-slate-500 text-sm">{q ? t("No items match the search.", "لا توجد أصناف مطابقة للبحث.") : t("No items in this range.", "لا توجد أصناف ضمن هذا النطاق.")}</div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full border-collapse" style={{ minWidth: 720 }}>
-                    <thead><tr>{["الصنف", "التصنيف", "إجمالي الكمية", "الوحدة", "متوسط السعر", "إجمالي التكلفة", "عدد الموردين", "عدد الفواتير"].map((h) => <th key={h} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 uppercase whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
+                    <thead><tr>{[t("Item", "الصنف"), t("Category", "التصنيف"), t("Total quantity", "إجمالي الكمية"), t("Unit", "الوحدة"), t("Average price", "متوسط السعر"), t("Total cost", "إجمالي التكلفة"), t("Suppliers", "عدد الموردين"), t("Invoices", "عدد الفواتير")].map((h) => <th key={h} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 uppercase whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
                     <tbody>
                       {shownItems.map((g, i) => (
                         <tr key={g.name + i} className="hover:bg-white/[0.02]">
@@ -810,13 +814,13 @@ export default function PurchasesPage() {
                     </tbody>
                     <tfoot>
                       <tr className="bg-slate-950 font-bold">
-                        <td colSpan={5} className="px-2 py-2.5 text-xs text-right text-slate-200 border-t border-slate-600">{q ? "إجمالي المعروض (تكلفة صافية)" : "إجمالي التكلفة (صافي)"}</td>
+                        <td colSpan={5} className="px-2 py-2.5 text-xs text-right text-slate-200 border-t border-slate-600">{q ? t("Total shown (net cost)", "إجمالي المعروض (تكلفة صافية)") : t("Total cost (net)", "إجمالي التكلفة (صافي)")}</td>
                         <td className="px-2 py-2.5 text-xs text-center font-mono text-emerald-400 [direction:ltr] border-t border-slate-600">{fmt(shownItemsCost)}</td>
                         <td colSpan={2} className="border-t border-slate-600" />
                       </tr>
                     </tfoot>
                   </table>
-                  <div className="px-4 py-2 text-[11px] text-slate-500">التكلفة = مجموع (الكمية × سعر الوحدة) بدون ضريبة، لكل صنف عبر كل الفواتير في الفترة.</div>
+                  <div className="px-4 py-2 text-[11px] text-slate-500">{t("Cost = sum of (quantity × unit price) excluding tax, for each item across all invoices in the period.", "التكلفة = مجموع (الكمية × سعر الوحدة) بدون ضريبة، لكل صنف عبر كل الفواتير في الفترة.")}</div>
                 </div>
               )}
             </div>
@@ -826,12 +830,12 @@ export default function PurchasesPage() {
             <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden mb-4">
               <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2">
                 <span className="w-1 h-4 rounded bg-amber-500" />
-                <h2 className="text-sm font-bold text-white">تنبيه تغيّر أسعار الأصناف</h2>
-                <span className="text-[11px] text-amber-400 font-bold mr-auto">{report.priceChanges.length} صنف تغيّر سعره</span>
+                <h2 className="text-sm font-bold text-white">{t("Item price change alert", "تنبيه تغيّر أسعار الأصناف")}</h2>
+                <span className="text-[11px] text-amber-400 font-bold mr-auto">{report.priceChanges.length} {t("items changed price", "صنف تغيّر سعره")}</span>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse" style={{ minWidth: 640 }}>
-                  <thead><tr>{["الصنف", "تسلسل الأسعار", "أول سعر", "آخر سعر", "أعلى سعر", "% التغيّر"].map((h) => <th key={h} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 uppercase whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
+                  <thead><tr>{[t("Item", "الصنف"), t("Price sequence", "تسلسل الأسعار"), t("First price", "أول سعر"), t("Last price", "آخر سعر"), t("Highest price", "أعلى سعر"), t("% change", "% التغيّر")].map((h) => <th key={h} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 uppercase whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
                   <tbody>
                     {report.priceChanges.map((pc) => {
                       const up = pc.change > 0;
@@ -849,13 +853,13 @@ export default function PurchasesPage() {
                   </tbody>
                 </table>
               </div>
-              <div className="px-4 py-2 text-[11px] text-slate-500">يعرض فقط الأصناف التي اشتُريت بأكثر من سعر خلال الفترة. أحمر = زيادة، أخضر = نقص.</div>
+              <div className="px-4 py-2 text-[11px] text-slate-500">{t("Shows only items bought at more than one price in the period. Red = increase, green = decrease.", "يعرض فقط الأصناف التي اشتُريت بأكثر من سعر خلال الفترة. أحمر = زيادة، أخضر = نقص.")}</div>
             </div>
           )}
 
           {report.cats.length > 0 && (
             <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-              <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-emerald-500" /><h2 className="text-sm font-bold text-white">نسبة كل تصنيف من إجمالي المشتريات</h2></div>
+              <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2"><span className="w-1 h-4 rounded bg-emerald-500" /><h2 className="text-sm font-bold text-white">{t("Share of each category in total purchases", "نسبة كل تصنيف من إجمالي المشتريات")}</h2></div>
               <div className="p-4 space-y-2.5">
                 {report.cats.map(([c, v]) => {
                   const p = report.total > 0 ? (v / report.total) * 100 : 0;
@@ -874,21 +878,21 @@ export default function PurchasesPage() {
 
       {/* نافذة معاينة الاستيراد المتعدد */}
       {importGroups && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" dir="rtl">
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" dir={dir}>
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl max-h-[85vh] flex flex-col shadow-2xl">
             <div className="px-5 py-4 border-b border-slate-800 flex items-center gap-3">
               <span className="w-9 h-9 rounded-xl bg-blue-500/15 flex items-center justify-center text-lg">📥</span>
               <div>
-                <h3 className="text-white font-bold text-base">مراجعة الفواتير المستوردة</h3>
-                <p className="text-slate-500 text-xs mt-0.5">تم العثور على {importGroups.length} فاتورة — اختر ما تريد حفظه</p>
+                <h3 className="text-white font-bold text-base">{t("Review imported invoices", "مراجعة الفواتير المستوردة")}</h3>
+                <p className="text-slate-500 text-xs mt-0.5">{t("Found", "تم العثور على")} {importGroups.length} {t("invoices — choose what to save", "فاتورة — اختر ما تريد حفظه")}</p>
               </div>
               <button onClick={() => setImportGroups(null)} className="mr-auto w-8 h-8 rounded-lg bg-slate-800 text-slate-400 hover:text-white">✕</button>
             </div>
             <div className="overflow-auto p-4">
               <table className="w-full border-collapse" style={{ minWidth: 620 }}>
                 <thead><tr>
-                  <th className="px-2 py-2 bg-slate-950 border-b border-slate-700 w-9"><input type="checkbox" checked={allSelectableSelected} onChange={toggleAllGroups} className="w-4 h-4 accent-blue-500 cursor-pointer align-middle" title="تحديد الكل" /></th>
-                  {["رقم الفاتورة", "المورّد", "التاريخ", "النوع", "عدد البنود", "الإجمالي", "الحالة"].map((h) => <th key={h} className="text-[10px] px-2 py-2 bg-slate-950 text-slate-500 uppercase whitespace-nowrap border-b border-slate-700">{h}</th>)}
+                  <th className="px-2 py-2 bg-slate-950 border-b border-slate-700 w-9"><input type="checkbox" checked={allSelectableSelected} onChange={toggleAllGroups} className="w-4 h-4 accent-blue-500 cursor-pointer align-middle" title={t("Select all", "تحديد الكل")} /></th>
+                  {[t("Invoice no.", "رقم الفاتورة"), t("Supplier", "المورّد"), t("Date", "التاريخ"), t("Type", "النوع"), t("Line items", "عدد البنود"), t("Total", "الإجمالي"), t("Status", "الحالة")].map((h) => <th key={h} className="text-[10px] px-2 py-2 bg-slate-950 text-slate-500 uppercase whitespace-nowrap border-b border-slate-700">{h}</th>)}
                 </tr></thead>
                 <tbody>
                   {importGroups.map((g) => {
@@ -899,10 +903,10 @@ export default function PurchasesPage() {
                         <td className="px-2 py-2 text-xs text-center text-slate-300 border-b border-slate-800 whitespace-nowrap">{g.invoiceNo || "—"}</td>
                         <td className="px-2 py-2 text-xs text-right text-slate-200 border-b border-slate-800">{g.supplier || "—"}</td>
                         <td className="px-2 py-2 text-xs text-center font-mono text-slate-400 [direction:ltr] border-b border-slate-800 whitespace-nowrap">{g.date}</td>
-                        <td className="px-2 py-2 text-center border-b border-slate-800"><span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${g.taxable ? "bg-blue-500/15 text-blue-300" : "bg-slate-500/15 text-slate-400"}`}>{g.taxable ? "ضريبية" : "غير ضريبية"}</span></td>
+                        <td className="px-2 py-2 text-center border-b border-slate-800"><span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${g.taxable ? "bg-blue-500/15 text-blue-300" : "bg-slate-500/15 text-slate-400"}`}>{g.taxable ? t("Taxable", "ضريبية") : t("Non-taxable", "غير ضريبية")}</span></td>
                         <td className="px-2 py-2 text-xs text-center text-slate-300 border-b border-slate-800">{g.items.length}</td>
                         <td className="px-2 py-2 text-xs text-center font-mono font-bold text-emerald-400 [direction:ltr] border-b border-slate-800">{fmt(tt.total)}</td>
-                        <td className="px-2 py-2 text-center border-b border-slate-800">{g.dup ? <span className="text-[10px] text-red-400 font-bold">مكرر</span> : <span className="text-[10px] text-emerald-400 font-bold">جديد</span>}</td>
+                        <td className="px-2 py-2 text-center border-b border-slate-800">{g.dup ? <span className="text-[10px] text-red-400 font-bold">{t("Duplicate", "مكرر")}</span> : <span className="text-[10px] text-emerald-400 font-bold">{t("New", "جديد")}</span>}</td>
                       </tr>
                     );
                   })}
@@ -910,9 +914,9 @@ export default function PurchasesPage() {
               </table>
             </div>
             <div className="px-5 py-4 border-t border-slate-800 flex items-center gap-3">
-              <span className="text-xs text-slate-500">محدد: {importSelCount} فاتورة{importDupCount ? ` · ${importDupCount} مكرر مُستبعد` : ""}</span>
-              <button onClick={() => setImportGroups(null)} className="mr-auto px-5 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-slate-300 font-bold text-sm">إلغاء</button>
-              <button onClick={confirmImport} disabled={savingImport || importSelCount === 0} className={`px-6 py-2.5 rounded-xl font-extrabold text-sm transition-all ${importSelCount > 0 && !savingImport ? "bg-emerald-500 text-emerald-950" : "bg-emerald-500/40 text-emerald-100"}`}>{savingImport ? "جاري الحفظ…" : `💾 حفظ المحدد (${importSelCount})`}</button>
+              <span className="text-xs text-slate-500">{t("Selected:", "محدد:")} {importSelCount} {t("invoice", "فاتورة")}{importDupCount ? ` · ${importDupCount} ${t("duplicates excluded", "مكرر مُستبعد")}` : ""}</span>
+              <button onClick={() => setImportGroups(null)} className="mr-auto px-5 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-slate-300 font-bold text-sm">{t("Cancel", "إلغاء")}</button>
+              <button onClick={confirmImport} disabled={savingImport || importSelCount === 0} className={`px-6 py-2.5 rounded-xl font-extrabold text-sm transition-all ${importSelCount > 0 && !savingImport ? "bg-emerald-500 text-emerald-950" : "bg-emerald-500/40 text-emerald-100"}`}>{savingImport ? t("Saving…", "جاري الحفظ…") : `💾 ${t("Save selected", "حفظ المحدد")} (${importSelCount})`}</button>
             </div>
           </div>
         </div>

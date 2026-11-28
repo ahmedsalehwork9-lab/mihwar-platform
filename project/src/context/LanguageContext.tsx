@@ -11,6 +11,12 @@ type LanguageContextType = {
 
 const LanguageContext = createContext<LanguageContextType | null>(null);
 
+// لغة حالية للاستخدام خارج مكوّنات React (منشئو الطباعة/التصدير والثوابت على مستوى الملف).
+// تُحدَّث من LanguageProvider عند كل تغيّر؛ المكوّنات تستمر باستخدام useLang().t
+let currentLang: Language = 'ar';
+export const tNow = (en: string, ar: string): string => (currentLang === 'ar' ? ar : en);
+export const isArNow = (): boolean => currentLang === 'ar';
+
 // ══════════════════════════════════════════════════════════════════════
 // إعادة تسمية "محل/محلات" -> "فرع/فروع"  و  "Shop/Shops" -> "Branch/Branches"
 // تُطبَّق مركزيًا على كل نص يمرّ عبر t()، فتغطّي التطبيق كله من مكان واحد.
@@ -41,6 +47,7 @@ function renameShopToBranch(en: string, ar: string): { en: string; ar: string } 
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [lang, setLang] = useState<Language>('ar');
+  currentLang = lang;
 
   const t = (en: string, ar: string) => {
     const r = renameShopToBranch(en, ar);

@@ -15,7 +15,7 @@ import { topShares } from "../../accounting/statements/statementsLogic";
 import { fetchPrintOrg, type PrintOrg } from "../../sales/salesInvoiceApi";
 import { printHTML } from "../../sales/salesInvoicePrint";
 import { buildPurchaseInvoiceHTML } from "../print/purchasePrint";
-import { ACTIVE } from "../../lib/orgConfig";
+import { cur as curOf } from "../../lib/orgConfig";
 import {
   DEFAULT_PFILTER, addDaysStr, delta, enrich, filterRows, kpis, monthly, prevPeriod, priceChanges, sortRows, supplierTotals,
   type PFilter, type PInv, type PRow, type PayState, type SortKey,
@@ -103,7 +103,7 @@ export default function PurchaseListView(p: PurchaseListProps) {
   };
   const printRow = (r: PRow) => {
     const org2: PrintOrg = shop ?? { name: p.orgName, tax_number: null, commercial_registration: null, phone: null, address: null, logo_url: null };
-    printHTML(buildPurchaseInvoiceHTML({ ...r.inv, items: r.inv.items ?? [], tax_amount: r.tax, total: r.total, paid_amount: r.paid }, { ...org2, name: org2.name || p.orgName }, { paymentLabel: PAY[r.inv.payment_type]?.[l2] ?? r.inv.payment_type, currency: ACTIVE.symbol }, l2));
+    printHTML(buildPurchaseInvoiceHTML({ ...r.inv, items: r.inv.items ?? [], tax_amount: r.tax, total: r.total, paid_amount: r.paid }, { ...org2, name: org2.name || p.orgName }, { paymentLabel: PAY[r.inv.payment_type]?.[l2] ?? r.inv.payment_type, currency: curOf(l2 === "ar") }, l2));
   };
   const printX = () => {
     const cols: ReportCol[] = heads.map((h, i) => ({ label: h, mono: i === 0 || i === 1 || i === 3 || i >= 6 && i <= 10, align: i >= 6 && i <= 9 || i === 12 ? ("end" as const) : undefined }));

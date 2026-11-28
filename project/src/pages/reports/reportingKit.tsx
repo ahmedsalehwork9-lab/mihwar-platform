@@ -6,14 +6,14 @@
 // =============================================================
 import { ReactNode } from "react";
 import { TrendingUp, TrendingDown, AlertTriangle, Inbox, Loader2, RefreshCw, Download, Printer } from "lucide-react";
-import { ACTIVE } from "../lib/orgConfig";
+import { curNow } from "../lib/orgConfig";
 import { useLang } from "../../context/LanguageContext";
 import type { RangeKey } from "./reportsLogic";
 
 // ── تنسيق ──────────────────────────────────────────────────────────────────
 // العملة تتبع إعداد الشركة النشطة (ACTIVE.symbol) — طبقة عرض فقط.
 export const money = (n: number, cur?: string) =>
-  `${(Math.round((Number(n) || 0) * 100) / 100).toLocaleString("en-US", { maximumFractionDigits: 2 })} ${cur ?? ACTIVE.symbol}`;
+  `${(Math.round((Number(n) || 0) * 100) / 100).toLocaleString("en-US", { maximumFractionDigits: 2 })} ${cur ?? curNow()}`;
 export const fmtInt = (n: number) => (Number(n) || 0).toLocaleString("en-US");
 export const pctLabel = (n: number) => `${n >= 0 ? "+" : ""}${Math.round((Number(n) || 0) * 10) / 10}%`;
 export const growth = (cur: number, prev: number) => (prev === 0 ? (cur === 0 ? 0 : 100) : ((cur - prev) / Math.abs(prev)) * 100);

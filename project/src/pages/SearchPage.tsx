@@ -1,3 +1,4 @@
+import { curNow } from "./lib/orgConfig";
 import { useEffect, useMemo, useState, useCallback, memo, useRef } from 'react';
 import { supabase } from './lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -668,7 +669,7 @@ const ProductCard = memo(({
         <div>
           <span className="text-[10px] text-slate-500 block leading-none mb-1">{t('Unit Price', 'سعر الوحدة')}</span>
           <span className="text-xl font-black text-white tabular-nums leading-none">
-            {p.display_price.toLocaleString()} <span className="text-[11px] font-medium text-slate-500">ر.س</span>
+            {p.display_price.toLocaleString()} <span className="text-[11px] font-medium text-slate-500">{curNow()}</span>
           </span>
         </div>
         <QtyControl
@@ -741,7 +742,7 @@ const CartItemRow = memo(({
         </button>
       </div>
       <p className="text-emerald-400 text-sm font-black tabular-nums">
-        {(item.display_price * item.quantity).toLocaleString()} <span className="text-[10px] font-normal text-slate-500">ر.س</span>
+        {(item.display_price * item.quantity).toLocaleString()} <span className="text-[10px] font-normal text-slate-500">{curNow()}</span>
       </p>
     </div>
   </div>

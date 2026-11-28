@@ -11,7 +11,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useLang } from "../../context/LanguageContext";
 import { useNotifications } from "../../context/NotificationContext";
 import * as DB from "../lib/accountingDb";
-import { ACTIVE } from "../lib/orgConfig";
+import { curNow } from "../lib/orgConfig";
 import { fetchPrintOrg } from "../sales/salesInvoiceApi";
 import { buildReportHTML, openPrint, type ReportCol } from "../accounting/shared/printReport";
 import type { AssetLike } from "../accounting/assets/assetsLogic";
@@ -131,7 +131,7 @@ export default function AlertsCenterPage({ onNavigate, onSection }: AlertsCenter
   const kpi = (id: string, label: string, n: number, tone: string, onClick?: () => void, active = false) => (
     <button type="button" onClick={onClick} data-testid={id} aria-pressed={active} className={`${CARD} p-4 text-start transition-colors hover:border-slate-600 ${active ? "ring-2 ring-blue-500/60" : ""}`}>
       <div className={`text-3xl font-black leading-none ${tone}`} dir="ltr">{n}</div><div className="mt-2 text-xs font-bold text-slate-400">{label}</div></button>);
-  const money = (id: string, label: string, v: number) => <div className={`${CARD} p-4`}><div className="text-xl font-black text-white font-mono" dir="ltr" data-testid={id}>{fmt(v)} <span className="text-xs text-slate-500">{ACTIVE.symbol}</span></div><div className="mt-2 text-xs font-bold text-slate-400">{label}</div></div>;
+  const money = (id: string, label: string, v: number) => <div className={`${CARD} p-4`}><div className="text-xl font-black text-white font-mono" dir="ltr" data-testid={id}>{fmt(v)} <span className="text-xs text-slate-500">{curNow()}</span></div><div className="mt-2 text-xs font-bold text-slate-400">{label}</div></div>;
 
   return (
     <div className="p-4 lg:p-6 min-h-screen text-slate-100 space-y-4" dir={isRTL ? "rtl" : "ltr"} data-testid="alerts-page">

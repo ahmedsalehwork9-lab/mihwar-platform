@@ -3,6 +3,7 @@ import {
   Plus, Package, Calendar, ArrowRight, Save, RotateCcw, HandCoins,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
+import { useLang } from "../../context/LanguageContext";
 import * as DB from "../lib/accountingDb";
 import { cashBankOptions } from "../lib/cashAccounts";
 import type { GLAccount, GLTreasury, GLPurchaseInvoice, GLSupplierPayment, SupplierPaymentAlloc } from "../lib/accountingDb";
@@ -14,6 +15,8 @@ const r2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
 
 export default function SupplierPaymentsPage() {
   const { ownedShopId } = (useAuth() as any) ?? {};
+  const { t, isRTL } = useLang();
+  const dir = isRTL ? "rtl" : "ltr";
   const [org, setOrg] = useState<{ id: number; name: string } | null>(null);
   const [accounts, setAccounts] = useState<GLAccount[]>([]);
   const [treasuries, setTreasuries] = useState<GLTreasury[]>([]);
@@ -101,15 +104,15 @@ export default function SupplierPaymentsPage() {
   const save = async () => {
     if (!org) return;
     setErr(null); setOk(null);
-    if (!pSupplier) { setErr("اختر المورد."); return; }
-    if (!pTreasury) { setErr("اختر الخزنة/البنك."); return; }
+    if (!pSupplier) { setErr(t("Select a supplier.", "اختر المورد.")); return; }
+    if (!pTreasury) { setErr(t("Select a cash/bank account.", "اختر الخزنة/البنك.")); return; }
     const allocations: SupplierPaymentAlloc[] = openInvs
       .map((i) => {
         const amt = Math.min(Number(alloc[i.id]) || 0, outstanding(i));
         return { invoice_id: i.id, invoice_no: i.invoice_no, invoice_year: i.invoice_year, amount: r2(amt) };
       })
       .filter((a) => a.amount > 0);
-    if (!allocations.length) { setErr("خصّص مبلغًا لفاتورة واحدة على الأقل (أو استخدم «سداد الكل»)."); return; }
+    if (!allocations.length) { setErr(t("Allocate an amount to at least one invoice (or use “Pay all”).", "خصّص مبلغًا لفاتورة واحدة على الأقل (أو استخدم «سداد الكل»).")); return; }
     const amount = r2(allocations.reduce((s, a) => s + a.amount, 0));
     const supName = supplierAccounts.find((a) => a.id === pSupplier)?.name ?? null;
     setSaving(true);
@@ -119,14 +122,14 @@ export default function SupplierPaymentsPage() {
       treasury_account_id: Number(pTreasury), amount, allocations, notes: pNotes.trim() || null,
     });
     setSaving(false);
-    if (!res.ok) { setErr(res.error || "تعذّر حفظ الدفعة."); return; }
-    setOk(`تم حفظ سند صرف رقم ${res.paymentNo} بمبلغ ${fmt(amount)}.`);
+    if (!res.ok) { setErr(res.error || t("Could not save the payment.", "تعذّر حفظ الدفعة.")); return; }
+    setOk(t(`Payment voucher No. ${res.paymentNo} saved, amount ${fmt(amount)}.`, `تم حفظ سند صرف رقم ${res.paymentNo} بمبلغ ${fmt(amount)}.`));
     setMode("list"); loadList();
     setTimeout(() => setOk(null), 4000);
   };
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center" dir="rtl">
+    <div className="min-h-screen flex items-center justify-center" dir={dir}>
       <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
     </div>
   );
@@ -135,19 +138,19 @@ export default function SupplierPaymentsPage() {
   if (mode === "new") {
     const supName = supplierAccounts.find((a) => a.id === pSupplier)?.name;
     return (
-      <div className="min-h-screen" dir="rtl">
+      <div className="min-h-screen" dir={dir}>
         <div className="sticky top-0 z-20 bg-slate-950/95 backdrop-blur border-b border-slate-800">
           <div className="max-w-5xl mx-auto px-4 lg:px-6 py-3 flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <button onClick={closeNew} className="flex items-center gap-1.5 text-slate-400 hover:text-white text-sm shrink-0"><ArrowRight size={18} /> رجوع</button>
+              <button onClick={closeNew} className="flex items-center gap-1.5 text-slate-400 hover:text-white text-sm shrink-0"><ArrowRight size={18} /> {t("Back", "رجوع")}</button>
               <div className="h-5 w-px bg-slate-700" />
               <div className="flex items-center gap-2 min-w-0">
                 <div className="w-8 h-8 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0"><HandCoins size={16} /></div>
-                <h1 className="text-base font-black text-white truncate">سند صرف لمورد</h1>
+                <h1 className="text-base font-black text-white truncate">{t("Supplier payment voucher", "سند صرف لمورد")}</h1>
               </div>
             </div>
             <button onClick={save} disabled={saving} className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-[#fff] font-bold px-5 py-2 rounded-xl text-sm shrink-0">
-              <Save size={16} /> {saving ? "جارٍ الحفظ…" : "حفظ الدفعة"}
+              <Save size={16} /> {saving ? t("Saving…", "جارٍ الحفظ…") : t("Save payment", "حفظ الدفعة")}
             </button>
           </div>
         </div>
@@ -155,12 +158,12 @@ export default function SupplierPaymentsPage() {
         <div className="max-w-5xl mx-auto px-4 lg:px-6 py-5 space-y-4">
           {err && <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl px-4 py-3 text-sm">{err}</div>}
 
-          <Section title="بيانات الدفعة">
+          <Section title={t("Payment details", "بيانات الدفعة")}>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <Field label="التاريخ"><input type="date" value={pDate} onChange={(e) => setPDate(e.target.value)} className={inp} /></Field>
-              <Field label="المورد">
+              <Field label={t("Date", "التاريخ")}><input type="date" value={pDate} onChange={(e) => setPDate(e.target.value)} className={inp} /></Field>
+              <Field label={t("Supplier", "المورد")}>
                 <select value={pSupplier} onChange={(e) => setPSupplier(e.target.value ? Number(e.target.value) : "")} className={inp}>
-                  <option value="">— اختر موردًا —</option>
+                  <option value="">{t("— Select a supplier —", "— اختر موردًا —")}</option>
                   {supplierParent && (
                     <optgroup label={`${supplierParent.code} · ${supplierParent.name}`}>
                       {supplierAccounts.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}
@@ -168,10 +171,10 @@ export default function SupplierPaymentsPage() {
                   )}
                 </select>
               </Field>
-              <Field label="الخزنة/البنك">
+              <Field label={t("Cash/Bank", "الخزنة/البنك")}>
                 <select value={pTreasury} onChange={(e) => setPTreasury(e.target.value ? Number(e.target.value) : "")} className={inp}>
-                  <option value="">— اختر —</option>
-                  {treasuryOptions.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  <option value="">{t("— Select —", "— اختر —")}</option>
+                  {treasuryOptions.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
                 </select>
               </Field>
             </div>
@@ -179,25 +182,25 @@ export default function SupplierPaymentsPage() {
 
           {pSupplier ? (
             <Section
-              title={`فواتير ${supName ?? "المورد"} المفتوحة`}
+              title={t(`Open invoices of ${supName ?? "the supplier"}`, `فواتير ${supName ?? "المورد"} المفتوحة`)}
               action={openInvs.length > 0 ? (
                 <div className="flex items-center gap-2">
-                  <button type="button" onClick={payAll} className="text-xs font-bold text-emerald-400 hover:text-emerald-300">سداد الكل</button>
+                  <button type="button" onClick={payAll} className="text-xs font-bold text-emerald-400 hover:text-emerald-300">{t("Pay all", "سداد الكل")}</button>
                   <span className="text-slate-700">·</span>
-                  <button type="button" onClick={clearAll} className="text-xs text-slate-400 hover:text-white">تفريغ</button>
+                  <button type="button" onClick={clearAll} className="text-xs text-slate-400 hover:text-white">{t("Clear", "تفريغ")}</button>
                 </div>
               ) : null}
             >
               {openInvs.length === 0 ? (
-                <div className="text-center text-slate-600 py-8 text-sm">لا توجد فواتير آجلة مستحقة لهذا المورد.</div>
+                <div className="text-center text-slate-600 py-8 text-sm">{t("No outstanding credit invoices for this supplier.", "لا توجد فواتير آجلة مستحقة لهذا المورد.")}</div>
               ) : (
                 <>
                   <div className="hidden md:flex items-center gap-2 px-1 pb-2 text-[11px] text-slate-500 font-semibold">
-                    <div className="w-24">الفاتورة</div>
-                    <div className="w-24 text-center">التاريخ</div>
-                    <div className="w-24 text-center">الاستحقاق</div>
-                    <div className="flex-1 text-left">المتبقّي</div>
-                    <div className="w-32 text-center">المخصّص</div>
+                    <div className="w-24">{t("Invoice", "الفاتورة")}</div>
+                    <div className="w-24 text-center">{t("Date", "التاريخ")}</div>
+                    <div className="w-24 text-center">{t("Due date", "الاستحقاق")}</div>
+                    <div className="flex-1 text-left">{t("Outstanding", "المتبقّي")}</div>
+                    <div className="w-32 text-center">{t("Allocated", "المخصّص")}</div>
                     <div className="w-16" />
                   </div>
                   <div className="space-y-2">
@@ -211,7 +214,7 @@ export default function SupplierPaymentsPage() {
                           <div className="flex-1 text-left text-sm text-white font-semibold">{fmt(out)}</div>
                           <input value={alloc[i.id] ?? ""} onChange={(e) => setA(i.id, e.target.value)} inputMode="decimal" placeholder="0.00"
                             className="w-32 bg-slate-800 border border-slate-700 rounded-lg px-2 py-2 text-sm text-white text-center outline-none focus:border-emerald-500" />
-                          <button type="button" onClick={() => payFull(i)} className="w-16 text-[11px] text-emerald-400 hover:text-emerald-300 font-bold">كامل</button>
+                          <button type="button" onClick={() => payFull(i)} className="w-16 text-[11px] text-emerald-400 hover:text-emerald-300 font-bold">{t("Full", "كامل")}</button>
                         </div>
                       );
                     })}
@@ -220,18 +223,18 @@ export default function SupplierPaymentsPage() {
               )}
             </Section>
           ) : (
-            <Section title="الفواتير"><div className="text-center text-slate-600 py-6 text-sm">اختر موردًا لعرض فواتيره المستحقة.</div></Section>
+            <Section title={t("Invoices", "الفواتير")}><div className="text-center text-slate-600 py-6 text-sm">{t("Select a supplier to see their outstanding invoices.", "اختر موردًا لعرض فواتيره المستحقة.")}</div></Section>
           )}
 
-          <Section title="ملاحظات"><input value={pNotes} onChange={(e) => setPNotes(e.target.value)} placeholder="اختياري" className={inp} /></Section>
+          <Section title={t("Notes", "ملاحظات")}><input value={pNotes} onChange={(e) => setPNotes(e.target.value)} placeholder={t("Optional", "اختياري")} className={inp} /></Section>
 
           <div className="bg-slate-800/60 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
             <div className="flex gap-6">
-              <div><div className="text-[11px] text-slate-500">إجمالي مستحق المورد</div><div className="text-base font-black text-amber-400">{fmt(totalOutstanding)}</div></div>
-              <div><div className="text-[11px] text-slate-500">إجمالي الدفعة</div><div className="text-lg font-black text-emerald-400">{fmt(allocTotal)}</div></div>
+              <div><div className="text-[11px] text-slate-500">{t("Total owed to supplier", "إجمالي مستحق المورد")}</div><div className="text-base font-black text-amber-400">{fmt(totalOutstanding)}</div></div>
+              <div><div className="text-[11px] text-slate-500">{t("Payment total", "إجمالي الدفعة")}</div><div className="text-lg font-black text-emerald-400">{fmt(allocTotal)}</div></div>
             </div>
             <button onClick={save} disabled={saving} className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-[#fff] font-bold px-6 py-2.5 rounded-xl text-sm">
-              <Save size={16} /> {saving ? "جارٍ الحفظ…" : "حفظ الدفعة"}
+              <Save size={16} /> {saving ? t("Saving…", "جارٍ الحفظ…") : t("Save payment", "حفظ الدفعة")}
             </button>
           </div>
         </div>
@@ -241,17 +244,17 @@ export default function SupplierPaymentsPage() {
 
   // ══════════════ LIST ══════════════
   return (
-    <div className="p-4 lg:p-6 min-h-screen" dir="rtl">
+    <div className="p-4 lg:p-6 min-h-screen" dir={dir}>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-2xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center"><HandCoins size={22} /></div>
           <div>
-            <h1 className="text-xl font-black text-white">سداد الموردين</h1>
-            <p className="text-xs text-slate-500">{org?.name ?? "—"} · سندات صرف وتخصيص الدفعات على فواتير الموردين</p>
+            <h1 className="text-xl font-black text-white">{t("Supplier payments", "سداد الموردين")}</h1>
+            <p className="text-xs text-slate-500">{org?.name ?? "—"} {t("· Payment vouchers and allocation to supplier invoices", "· سندات صرف وتخصيص الدفعات على فواتير الموردين")}</p>
           </div>
         </div>
         <button onClick={openNew} className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-[#fff] font-bold px-4 py-2.5 rounded-xl text-sm">
-          <Plus size={18} /> سند صرف جديد
+          <Plus size={18} /> {t("New payment voucher", "سند صرف جديد")}
         </button>
       </div>
 
@@ -262,7 +265,7 @@ export default function SupplierPaymentsPage() {
         <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-sm text-white" />
         <span className="text-slate-600 text-sm">←</span>
         <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-sm text-white" />
-        <button onClick={loadList} className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg text-sm"><RotateCcw size={14} /> تحديث</button>
+        <button onClick={loadList} className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg text-sm"><RotateCcw size={14} /> {t("Refresh", "تحديث")}</button>
       </div>
 
       <div className="bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden">
@@ -270,16 +273,16 @@ export default function SupplierPaymentsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-slate-400 text-xs border-b border-slate-800 bg-slate-900">
-                <th className="text-right font-semibold px-3 py-2.5">السند</th>
-                <th className="text-right font-semibold px-3 py-2.5">التاريخ</th>
-                <th className="text-right font-semibold px-3 py-2.5">المورد</th>
-                <th className="text-center font-semibold px-3 py-2.5">عدد الفواتير</th>
-                <th className="text-left font-semibold px-3 py-2.5">المبلغ</th>
+                <th className="text-right font-semibold px-3 py-2.5">{t("Voucher", "السند")}</th>
+                <th className="text-right font-semibold px-3 py-2.5">{t("Date", "التاريخ")}</th>
+                <th className="text-right font-semibold px-3 py-2.5">{t("Supplier", "المورد")}</th>
+                <th className="text-center font-semibold px-3 py-2.5">{t("Invoices", "عدد الفواتير")}</th>
+                <th className="text-left font-semibold px-3 py-2.5">{t("Amount", "المبلغ")}</th>
               </tr>
             </thead>
             <tbody>
               {list.length === 0 && (
-                <tr><td colSpan={5} className="text-center text-slate-600 py-10"><Package size={30} className="mx-auto mb-2 opacity-40" />لا توجد سندات صرف في هذه الفترة.</td></tr>
+                <tr><td colSpan={5} className="text-center text-slate-600 py-10"><Package size={30} className="mx-auto mb-2 opacity-40" />{t("No payment vouchers in this period.", "لا توجد سندات صرف في هذه الفترة.")}</td></tr>
               )}
               {list.map((p) => (
                 <tr key={p.id} className="border-b border-slate-800/60 hover:bg-slate-800/30">

@@ -346,14 +346,14 @@ export default function AccountingPage({ section, onSection, onNavigate }: { sec
 
   const postable = useMemo(() => accounts.filter((a) => !a.is_group).sort((a, b) => a.code.localeCompare(b.code)), [accounts]);
   const accById = useMemo(() => new Map(accounts.map((a) => [a.id, a] as const)), [accounts]);
-  const branchName = (id: number | null | undefined) => (id == null ? "" : (branches || []).find((b: any) => b.id === id)?.name || ("فرع " + id));
+  const branchName = (id: number | null | undefined) => (id == null ? "" : (branches || []).find((b: any) => b.id === id)?.name || (tr("Branch ", "فرع ") + id));
 
-  if (orgLoading) return <div className="p-10 text-center text-slate-500 text-sm">جارٍ التحميل…</div>;
+  if (orgLoading) return <div className="p-10 text-center text-slate-500 text-sm">{tr("Loading…", "جارٍ التحميل…")}</div>;
   if (!org) return (
-    <div className="p-4 lg:p-6" dir="rtl">
+    <div className="p-4 lg:p-6" dir={uiRTL ? "rtl" : "ltr"}>
       <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-8 text-center max-w-lg mx-auto">
-        <h2 className="text-amber-400 font-bold text-lg mb-2">الحسابات على مستوى المؤسسة</h2>
-        <p className="text-slate-400 text-sm">الفرع الحالي غير مرتبط بمؤسسة. اربط الفرع بمؤسسة من صفحة المجموعات/المحلات أولًا لتفعيل الدفاتر.</p>
+        <h2 className="text-amber-400 font-bold text-lg mb-2">{tr("Organization-level accounting", "الحسابات على مستوى المؤسسة")}</h2>
+        <p className="text-slate-400 text-sm">{tr("The current branch is not linked to an organization. Link it to an organization from the Groups/Branches page first to enable the ledgers.", "الفرع الحالي غير مرتبط بمؤسسة. اربط الفرع بمؤسسة من صفحة المجموعات/المحلات أولًا لتفعيل الدفاتر.")}</p>
       </div>
     </div>
   );
@@ -370,7 +370,7 @@ export default function AccountingPage({ section, onSection, onNavigate }: { sec
   const activeTab = TABS.find((t) => t.k === tab)!;
   const ActiveIcon = activeTab.icon;
   const tabLabel = uiLang === "en" ? TAB_EN[activeTab.k] : activeTab.label;
-  const shellDir = tab === "chart" && !uiRTL ? "ltr" : "rtl"; // صفحات الحسابات الأخرى ما زالت عربية فقط (مراحل لاحقة)
+  const shellDir = uiRTL ? "rtl" : "ltr";
 
   return (
     <div className="p-4 lg:p-6 min-h-screen" dir={shellDir}>
@@ -389,7 +389,7 @@ export default function AccountingPage({ section, onSection, onNavigate }: { sec
           <span className="w-11 h-11 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-400"><ActiveIcon size={22} /></span>
           <div>
             <h1 className="text-2xl font-black text-white leading-tight">{tabLabel}</h1>
-            <p className="text-slate-500 text-xs mt-0.5">{tab === "sales-returns" ? "مرتجعات المبيعات — تُرحَّل للدفتر وتُرجع الكميات للمخزون" : tab === "pos-ledger" ? "دفتر نقاط البيع — فواتير ومرتجعات نقاط البيع فقط، منفصلة عن دفتر المبيعات" : tab === "sales" ? "إدارة المبيعات والفواتير — مرحّلة للدفتر تلقائيًا" : tr("Accounting — one ledger at organization level", "الحسابات — دفتر موحّد على مستوى المؤسسة")}</p>
+            <p className="text-slate-500 text-xs mt-0.5">{tab === "sales-returns" ? tr("Sales returns — posted to the ledger and returned to stock", "مرتجعات المبيعات — تُرحَّل للدفتر وتُرجع الكميات للمخزون") : tab === "pos-ledger" ? tr("POS ledger — POS invoices and returns only, separate from the sales ledger", "دفتر نقاط البيع — فواتير ومرتجعات نقاط البيع فقط، منفصلة عن دفتر المبيعات") : tab === "sales" ? tr("Sales management — posted to the ledger automatically", "إدارة المبيعات والفواتير — مرحّلة للدفتر تلقائيًا") : tr("Accounting — one ledger at organization level", "الحسابات — دفتر موحّد على مستوى المؤسسة")}</p>
           </div>
         </div>
         <div className="inline-flex items-center gap-2.5 bg-slate-900 border border-slate-800 rounded-xl px-4 py-2">
@@ -424,6 +424,7 @@ export default function AccountingPage({ section, onSection, onNavigate }: { sec
 
 // ══════════════ ميزان المراجعة ══════════════
 function TrialTab({ org, shop, accById, branches }: any) {
+  const { t, isRTL } = useLang(); const dir = isRTL ? "rtl" : "ltr";
   const multiBranch = branches && branches.length > 1;
   const [from, setFrom] = useState(monthStart());
   const [to, setTo] = useState(today());
@@ -451,21 +452,21 @@ function TrialTab({ org, shop, accById, branches }: any) {
   const totC = rows.reduce((s, r) => s + r.credit, 0);
 
   const exportExcel = () => {
-    const head = ["الكود", "الحساب", "مدين", "دائن", "الرصيد"];
+    const head = [t("Code", "الكود"), t("Account", "الحساب"), t("Debit", "مدين"), t("Credit", "دائن"), t("Balance", "الرصيد")];
     const body = rows.map((r) => [r.code, r.name, fmt(r.debit), fmt(r.credit), fmt(r.debit - r.credit)]);
     const rowsHtml = body.map((c) => `<tr>${c.map((v, i) => `<td style="border:1px solid #e5e7eb;padding:5px 8px;font-size:11px;text-align:${i === 1 ? "right" : "center"};">${v}</td>`).join("")}</tr>`).join("");
-    const html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"></head><body dir="rtl"><h3>ميزان المراجعة — ${org.name} — ${from} إلى ${to}</h3><table style="border-collapse:collapse"><tr>${head.map((h) => `<th style="border:1px solid #d1d5db;padding:6px 8px;background:#14304d;color:#fff;font-size:11px;">${h}</th>`).join("")}</tr>${rowsHtml}<tr><td colspan="2" style="border:1px solid #cbd5e1;padding:6px;font-weight:800;text-align:right;">الإجمالي</td><td style="border:1px solid #cbd5e1;padding:6px;text-align:center;font-weight:800;">${fmt(totD)}</td><td style="border:1px solid #cbd5e1;padding:6px;text-align:center;font-weight:800;">${fmt(totC)}</td><td></td></tr></table></body></html>`;
+    const html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"></head><body dir="${dir}"><h3>${t("Trial balance —", "ميزان المراجعة —")} ${org.name} — ${from} ${t("To", "إلى")} ${to}</h3><table style="border-collapse:collapse"><tr>${head.map((h) => `<th style="border:1px solid #d1d5db;padding:6px 8px;background:#14304d;color:#fff;font-size:11px;">${h}</th>`).join("")}</tr>${rowsHtml}<tr><td colspan="2" style="border:1px solid #cbd5e1;padding:6px;font-weight:800;text-align:right;">${t("Total", "الإجمالي")}</td><td style="border:1px solid #cbd5e1;padding:6px;text-align:center;font-weight:800;">${fmt(totD)}</td><td style="border:1px solid #cbd5e1;padding:6px;text-align:center;font-weight:800;">${fmt(totC)}</td><td></td></tr></table></body></html>`;
     const blob = new Blob(["﻿" + html], { type: "application/vnd.ms-excel;charset=utf-8" });
-    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `ميزان_المراجعة_${from}_${to}.xls`; a.click(); URL.revokeObjectURL(a.href);
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `${t("Trial_balance", "ميزان_المراجعة")}_${from}_${to}.xls`; a.click(); URL.revokeObjectURL(a.href);
   };
 
   const printTrial = () => {
     const ok = openPrint(buildReportHTML({
-      title: "ميزان المراجعة", subtitle: `${from} إلى ${to}`, orgName: shop?.shop_name || org.name, taxNumber: shop?.tax_number, logoUrl: shop?.logo_url, address: shop?.address, dir: "rtl", lang: "ar",
-      cols: [{ label: "الكود", mono: true }, { label: "الحساب" }, { label: "مدين", align: "end" }, { label: "دائن", align: "end" }, { label: "الرصيد", align: "end" }],
-      rows: rows.map((r) => [r.code, r.name, r.debit, r.credit, r.debit - r.credit]), totals: ["الإجمالي", "", totD, totC, totD - totC],
+      title: t("Trial balance", "ميزان المراجعة"), subtitle: t(`${from} to ${to}`, `${from} إلى ${to}`), orgName: shop?.shop_name || org.name, taxNumber: shop?.tax_number, logoUrl: shop?.logo_url, address: shop?.address, dir: "rtl", lang: "ar",
+      cols: [{ label: t("Code", "الكود"), mono: true }, { label: t("Account", "الحساب") }, { label: t("Debit", "مدين"), align: "end" }, { label: t("Credit", "دائن"), align: "end" }, { label: t("Balance", "الرصيد"), align: "end" }],
+      rows: rows.map((r) => [r.code, r.name, r.debit, r.credit, r.debit - r.credit]), totals: [t("Total", "الإجمالي"), "", totD, totC, totD - totC],
     }));
-    if (!ok) alert("فعّل النوافذ المنبثقة للطباعة.");
+    if (!ok) alert(t("Enable pop-ups to print.", "فعّل النوافذ المنبثقة للطباعة."));
   };
 
   const diff = Math.abs(totD - totC) < 0.01;
@@ -474,22 +475,22 @@ function TrialTab({ org, shop, accById, branches }: any) {
     <div>
       <div className={`${CARD} p-3 mb-4`}>
         <div className="flex flex-wrap items-end gap-3">
-          <div><label className={LABEL}>من</label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={DATE} /></div>
-          <div><label className={LABEL}>إلى</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={DATE} /></div>
-          {multiBranch && <div><label className={LABEL}>الفرع</label><select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className={SELECT}><option value="">كل الفروع</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
-          <button onClick={run} disabled={loading} className={BTN_PRIMARY}><Scale size={14} /> {loading ? "جارٍ…" : "عرض الميزان"}</button>
+          <div><label className={LABEL}>{t("From", "من")}</label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={DATE} /></div>
+          <div><label className={LABEL}>{t("To", "إلى")}</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={DATE} /></div>
+          {multiBranch && <div><label className={LABEL}>{t("Branch", "الفرع")}</label><select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className={SELECT}><option value="">{t("All branches", "كل الفروع")}</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
+          <button onClick={run} disabled={loading} className={BTN_PRIMARY}><Scale size={14} /> {loading ? t("Working…", "جارٍ…") : t("Show trial balance", "عرض الميزان")}</button>
           <button onClick={exportExcel} disabled={!rows.length} className={BTN_GHOST_EM}><Download size={14} /> Excel</button>
-          <button onClick={printTrial} disabled={!rows.length} data-testid="trial-print" className={BTN_GHOST_EM}><Printer size={14} /> طباعة</button>
+          <button onClick={printTrial} disabled={!rows.length} data-testid="trial-print" className={BTN_GHOST_EM}><Printer size={14} /> {t("Print", "طباعة")}</button>
         </div>
       </div>
 
       <div className={`${CARD} overflow-hidden`}>
-        <SectionHead icon={Scale} title="ميزان المراجعة" extra={
-          <span className={`text-[11px] font-bold ${diff ? "text-emerald-400" : "text-amber-400"}`}>{diff ? "✓ متوازن" : `فرق: ${fmt(totD - totC)}`}</span>
+        <SectionHead icon={Scale} title={t("Trial balance", "ميزان المراجعة")} extra={
+          <span className={`text-[11px] font-bold ${diff ? "text-emerald-400" : "text-amber-400"}`}>{diff ? t("✓ Balanced", "✓ متوازن") : `فرق: ${fmt(totD - totC)}`}</span>
         } />
         <div className="overflow-x-auto">
           <table className="w-full border-collapse" style={{ minWidth: 560 }}>
-            <thead><tr>{["الكود", "الحساب", "مدين", "دائن", "الرصيد"].map((h) => <th key={h} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
+            <thead><tr>{[t("Code", "الكود"), t("Account", "الحساب"), t("Debit", "مدين"), t("Credit", "دائن"), t("Balance", "الرصيد")].map((h) => <th key={h} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
             <tbody>
               {rows.map((r) => { const bal = r.debit - r.credit; return (
                 <tr key={r.id} className="hover:bg-white/[0.02]">
@@ -500,11 +501,11 @@ function TrialTab({ org, shop, accById, branches }: any) {
                   <td className={`px-2 py-2 text-xs text-center font-mono font-bold [direction:ltr] border-b border-slate-800 ${bal >= 0 ? "text-emerald-300" : "text-red-300"}`}>{fmt(bal)}</td>
                 </tr>
               ); })}
-              {rows.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-slate-500 text-sm">اضغط «عرض الميزان» لعرض أرصدة الحسابات ضمن الفترة.</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-slate-500 text-sm">{t("Press “Show trial balance” to see account balances for the period.", "اضغط «عرض الميزان» لعرض أرصدة الحسابات ضمن الفترة.")}</td></tr>}
             </tbody>
             {rows.length > 0 && (
               <tfoot><tr className="bg-slate-950 font-bold">
-                <td colSpan={2} className="px-2 py-2.5 text-xs text-right text-slate-200 border-t border-slate-600">الإجمالي</td>
+                <td colSpan={2} className="px-2 py-2.5 text-xs text-right text-slate-200 border-t border-slate-600">{t("Total", "الإجمالي")}</td>
                 <td className="px-2 py-2.5 text-xs text-center font-mono text-emerald-400 [direction:ltr] border-t border-slate-600">{fmt(totD)}</td>
                 <td className="px-2 py-2.5 text-xs text-center font-mono text-amber-400 [direction:ltr] border-t border-slate-600">{fmt(totC)}</td>
                 <td className="border-t border-slate-600" />
@@ -519,6 +520,7 @@ function TrialTab({ org, shop, accById, branches }: any) {
 
 // ══════════════ الأرصدة الافتتاحية ══════════════
 function OpeningTab({ org, accounts, postable, branches }: any) {
+  const { t, isRTL } = useLang(); const dir = isRTL ? "rtl" : "ltr";
   const multiBranch = branches && branches.length > 1;
   const [date, setDate] = useState(`${new Date().getFullYear() - 1}-12-31`);
   const [fBranch, setFBranch] = useState<string>("");
@@ -584,39 +586,39 @@ function OpeningTab({ org, accounts, postable, branches }: any) {
   }, [balances, postable]);
 
   const save = async () => {
-    if (totals.D === 0 && totals.C === 0) { alert("أدخل رصيدًا افتتاحيًا واحدًا على الأقل."); return; }
-    if (Math.abs(totals.diff) > 0.009 && balAcc === "") { alert(`هناك فرق ${fmt(totals.diff)}. اختر «حساب الموازنة» ليُقفَل فيه الفرق، أو عدّل الأرصدة لتتوازن.`); return; }
-    if (existing && !window.confirm("يوجد قيد افتتاحي سابق — سيُستبدل بالكامل بهذه الأرصدة. متابعة؟")) return;
+    if (totals.D === 0 && totals.C === 0) { alert(t("Enter at least one opening balance.", "أدخل رصيدًا افتتاحيًا واحدًا على الأقل.")); return; }
+    if (Math.abs(totals.diff) > 0.009 && balAcc === "") { alert(t(`There is a difference of ${fmt(totals.diff)}. Choose a “Balancing account” to close it, or adjust the balances.`, `هناك فرق ${fmt(totals.diff)}. اختر «حساب الموازنة» ليُقفَل فيه الفرق، أو عدّل الأرصدة لتتوازن.`)); return; }
+    if (existing && !window.confirm(t("A previous opening entry exists — it will be fully replaced by these balances. Continue?", "يوجد قيد افتتاحي سابق — سيُستبدل بالكامل بهذه الأرصدة. متابعة؟"))) return;
     setSaving(true);
     const arr = postable.filter((a: GLAccount) => Number(balances[a.id])).map((a: GLAccount) => ({ accountId: a.id, amount: Number(balances[a.id]) }));
     const res = await DB.saveOpeningBalances(org.id, { date, branch_id: fBranch ? Number(fBranch) : null, balancingAccountId: balAcc === "" ? 0 : Number(balAcc), natureById, balances: arr });
     setSaving(false);
-    if (!res.ok) { alert("تعذّر الحفظ: " + (res.error || "")); return; }
-    alert("تم حفظ الأرصدة الافتتاحية" + (res.plug && Math.abs(res.plug) > 0.009 ? ` — أُقفل فرق ${fmt(res.plug)} في حساب الموازنة` : "") + ".");
+    if (!res.ok) { alert(t("Could not save: ", "تعذّر الحفظ: ") + (res.error || "")); return; }
+    alert(t("Opening balances saved", "تم حفظ الأرصدة الافتتاحية") + (res.plug && Math.abs(res.plug) > 0.009 ? t(` — a difference of ${fmt(res.plug)} was closed to the balancing account`, ` — أُقفل فرق ${fmt(res.plug)} في حساب الموازنة`) : "") + ".");
     await load();
   };
 
-  const bySide = (t: AccType) => DB.natureOf(t) === "debit" ? "مدين" : "دائن";
+  const bySide = (ty: AccType) => DB.natureOf(ty) === "debit" ? t("Debit", "مدين") : t("Credit", "دائن");
   const balanced = Math.abs(totals.diff) < 0.009;
 
   return (
     <div>
       <div className={`${CARD} p-3 mb-4`}>
         <div className="flex flex-wrap items-end gap-3">
-          <div><label className={LABEL}>تاريخ القيد الافتتاحي</label><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={DATE} /></div>
-          {multiBranch && <div><label className={LABEL}>الفرع</label><select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className={SELECT}><option value="">المؤسسة (بدون فرع)</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
-          <div className="min-w-[200px]"><label className={LABEL}>حساب الموازنة (للفرق)</label><AccountPicker value={balAcc} onChange={(v) => setBalAcc(v === "" ? "" : v)} options={postable} placeholder="— رأس المال عادةً" size="md" /></div>
-          <button onClick={save} disabled={saving || loading} className={BTN_SUCCESS}><Save size={15} /> {saving ? "جارٍ…" : "حفظ الأرصدة"}</button>
+          <div><label className={LABEL}>{t("Opening entry date", "تاريخ القيد الافتتاحي")}</label><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={DATE} /></div>
+          {multiBranch && <div><label className={LABEL}>{t("Branch", "الفرع")}</label><select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className={SELECT}><option value="">{t("Organization (no branch)", "المؤسسة (بدون فرع)")}</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
+          <div className="min-w-[200px]"><label className={LABEL}>{t("Balancing account (for the difference)", "حساب الموازنة (للفرق)")}</label><AccountPicker value={balAcc} onChange={(v) => setBalAcc(v === "" ? "" : v)} options={postable} placeholder={t("— usually capital", "— رأس المال عادةً")} size="md" /></div>
+          <button onClick={save} disabled={saving || loading} className={BTN_SUCCESS}><Save size={15} /> {saving ? t("Working…", "جارٍ…") : t("Save balances", "حفظ الأرصدة")}</button>
           <div className="mr-auto text-left">
-            <div className="text-[10px] text-slate-500">مدين {fmt(totals.D)} · دائن {fmt(totals.C)}</div>
-            <div className={`text-xs font-bold ${balanced ? "text-emerald-400" : "text-amber-400"}`}>{balanced ? "✓ متوازن" : `فرق سيُقفَل في الموازنة: ${fmt(totals.diff)}`}</div>
+            <div className="text-[10px] text-slate-500">{t("Debit", "مدين")} {fmt(totals.D)} {t("· Credit", "· دائن")} {fmt(totals.C)}</div>
+            <div className={`text-xs font-bold ${balanced ? "text-emerald-400" : "text-amber-400"}`}>{balanced ? t("✓ Balanced", "✓ متوازن") : `فرق سيُقفَل في الموازنة: ${fmt(totals.diff)}`}</div>
           </div>
         </div>
         {invAcc && stock && stock.value > 0 && (
           <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2" data-testid="open-stock-hint">
             <p className="text-[11px] text-amber-200 flex-1 min-w-[220px]">
               قيمة المخزون في وحدة المخزون: <b className="[direction:ltr] inline-block">{fmt(stock.value)}</b> ({stock.items} صنف بالتكلفة). صفحة المخزون لا تُنشئ قيودًا محاسبية، لذلك لا تظهر في الميزانية إلا إذا سُجّلت في حساب «{invAcc.name}» ({invAcc.code}).
-              {Number(balances[invAcc.id]) === stock.value ? " ✓ مطابقة لما هو مُدخل." : Number(balances[invAcc.id]) ? ` المُدخل حاليًا ${fmt(Number(balances[invAcc.id]))}.` : ""}
+              {Number(balances[invAcc.id]) === stock.value ? t(" ✓ Matches what is entered.", " ✓ مطابقة لما هو مُدخل.") : Number(balances[invAcc.id]) ? t(` Currently entered: ${fmt(Number(balances[invAcc.id]))}.`, ` المُدخل حاليًا ${fmt(Number(balances[invAcc.id]))}.`) : ""}
               {" "}لا تستخدمها إن كانت مشتريات المخزون مُسجّلة محاسبيًا فعلًا (تفاديًا للازدواج).
             </p>
             <button type="button" data-testid="open-stock-fill" onClick={() => setBalances((p) => ({ ...p, [invAcc.id]: String(stock.value) }))} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500/20 border border-amber-500/40 text-amber-100 hover:bg-amber-500/30">
@@ -624,17 +626,17 @@ function OpeningTab({ org, accounts, postable, branches }: any) {
             </button>
           </div>
         )}
-        {existing && <p className="text-[11px] text-blue-300/80 mt-2">يوجد قيد افتتاحي محفوظ — القيم معبّأة أدناه. التعديل والحفظ يستبدلانه بالكامل (لا ازدواج).</p>}
+        {existing && <p className="text-[11px] text-blue-300/80 mt-2">{t("A saved opening entry exists — values are pre-filled below. Editing and saving replaces it entirely (no duplication).", "يوجد قيد افتتاحي محفوظ — القيم معبّأة أدناه. التعديل والحفظ يستبدلانه بالكامل (لا ازدواج).")}</p>}
       </div>
 
-      {TYPE_OPTS.map((t) => {
-        const list = postable.filter((a: GLAccount) => a.type === t);
+      {TYPE_OPTS.map((ty) => {
+        const list = postable.filter((a: GLAccount) => a.type === ty);
         if (!list.length) return null;
         return (
-          <div key={t} className={`${CARD} overflow-hidden mb-4`}>
+          <div key={ty} className={`${CARD} overflow-hidden mb-4`}>
             <div className="px-4 py-2.5 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
-              <span className="text-sm font-bold text-slate-200">{DB.TYPE_LABEL[t]}</span>
-              <span className="text-[10px] text-slate-500">الرصيد الطبيعي: {bySide(t)}</span>
+              <span className="text-sm font-bold text-slate-200">{DB.TYPE_LABEL[ty]}</span>
+              <span className="text-[10px] text-slate-500">{t("Normal balance:", "الرصيد الطبيعي:")} {bySide(ty)}</span>
             </div>
             <div className="divide-y divide-slate-800/60">
               {list.map((a: GLAccount) => (
@@ -649,7 +651,7 @@ function OpeningTab({ org, accounts, postable, branches }: any) {
           </div>
         );
       })}
-      {postable.length === 0 && <div className={`${CARD} p-8 text-center text-slate-500 text-sm`}>لا توجد حسابات. أنشئ دليل الحسابات أولًا من «دليل الحسابات».</div>}
+      {postable.length === 0 && <div className={`${CARD} p-8 text-center text-slate-500 text-sm`}>${t("No accounts. Create the chart of accounts first from “Chart of accounts”.", "لا توجد حسابات. أنشئ دليل الحسابات أولًا من «دليل الحسابات».")}</div>}
     </div>
   );
 }
@@ -673,6 +675,7 @@ function usePosInvoiceIds(orgId: number, returns: DB.GLSalesReturn[]): Set<numbe
 }
 
 function SalesTab({ org, postable, accById, branches, branchName, parties, shop, onNavigate, returnsMode = false, channel = "sales" }: any) {
+  const { t, isRTL } = useLang(); const dir = isRTL ? "rtl" : "ltr";
   const isPosCh = channel === "pos";
   const multiBranch = branches && branches.length > 1;
   const [from, setFrom] = useState(returnsMode ? new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10) : monthStart()); // المرتجع قد يخص فاتورة أقدم من الشهر الحالي
@@ -703,45 +706,45 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, shop,
 
 
   const del = async (inv: DB.GLSalesInvoice) => {
-    if (!window.confirm(`حذف الفاتورة رقم ${inv.invoice_no}؟ سيُحذف قيدها المحاسبي أيضًا.`)) return;
+    if (!window.confirm(t(`Delete invoice no. ${inv.invoice_no}? Its journal entry will also be deleted.`, `حذف الفاتورة رقم ${inv.invoice_no}؟ سيُحذف قيدها المحاسبي أيضًا.`))) return;
     const r = await DB.deleteSalesInvoice(inv);
-    if (!r.ok) { alert("تعذّر الحذف: " + (r.error || "")); return; }
+    if (!r.ok) { alert(t("Could not delete: ", "تعذّر الحذف: ") + (r.error || "")); return; }
     await reload();
   };
 
   const partyName = (id: number | null) => (id == null ? "" : parties.find((p: DB.GLParty) => p.id === id)?.name || "");
-  const invCustomer = (inv: DB.GLSalesInvoice) => inv.customer_name || partyName(inv.party_id) || "عميل نقدي";
+  const invCustomer = (inv: DB.GLSalesInvoice) => inv.customer_name || partyName(inv.party_id) || t("Cash customer", "عميل نقدي");
 
   const printInv = (inv: DB.GLSalesInvoice) => {
     const orgName = shop?.shop_name || org.name;
     const rows = (inv.items || []).map((it, i) => `<tr><td style="border:1px solid #e5e7eb;padding:5px 8px;text-align:center">${i + 1}</td><td style="border:1px solid #e5e7eb;padding:5px 8px;text-align:right">${it.description || "—"}</td><td style="border:1px solid #e5e7eb;padding:5px 8px;text-align:center;direction:ltr">${it.qty}</td><td style="border:1px solid #e5e7eb;padding:5px 8px;text-align:center;direction:ltr">${fmt(it.unit_price)}</td><td style="border:1px solid #e5e7eb;padding:5px 8px;text-align:left;direction:ltr">${fmt(it.line_total)}</td></tr>`).join("");
     const logo = shop?.logo_url ? `<img src="${shop.logo_url}" style="height:54px;object-fit:contain"/>` : "";
-    const vat = shop?.tax_number ? `<div>الرقم الضريبي: ${shop.tax_number}</div>` : "";
+    const vat = shop?.tax_number ? `<div>${t("Tax no.:", "الرقم الضريبي:")} ${shop.tax_number}</div>` : "";
     const trow = (label: string, val: string, bold = false) => `<tr><td style="padding:3px 8px;text-align:right;${bold ? "font-weight:800" : ""}">${label}</td><td style="padding:3px 8px;text-align:left;direction:ltr;${bold ? "font-weight:800" : ""}">${val}</td></tr>`;
-    const html = `<html dir="rtl"><head><meta charset="UTF-8"><title>فاتورة ${inv.invoice_no}</title></head><body style="font-family:'Segoe UI',Tahoma,sans-serif;padding:24px;color:#0f172a">
+    const html = `<html dir="${dir}"><head><meta charset="UTF-8"><title>${t("invoice", "فاتورة")} ${inv.invoice_no}</title></head><body style="font-family:'Segoe UI',Tahoma,sans-serif;padding:24px;color:#0f172a">
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #14304d;padding-bottom:10px;margin-bottom:12px">
         <div><div style="font-size:19px;font-weight:800">${orgName}</div>${vat}</div>${logo}
       </div>
-      <h2 style="font-size:16px;margin:0 0 4px">فاتورة ضريبية — مبيعات</h2>
+      <h2 style="font-size:16px;margin:0 0 4px">${t("Tax invoice — Sales", "فاتورة ضريبية — مبيعات")}</h2>
       <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:10px">
-        <div>رقم الفاتورة: <b>${inv.invoice_no}</b> · التاريخ: ${inv.date}</div>
-        <div>العميل: <b>${invCustomer(inv)}</b> · ${DB.PAYTYPE_LABEL[inv.payment_type]}</div>
+        <div>{t("Invoice no.:", "رقم الفاتورة:")} <b>${inv.invoice_no}</b> {t("· Date:", "· التاريخ:")} ${inv.date}</div>
+        <div>{t("Customer:", "العميل:")} <b>${invCustomer(inv)}</b> · ${DB.PAYTYPE_LABEL[inv.payment_type]}</div>
       </div>
       <table style="border-collapse:collapse;width:100%;font-size:12px;margin-bottom:10px">
-        <tr>${["#", "الصنف", "الكمية", "السعر", "الإجمالي"].map((h) => `<th style="border:1px solid #d1d5db;padding:6px 8px;background:#14304d;color:#fff">${h}</th>`).join("")}</tr>${rows}
+        <tr>${["#", t("Item", "الصنف"), t("Quantity", "الكمية"), t("Price", "السعر"), t("Total", "الإجمالي")].map((h) => `<th style="border:1px solid #d1d5db;padding:6px 8px;background:#14304d;color:#fff">${h}</th>`).join("")}</tr>${rows}
       </table>
       <table style="margin-right:auto;font-size:12px;min-width:240px">
-        ${trow("الإجمالي قبل الضريبة", fmt(inv.subtotal))}
-        ${trow(`الضريبة (${inv.tax_rate}%)`, fmt(inv.tax_amount))}
-        ${trow("الإجمالي", fmt(inv.total), true)}
-        ${trow("المدفوع", fmt(inv.paid_amount))}
-        ${trow("المتبقي", fmt(inv.total - inv.paid_amount), true)}
+        ${trow(t("Total before tax", "الإجمالي قبل الضريبة"), fmt(inv.subtotal))}
+        ${trow(t(`Tax (${inv.tax_rate}%)`, `الضريبة (${inv.tax_rate}%)`), fmt(inv.tax_amount))}
+        ${trow(t("Total", "الإجمالي"), fmt(inv.total), true)}
+        ${trow(t("Paid", "المدفوع"), fmt(inv.paid_amount))}
+        ${trow(t("Remaining", "المتبقي"), fmt(inv.total - inv.paid_amount), true)}
       </table>
       <div style="margin-top:22px;font-size:11px;color:#64748b;display:flex;justify-content:space-between">
         <span>إعداد: المحاسب أحمد صالح / Prepared by: Accountant Ahmed Saleh</span><span>واتساب: +966 55 930 1659</span>
       </div>
     </body></html>`;
-    const w = window.open("", "_blank"); if (!w) { alert("فعّل النوافذ المنبثقة للطباعة."); return; }
+    const w = window.open("", "_blank"); if (!w) { alert(t("Enable pop-ups to print.", "فعّل النوافذ المنبثقة للطباعة.")); return; }
     w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 300);
   };
 
@@ -758,19 +761,19 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, shop,
   const returnedByInvoice = useMemo(() => { const m = new Map<number, number>(); returns.forEach((r) => { if (r.original_invoice_id) m.set(r.original_invoice_id, (m.get(r.original_invoice_id) || 0) + (Number(r.total) || 0)); }); return m; }, [returns]);
   const invStatus = (inv: DB.GLSalesInvoice): { label: string; cls: string } => {
     const ret = returnedByInvoice.get(inv.id) || 0; const tot = Number(inv.total) || 0;
-    if (ret > 0 && ret >= tot - 0.009) return { label: "مرتجعة بالكامل", cls: "bg-red-500/15 text-red-300" };
-    if (ret > 0) return { label: "مرتجعة جزئيًا", cls: "bg-orange-500/15 text-orange-300" };
+    if (ret > 0 && ret >= tot - 0.009) return { label: t("Fully returned", "مرتجعة بالكامل"), cls: "bg-red-500/15 text-red-300" };
+    if (ret > 0) return { label: t("Partially returned", "مرتجعة جزئيًا"), cls: "bg-orange-500/15 text-orange-300" };
     const due = tot - (Number(inv.paid_amount) || 0);
-    if ((inv.payment_type === "credit" || inv.payment_type === "partial") && due > 0.009) return { label: "آجلة", cls: "bg-amber-500/15 text-amber-300" };
-    if (due > 0.009) return { label: "مدفوعة جزئيًا", cls: "bg-blue-500/15 text-blue-300" };
-    return { label: "مدفوعة", cls: "bg-emerald-500/15 text-emerald-300" };
+    if ((inv.payment_type === "credit" || inv.payment_type === "partial") && due > 0.009) return { label: t("On credit", "آجلة"), cls: "bg-amber-500/15 text-amber-300" };
+    if (due > 0.009) return { label: t("Partially paid", "مدفوعة جزئيًا"), cls: "bg-blue-500/15 text-blue-300" };
+    return { label: t("Paid", "مدفوعة"), cls: "bg-emerald-500/15 text-emerald-300" };
   };
-  const srcLabel = (inv: DB.GLSalesInvoice) => ((inv as any).source === "pos" ? "POS" : "يدوي");
+  const srcLabel = (inv: DB.GLSalesInvoice) => ((inv as any).source === "pos" ? "POS" : t("Manual", "يدوي"));
 
   // تجميعات اللوحة
   const byBranchData = useMemo(() => {
     const m = new Map<string, number>();
-    invoices.forEach((inv) => { const key = inv.branch_id != null ? branchName(inv.branch_id) : "المؤسسة"; m.set(key, (m.get(key) || 0) + (Number(inv.total) || 0)); });
+    invoices.forEach((inv) => { const key = inv.branch_id != null ? branchName(inv.branch_id) : t("Organization", "المؤسسة"); m.set(key, (m.get(key) || 0) + (Number(inv.total) || 0)); });
     return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([label, value], i) => ({ label, value, color: CHART_PALETTE[i % CHART_PALETTE.length] }));
   }, [invoices]); // eslint-disable-line
   const byDayData = useMemo(() => {
@@ -783,26 +786,26 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, shop,
     <div>
       <div className={`${CARD} p-3 mb-4`}>
         <div className="flex flex-wrap items-end gap-3">
-          <div><label className={LABEL}>من</label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={DATE} /></div>
-          <div><label className={LABEL}>إلى</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={DATE} /></div>
-          {multiBranch && <div><label className={LABEL}>الفرع</label><select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className={SELECT}><option value="">كل الفروع</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
-          {!returnsMode && !isPosCh && <button onClick={() => onNavigate?.("sales-invoice")} className={BTN_GHOST_EM}><Plus size={14} /> فاتورة جديدة</button>}
-          <button data-testid="new-return" onClick={() => setShowReturnForm(true)} disabled={invoices.length === 0} className={BTN_GHOST_BL} title={invoices.length === 0 ? "لا توجد فواتير ضمن الفترة المحددة" : "إنشاء مرتجع مبيعات"}><ArrowDownCircle size={14} /> إنشاء مرتجع</button>
+          <div><label className={LABEL}>{t("From", "من")}</label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={DATE} /></div>
+          <div><label className={LABEL}>{t("To", "إلى")}</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={DATE} /></div>
+          {multiBranch && <div><label className={LABEL}>{t("Branch", "الفرع")}</label><select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className={SELECT}><option value="">{t("All branches", "كل الفروع")}</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
+          {!returnsMode && !isPosCh && <button onClick={() => onNavigate?.("sales-invoice")} className={BTN_GHOST_EM}><Plus size={14} /> {t("New invoice", "فاتورة جديدة")}</button>}
+          <button data-testid="new-return" onClick={() => setShowReturnForm(true)} disabled={invoices.length === 0} className={BTN_GHOST_BL} title={invoices.length === 0 ? t("No invoices in the selected period", "لا توجد فواتير ضمن الفترة المحددة") : t("Create sales return", "إنشاء مرتجع مبيعات")}><ArrowDownCircle size={14} /> {t("Create return", "إنشاء مرتجع")}</button>
           {returnsMode ? null : <>
-          <button onClick={() => onNavigate?.("pos")} className={BTN_GHOST_BL}><ShoppingCart size={14} /> {isPosCh ? "شاشة نقاط البيع" : "نقاط البيع"}</button>
-          <button onClick={() => onNavigate?.("reports")} className={BTN_SOFT}><BarChart3 size={14} /> تقارير المبيعات</button></>}
-          <span className="text-[11px] text-slate-500 mr-auto">{invoices.length} فاتورة · متبقٍّ على العملاء: <span className="font-mono text-amber-300 font-bold">{fmt(tDue)}</span></span>
+          <button onClick={() => onNavigate?.("pos")} className={BTN_GHOST_BL}><ShoppingCart size={14} /> {isPosCh ? t("POS screen", "شاشة نقاط البيع") : t("Point of sale", "نقاط البيع")}</button>
+          <button onClick={() => onNavigate?.("reports")} className={BTN_SOFT}><BarChart3 size={14} /> {t("Sales reports", "تقارير المبيعات")}</button></>}
+          <span className="text-[11px] text-slate-500 mr-auto">{invoices.length} {t("invoices · Outstanding from customers:", "فاتورة · متبقٍّ على العملاء:")} <span className="font-mono text-amber-300 font-bold">{fmt(tDue)}</span></span>
         </div>
       </div>
 
       {/* مؤشّرات تشغيلية مختصرة */}
       {!returnsMode && <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
         {[
-          { label: "عدد الفواتير", value: String(invoices.length), icon: ShoppingCart, tone: "blue" },
-          { label: "إجمالي الفواتير", value: fmt(tTotal), icon: TrendingUp, tone: "emerald" },
-          { label: "المحصّل", value: fmt(tPaid), icon: Wallet, tone: "violet" },
-          { label: "المستحق على العملاء", value: fmt(tDue), icon: ArrowDownCircle, tone: "amber" },
-          { label: "إجمالي المرتجعات", value: fmt(tReturns), icon: TrendingDown, tone: "red" },
+          { label: t("Invoices", "عدد الفواتير"), value: String(invoices.length), icon: ShoppingCart, tone: "blue" },
+          { label: t("Total invoices", "إجمالي الفواتير"), value: fmt(tTotal), icon: TrendingUp, tone: "emerald" },
+          { label: t("Collected", "المحصّل"), value: fmt(tPaid), icon: Wallet, tone: "violet" },
+          { label: t("Receivable from customers", "المستحق على العملاء"), value: fmt(tDue), icon: ArrowDownCircle, tone: "amber" },
+          { label: t("Total returns", "إجمالي المرتجعات"), value: fmt(tReturns), icon: TrendingDown, tone: "red" },
         ].map((k, i) => {
           const KIcon = k.icon;
           const tones: any = { emerald: "text-emerald-400 bg-emerald-500/10", blue: "text-blue-400 bg-blue-500/10", violet: "text-violet-400 bg-violet-500/10", amber: "text-amber-400 bg-amber-500/10", red: "text-red-400 bg-red-500/10" };
@@ -822,10 +825,10 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, shop,
 
 
       {!returnsMode && <div className={`${CARD} overflow-hidden`}>
-        <SectionHead icon={ShoppingCart} title={isPosCh ? "فواتير نقاط البيع" : "فواتير المبيعات"} extra={<span className="text-[11px] text-slate-500">الإجمالي: <span className="font-mono text-emerald-400 font-bold">{fmt(tTotal)}</span></span>} />
+        <SectionHead icon={ShoppingCart} title={isPosCh ? t("POS invoices", "فواتير نقاط البيع") : t("Sales invoices", "فواتير المبيعات")} extra={<span className="text-[11px] text-slate-500">{t("Total:", "الإجمالي:")} <span className="font-mono text-emerald-400 font-bold">{fmt(tTotal)}</span></span>} />
         <div className="overflow-x-auto">
           <table className="w-full border-collapse" style={{ minWidth: 980 }}>
-            <thead><tr>{["رقم", "التاريخ", "العميل", "المصدر", "النوع", "الإجمالي", "مدفوع", "متبقٍّ", "الحالة", ...(multiBranch ? ["الفرع"] : []), ""].map((h, i) => <th key={i} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
+            <thead><tr>{[t("No.", "رقم"), t("Date", "التاريخ"), t("Customer", "العميل"), t("Source", "المصدر"), t("Type", "النوع"), t("Total", "الإجمالي"), t("Paid", "مدفوع"), t("Outstanding", "متبقٍّ"), t("Status", "الحالة"), ...(multiBranch ? [t("Branch", "الفرع")] : []), ""].map((h, i) => <th key={i} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
             <tbody>
               {invoices.map((inv) => { const d = (Number(inv.total) || 0) - (Number(inv.paid_amount) || 0); return (
                 <tr key={inv.id} className="hover:bg-white/[0.02]">
@@ -839,14 +842,14 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, shop,
                   <td className={`px-2 py-2 text-xs text-center font-mono [direction:ltr] border-b border-slate-800 ${d > 0.009 ? "text-red-300 font-bold" : "text-slate-600"}`}>{fmt(d)}</td>
                   <td className="px-2 py-2 text-center border-b border-slate-800">{(() => { const st = invStatus(inv); return <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${st.cls}`}>{st.label}</span>; })()}</td>
                   {multiBranch && <td className="px-2 py-2 text-xs text-center text-slate-400 border-b border-slate-800">{inv.branch_id != null ? branchName(inv.branch_id) : "—"}</td>}
-                  <td className="px-2 py-2 border-b border-slate-800"><div className="flex items-center gap-1 justify-center"><button onClick={() => printInv(inv)} title="طباعة" className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-300 flex items-center justify-center hover:bg-blue-500/20"><Printer size={13} /></button><button onClick={() => del(inv)} title="حذف" className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400 flex items-center justify-center hover:bg-red-500/20"><Trash2 size={13} /></button></div></td>
+                  <td className="px-2 py-2 border-b border-slate-800"><div className="flex items-center gap-1 justify-center"><button onClick={() => printInv(inv)} title={t("Print", "طباعة")} className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-300 flex items-center justify-center hover:bg-blue-500/20"><Printer size={13} /></button><button onClick={() => del(inv)} title={t("Delete", "حذف")} className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400 flex items-center justify-center hover:bg-red-500/20"><Trash2 size={13} /></button></div></td>
                 </tr>
               ); })}
-              {invoices.length === 0 && <tr><td colSpan={multiBranch ? 11 : 10} className="p-8 text-center text-slate-500 text-sm">{loading ? "جارٍ…" : "لا فواتير في الفترة. اضغط «فاتورة جديدة»."}</td></tr>}
+              {invoices.length === 0 && <tr><td colSpan={multiBranch ? 11 : 10} className="p-8 text-center text-slate-500 text-sm">{loading ? t("Working…", "جارٍ…") : t("No invoices in the period. Press “New invoice”.", "لا فواتير في الفترة. اضغط «فاتورة جديدة».")}</td></tr>}
             </tbody>
             {invoices.length > 0 && (
               <tfoot><tr className="bg-slate-950 font-bold">
-                <td colSpan={5} className="px-2 py-2.5 text-xs text-right text-slate-200 border-t border-slate-600">الإجمالي</td>
+                <td colSpan={5} className="px-2 py-2.5 text-xs text-right text-slate-200 border-t border-slate-600">{t("Total", "الإجمالي")}</td>
                 <td className="px-2 py-2.5 text-center font-mono text-xs text-slate-100 [direction:ltr] border-t border-slate-600">{fmt(tTotal)}</td>
                 <td className="px-2 py-2.5 text-center font-mono text-xs text-emerald-400 [direction:ltr] border-t border-slate-600">{fmt(tPaid)}</td>
                 <td className="px-2 py-2.5 text-center font-mono text-xs text-red-300 [direction:ltr] border-t border-slate-600">{fmt(tDue)}</td>

@@ -1,3 +1,4 @@
+import { curNow } from "./lib/orgConfig";
 import { useEffect, useState } from 'react';
 import { supabase } from './lib/supabase';
 import {
@@ -124,7 +125,7 @@ export default function GlobalOrdersPage() {
         <TrendingUp size={16} className="text-emerald-400 shrink-0" />
         <span className="text-slate-400 text-sm">إجمالي قيمة الطلبات</span>
         <span className="text-white font-black text-lg mr-auto tabular-nums">
-          {formatMoney(totalValue)} <span className="text-xs font-normal text-slate-500">ر.س</span>
+          {formatMoney(totalValue)} <span className="text-xs font-normal text-slate-500">{curNow()}</span>
         </span>
       </div>
 
@@ -176,7 +177,7 @@ export default function GlobalOrdersPage() {
                   {/* Task 2: formatted money */}
                   <td className="p-4 tabular-nums font-bold text-white text-sm">
                     {formatMoney(order.total_amount)}
-                    <span className="text-[10px] font-normal text-slate-500 mr-1">ر.س</span>
+                    <span className="text-[10px] font-normal text-slate-500 mr-1">{curNow()}</span>
                   </td>
 
                   {/* Task 4: status badge */}

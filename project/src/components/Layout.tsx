@@ -235,6 +235,7 @@ const OPERATIONS: OpEntry[] = [
   { type: 'group', key: 'sales', icon: <TrendingUp size={17} />, labelEn: 'Sales', labelAr: 'المبيعات', homePage: 'sales-reconciliation', children: [
     { labelEn: 'Sales',                labelAr: 'المبيعات',       page: 'sales-invoice' },
     { labelEn: 'POS',                  labelAr: 'نقاط البيع',     page: 'pos' },
+    { labelEn: 'POS Ledger',           labelAr: 'دفتر نقاط البيع', section: 'pos-ledger', perm: 'pos-ledger' },
     { labelEn: 'Sales Reconciliation', labelAr: 'تسوية المبيعات', page: 'sales-reconciliation' },
     { labelEn: 'Quotation',            labelAr: 'عرض سعر',        page: 'quotation' },
     { labelEn: 'Sales Returns',        labelAr: 'مرتجعات المبيعات', section: 'sales-returns', perm: 'sales-returns' },

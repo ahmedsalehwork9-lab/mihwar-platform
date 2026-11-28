@@ -51,7 +51,7 @@ const BTN_SUCCESS = "inline-flex items-center justify-center gap-1.5 px-5 py-2.5
 const BTN_GHOST_EM = "inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-xs transition-colors disabled:opacity-50 hover:bg-emerald-500/20";
 const BTN_GHOST_BL = "inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-300 font-bold text-xs transition-colors disabled:opacity-50 hover:bg-blue-500/20";
 
-type Tab = "dashboard" | "chart" | "opening" | "journal" | "sales" | "sales-returns" | "sales-items" | "ledger" | "trial" | "statements" | "assets" | "treasury" | "parties";
+type Tab = "dashboard" | "chart" | "opening" | "journal" | "sales" | "sales-returns" | "sales-items" | "pos-ledger" | "ledger" | "trial" | "statements" | "assets" | "treasury" | "parties";
 const TYPE_OPTS: AccType[] = ["asset", "liability", "equity", "revenue", "expense"];
 const TABS: { k: Tab; label: string; icon: any }[] = [
   { k: "dashboard", label: "لوحة التحكم", icon: LayoutDashboard },
@@ -59,6 +59,7 @@ const TABS: { k: Tab; label: string; icon: any }[] = [
   { k: "opening", label: "الأرصدة الافتتاحية", icon: Landmark },
   { k: "journal", label: "القيود اليومية", icon: BookOpen },
   { k: "sales", label: "المبيعات", icon: ShoppingCart },
+  { k: "pos-ledger", label: "دفتر نقاط البيع", icon: ShoppingCart },
   { k: "sales-returns", label: "مرتجعات المبيعات", icon: RotateCcw },
   { k: "sales-items", label: "المبيعات بالأصناف", icon: ShoppingCart },
   { k: "treasury", label: "الخزن والبنوك", icon: Wallet },
@@ -69,7 +70,7 @@ const TABS: { k: Tab; label: string; icon: any }[] = [
   { k: "assets", label: "الأصول", icon: Building2 },
 ];
 
-const TAB_EN: Record<Tab, string> = { dashboard: "Dashboard", chart: "Chart of Accounts", opening: "Opening Balances", journal: "Journal Entries", sales: "Sales", "sales-returns": "Sales Returns", "sales-items": "Sales by Items", treasury: "Treasury & Banks", parties: "Customers & Suppliers", ledger: "Account Statement", trial: "Trial Balance", statements: "Financial Statements", assets: "Assets" };
+const TAB_EN: Record<Tab, string> = { dashboard: "Dashboard", chart: "Chart of Accounts", opening: "Opening Balances", journal: "Journal Entries", sales: "Sales", "sales-returns": "Sales Returns", "pos-ledger": "POS Ledger", "sales-items": "Sales by Items", treasury: "Treasury & Banks", parties: "Customers & Suppliers", ledger: "Account Statement", trial: "Trial Balance", statements: "Financial Statements", assets: "Assets" };
 
 function SectionHead({ icon: Icon, title, extra }: { icon: any; title: string; extra?: any }) {
   return (
@@ -377,7 +378,7 @@ export default function AccountingPage({ section, onSection, onNavigate }: { sec
       <nav className="flex items-center gap-1.5 text-[11px] text-slate-500 mb-3 flex-wrap">
         <span className="inline-flex items-center gap-1"><Home size={12} /> {tr("Home", "الرئيسية")}</span>
         <ChevronLeft size={12} className="opacity-60" />
-        <span className="text-slate-400 font-bold">{tab === "sales" || tab === "sales-returns" || tab === "sales-items" ? tr("Sales", "المبيعات") : tr("Accounting", "الحسابات")}</span>
+        <span className="text-slate-400 font-bold">{tab === "sales" || tab === "sales-returns" || tab === "sales-items" || tab === "pos-ledger" ? tr("Sales", "المبيعات") : tr("Accounting", "الحسابات")}</span>
         <ChevronLeft size={12} className="opacity-60" />
         <span className="text-blue-400 font-bold">{tabLabel}</span>
       </nav>
@@ -388,7 +389,7 @@ export default function AccountingPage({ section, onSection, onNavigate }: { sec
           <span className="w-11 h-11 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-400"><ActiveIcon size={22} /></span>
           <div>
             <h1 className="text-2xl font-black text-white leading-tight">{tabLabel}</h1>
-            <p className="text-slate-500 text-xs mt-0.5">{tab === "sales-returns" ? "مرتجعات المبيعات — تُرحَّل للدفتر وتُرجع الكميات للمخزون" : tab === "sales" ? "إدارة المبيعات والفواتير — مرحّلة للدفتر تلقائيًا" : tr("Accounting — one ledger at organization level", "الحسابات — دفتر موحّد على مستوى المؤسسة")}</p>
+            <p className="text-slate-500 text-xs mt-0.5">{tab === "sales-returns" ? "مرتجعات المبيعات — تُرحَّل للدفتر وتُرجع الكميات للمخزون" : tab === "pos-ledger" ? "دفتر نقاط البيع — فواتير ومرتجعات نقاط البيع فقط، منفصلة عن دفتر المبيعات" : tab === "sales" ? "إدارة المبيعات والفواتير — مرحّلة للدفتر تلقائيًا" : tr("Accounting — one ledger at organization level", "الحسابات — دفتر موحّد على مستوى المؤسسة")}</p>
           </div>
         </div>
         <div className="inline-flex items-center gap-2.5 bg-slate-900 border border-slate-800 rounded-xl px-4 py-2">
@@ -405,6 +406,7 @@ export default function AccountingPage({ section, onSection, onNavigate }: { sec
       {tab === "opening" && <OpeningTab org={org} accounts={accounts} postable={postable} branches={branches} />}
       {tab === "journal" && <JournalCenter org={org} postable={postable} accById={accById} branches={branches || []} branchName={(id: number) => branchName(id)} parties={parties} ui={{ AccountPicker, PartyPicker, resolvePartyAccount }} onSection={onSection ? (k: string) => setTab(k as Tab) : undefined} shopInfo={shopInfo} isAdmin={!!isAdminFlag} />}
       {tab === "sales-returns" && <SalesTab returnsMode org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} parties={parties} onPartiesChange={refreshParties} shop={shopInfo} onNavigate={onNavigate} />}
+      {tab === "pos-ledger" && <SalesTab channel="pos" org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} parties={parties} onPartiesChange={refreshParties} shop={shopInfo} onNavigate={onNavigate} />}
       {tab === "sales" && <SalesTab org={org} postable={postable} accById={accById} branches={branches} branchName={branchName} parties={parties} onPartiesChange={refreshParties} shop={shopInfo} onNavigate={onNavigate} />}
       {tab === "ledger" && <LedgerTab org={org} accounts={accounts} branches={branches} shop={shopInfo} parties={parties} printStatement={printStatement} />}
       {tab === "trial" && <TrialTab shop={shopInfo} org={org} accById={accById} postable={postable} branches={branches} />}
@@ -655,7 +657,23 @@ function OpeningTab({ org, accounts, postable, branches }: any) {
 // رسوم SVG خفيفة بلا مكتبات
 const CHART_PALETTE = ["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4", "#ec4899"];
 // ══════════════ فواتير المبيعات (نقدي/آجل/جزئي + ضريبة) ══════════════
-function SalesTab({ org, postable, accById, branches, branchName, parties, shop, onNavigate, returnsMode = false }: any) {
+/** أرقام الفواتير التي مصدرها نقاط البيع من بين الفواتير الأصلية للمرتجعات المعطاة (لفصل دفتر نقاط البيع). */
+function usePosInvoiceIds(orgId: number, returns: DB.GLSalesReturn[]): Set<number> {
+  const [ids, setIds] = useState<Set<number>>(new Set());
+  const key = returns.map((r) => r.original_invoice_id).join(",");
+  useEffect(() => {
+    let alive = true;
+    const orig = returns.map((r) => Number(r.original_invoice_id)).filter((x) => Number.isFinite(x) && x > 0);
+    if (!orig.length) { setIds(new Set()); return; }
+    DB.fetchInvoiceSources(orgId, orig).then((m) => { if (alive) setIds(new Set([...m.entries()].filter(([, src]) => src === "pos").map(([id]) => id))); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgId, key]);
+  return ids;
+}
+
+function SalesTab({ org, postable, accById, branches, branchName, parties, shop, onNavigate, returnsMode = false, channel = "sales" }: any) {
+  const isPosCh = channel === "pos";
   const multiBranch = branches && branches.length > 1;
   const [from, setFrom] = useState(returnsMode ? new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10) : monthStart()); // المرتجع قد يخص فاتورة أقدم من الشهر الحالي
   const [to, setTo] = useState(today());
@@ -669,9 +687,10 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, shop,
 
   const reload = useCallback(async () => {
     setLoading(true);
-    setInvoices(await DB.fetchSalesInvoices(org.id, from, to, fBranch ? Number(fBranch) : null));
+    // فصل الدفاتر: نقاط البيع (source=pos) منفصلة تمامًا عن دفتر المبيعات الأساسي
+    setInvoices((await DB.fetchSalesInvoices(org.id, from, to, fBranch ? Number(fBranch) : null)).filter((x) => (x.source === "pos") === isPosCh));
     setLoading(false);
-  }, [org.id, from, to, fBranch]);
+  }, [org.id, from, to, fBranch, isPosCh]);
   useEffect(() => { reload(); }, [reload]);
   useEffect(() => { DB.fetchTreasuries(org.id).then(setTreasuryRows); }, [org.id]);
   const targetBranchId = branch ? Number(branch) : (fBranch ? Number(fBranch) : (branches?.length === 1 ? Number(branches[0].id) : null));
@@ -734,7 +753,8 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, shop,
   // المرتجعات (لحساب الحالة ومؤشّر المرتجعات)
   const [returns, setReturns] = useState<DB.GLSalesReturn[]>([]);
   useEffect(() => { DB.fetchSalesReturns(org.id).then(setReturns); }, [org.id, invoices.length]);
-  const tReturns = useMemo(() => returns.filter((r) => r.date >= from && r.date <= to && (!fBranch || r.branch_id === Number(fBranch))).reduce((s, r) => s + (Number(r.total) || 0), 0), [returns, from, to, fBranch]);
+  const posIds = usePosInvoiceIds(org.id, returns);
+  const tReturns = useMemo(() => returns.filter((r) => (posIds.has(Number(r.original_invoice_id)) === isPosCh) && r.date >= from && r.date <= to && (!fBranch || r.branch_id === Number(fBranch))).reduce((s, r) => s + (Number(r.total) || 0), 0), [returns, from, to, fBranch, posIds, isPosCh]);
   const returnedByInvoice = useMemo(() => { const m = new Map<number, number>(); returns.forEach((r) => { if (r.original_invoice_id) m.set(r.original_invoice_id, (m.get(r.original_invoice_id) || 0) + (Number(r.total) || 0)); }); return m; }, [returns]);
   const invStatus = (inv: DB.GLSalesInvoice): { label: string; cls: string } => {
     const ret = returnedByInvoice.get(inv.id) || 0; const tot = Number(inv.total) || 0;
@@ -766,10 +786,10 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, shop,
           <div><label className={LABEL}>من</label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={DATE} /></div>
           <div><label className={LABEL}>إلى</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={DATE} /></div>
           {multiBranch && <div><label className={LABEL}>الفرع</label><select value={fBranch} onChange={(e) => setFBranch(e.target.value)} className={SELECT}><option value="">كل الفروع</option>{branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>}
-          {!returnsMode && <button onClick={() => onNavigate?.("sales-invoice")} className={BTN_GHOST_EM}><Plus size={14} /> فاتورة جديدة</button>}
+          {!returnsMode && !isPosCh && <button onClick={() => onNavigate?.("sales-invoice")} className={BTN_GHOST_EM}><Plus size={14} /> فاتورة جديدة</button>}
           <button data-testid="new-return" onClick={() => setShowReturnForm(true)} disabled={invoices.length === 0} className={BTN_GHOST_BL} title={invoices.length === 0 ? "لا توجد فواتير ضمن الفترة المحددة" : "إنشاء مرتجع مبيعات"}><ArrowDownCircle size={14} /> إنشاء مرتجع</button>
           {returnsMode ? null : <>
-          <button onClick={() => onNavigate?.("pos")} className={BTN_GHOST_BL}><ShoppingCart size={14} /> نقاط البيع</button>
+          <button onClick={() => onNavigate?.("pos")} className={BTN_GHOST_BL}><ShoppingCart size={14} /> {isPosCh ? "شاشة نقاط البيع" : "نقاط البيع"}</button>
           <button onClick={() => onNavigate?.("reports")} className={BTN_SOFT}><BarChart3 size={14} /> تقارير المبيعات</button></>}
           <span className="text-[11px] text-slate-500 mr-auto">{invoices.length} فاتورة · متبقٍّ على العملاء: <span className="font-mono text-amber-300 font-bold">{fmt(tDue)}</span></span>
         </div>
@@ -802,7 +822,7 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, shop,
 
 
       {!returnsMode && <div className={`${CARD} overflow-hidden`}>
-        <SectionHead icon={ShoppingCart} title="فواتير المبيعات" extra={<span className="text-[11px] text-slate-500">الإجمالي: <span className="font-mono text-emerald-400 font-bold">{fmt(tTotal)}</span></span>} />
+        <SectionHead icon={ShoppingCart} title={isPosCh ? "فواتير نقاط البيع" : "فواتير المبيعات"} extra={<span className="text-[11px] text-slate-500">الإجمالي: <span className="font-mono text-emerald-400 font-bold">{fmt(tTotal)}</span></span>} />
         <div className="overflow-x-auto">
           <table className="w-full border-collapse" style={{ minWidth: 980 }}>
             <thead><tr>{["رقم", "التاريخ", "العميل", "المصدر", "النوع", "الإجمالي", "مدفوع", "متبقٍّ", "الحالة", ...(multiBranch ? ["الفرع"] : []), ""].map((h, i) => <th key={i} className="text-[10px] px-2 py-2.5 bg-slate-950 text-slate-500 whitespace-nowrap border-b border-slate-700">{h}</th>)}</tr></thead>
@@ -837,7 +857,7 @@ function SalesTab({ org, postable, accById, branches, branchName, parties, shop,
         </div>
       </div>}
 
-      <SalesReturnsPanel returnsMode={returnsMode} org={org} invoices={invoices} parties={parties} postable={postable} treasuryAccounts={treasuryAccounts} branchName={branchName} shop={shop} reloadInvoices={reload} open={showReturnForm} setOpen={setShowReturnForm} />
+      <SalesReturnsPanel channel={channel} returnsMode={returnsMode || isPosCh} org={org} invoices={invoices} parties={parties} postable={postable} treasuryAccounts={treasuryAccounts} branchName={branchName} shop={shop} reloadInvoices={reload} open={showReturnForm} setOpen={setShowReturnForm} />
 
     </div>
   );
@@ -864,17 +884,17 @@ export function PosReturnsDialog({ org, branchId, accounts, parties, branchName,
     setLoading(true);
     const from = new Date(Date.now() - 180 * 864e5).toISOString().slice(0, 10);
     const [inv, tr] = await Promise.all([DB.fetchSalesInvoices(org.id, from, today(), branchId), DB.fetchTreasuries(org.id)]);
-    setInvoices(inv); setTreasuries(tr); setLoading(false);
+    setInvoices(inv.filter((x) => x.source === "pos")); setTreasuries(tr); setLoading(false);
   }, [org.id, branchId]);
   useEffect(() => { void load(); }, [load]);
   const treasuryAccounts = (() => { const ids = new Set(cashBankOptions(postable, treasuries.filter((x) => x.branch_id == null || x.branch_id === branchId)).map((o) => o.id)); return postable.filter((a: GLAccount) => ids.has(a.id)); })();
   // نموذج المرتجع نفسه نافذة كاملة الشاشة بزر «إلغاء» خاص به؛ نعرض فقط حالة التحميل قبله
   if (loading) return <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70" role="dialog" data-testid="pos-returns-dialog" dir={den ? "ltr" : "rtl"}><div className={`${CARD} px-8 py-6 text-sm text-slate-200`}>{den ? "Loading invoices…" : "جارٍ تحميل الفواتير…"}</div></div>;
-  return <div data-testid="pos-returns-dialog"><SalesReturnsPanel org={org} invoices={invoices} parties={parties} postable={postable} treasuryAccounts={treasuryAccounts} branchName={branchName} shop={shop}
+  return <div data-testid="pos-returns-dialog"><SalesReturnsPanel org={org} invoices={invoices} parties={parties} postable={postable} treasuryAccounts={treasuryAccounts} branchName={branchName} shop={shop} channel="pos"
     reloadInvoices={async () => { await load(); onDone?.(); }} open={true} setOpen={(v: boolean) => { if (!v) onClose(); }} /></div>;
 }
 
-function SalesReturnsPanel({ org, invoices, parties, postable, treasuryAccounts, branchName, reloadInvoices, open, setOpen, returnsMode = false, shop }: any) {
+function SalesReturnsPanel({ org, invoices, parties, postable, treasuryAccounts, branchName, reloadInvoices, open, setOpen, returnsMode = false, shop, channel = "sales" }: any) {
   const { lang: rl } = useLang(); const ren = rl === "en";
   const [rows, setRows] = useState<DB.GLSalesReturn[]>([]);
   const [busy, setBusy] = useState(false);
@@ -974,10 +994,12 @@ function SalesReturnsPanel({ org, invoices, parties, postable, treasuryAccounts,
   };
   const [rq, setRq] = useState("");
   const normQ = (v: unknown) => String(v ?? "").toLowerCase().replace(/[\u064B-\u0652\u0640]/g, "").replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d))).trim();
+  const posIds = usePosInvoiceIds(org.id, rows);
+  const chanRows = useMemo(() => rows.filter((r) => (posIds.has(Number(r.original_invoice_id)) === (channel === "pos"))), [rows, posIds, channel]);
   const shownRows = useMemo(() => {
-    const toks = normQ(rq).split(/\s+/).filter(Boolean); if (!toks.length) return rows;
-    return rows.filter((r) => { const hay = normQ([`SR-${r.return_year}-${String(r.return_no).padStart(4, "0")}`, r.return_no, r.date, `${r.original_invoice_no}/${r.original_invoice_year}`, r.customer_name, r.refund_mode === "cash" ? "رد نقدي cash refund" : "اشعار دائن credit note", r.total, r.entry_id].join(" ")); return toks.every((t) => hay.includes(t)); });
-  }, [rows, rq]);
+    const toks = normQ(rq).split(/\s+/).filter(Boolean); if (!toks.length) return chanRows;
+    return chanRows.filter((r) => { const hay = normQ([`SR-${r.return_year}-${String(r.return_no).padStart(4, "0")}`, r.return_no, r.date, `${r.original_invoice_no}/${r.original_invoice_year}`, r.customer_name, r.refund_mode === "cash" ? "رد نقدي cash refund" : "اشعار دائن credit note", r.total, r.entry_id].join(" ")); return toks.every((t) => hay.includes(t)); });
+  }, [chanRows, rq]);
   const retNo = (r: DB.GLSalesReturn) => `SR-${r.return_year}-${String(r.return_no).padStart(4, "0")}`;
   const retHeads = ren ? ["Return no.", "Date", "Original invoice", "Customer", "Settlement", "Total", "Entry"] : ["رقم المرتجع", "التاريخ", "الفاتورة الأصلية", "العميل", "طريقة التسوية", "الإجمالي", "القيد"];
   const retRows = () => shownRows.map((r) => [retNo(r), r.date, `${r.original_invoice_no}/${r.original_invoice_year}`, r.customer_name || "—", r.refund_mode === "cash" ? (ren ? "Cash refund" : "رد نقدي") : (ren ? "Credit note" : "إشعار دائن"), Number(r.total) || 0, r.entry_id ? String(r.entry_id) : "—"]);
@@ -994,7 +1016,7 @@ function SalesReturnsPanel({ org, invoices, parties, postable, treasuryAccounts,
   };
   return <>
     {!open && <div className={`${CARD} overflow-hidden ${returnsMode ? "" : "mt-4"}`} data-testid="returns-list">
-      <SectionHead icon={ArrowDownCircle} title={ren ? "Sales returns" : "مرتجعات المبيعات"} extra={<div className="flex items-center gap-2"><div className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2"><Search size={13} className="shrink-0 text-slate-400" /><input value={rq} onChange={(e) => setRq(e.target.value)} data-testid="returns-search" placeholder={ren ? "Search no., customer, invoice, amount…" : "بحث: رقم، عميل، فاتورة، مبلغ…"} className="w-44 bg-transparent text-xs text-slate-200 outline-none placeholder:text-slate-500 md:w-60" /></div><button onClick={exportReturns} disabled={!shownRows.length} data-testid="returns-excel" className={BTN_GHOST_EM}><Download size={14} /> Excel</button><button onClick={printReturns} disabled={!shownRows.length} data-testid="returns-print" className={BTN_GHOST_EM}><Printer size={14} /> {ren ? "Print" : "طباعة"}</button></div>} />
+      <SectionHead icon={ArrowDownCircle} title={channel === "pos" ? (ren ? "POS returns" : "مرتجعات نقاط البيع") : (ren ? "Sales returns" : "مرتجعات المبيعات")} extra={<div className="flex items-center gap-2"><div className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2"><Search size={13} className="shrink-0 text-slate-400" /><input value={rq} onChange={(e) => setRq(e.target.value)} data-testid="returns-search" placeholder={ren ? "Search no., customer, invoice, amount…" : "بحث: رقم، عميل، فاتورة، مبلغ…"} className="w-44 bg-transparent text-xs text-slate-200 outline-none placeholder:text-slate-500 md:w-60" /></div><button onClick={exportReturns} disabled={!shownRows.length} data-testid="returns-excel" className={BTN_GHOST_EM}><Download size={14} /> Excel</button><button onClick={printReturns} disabled={!shownRows.length} data-testid="returns-print" className={BTN_GHOST_EM}><Printer size={14} /> {ren ? "Print" : "طباعة"}</button></div>} />
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead className="bg-slate-950 text-slate-300 font-bold"><tr>{retHeads.map(h=><th key={h} className="p-3">{h}</th>)}</tr></thead>

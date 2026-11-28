@@ -2978,3 +2978,15 @@ export async function reverseEntry(entryId: number, opts?: { date?: string }): P
   await supabase.from("gl_journal_entries").update({ notes: mark }).eq("id", entryId);
   return { ok: true, id: res.id };
 }
+
+/** مصدر الفواتير (pos / sales_entry / manual…) لمجموعة أرقام — يُستخدم لفصل مرتجعات نقاط البيع عن مرتجعات المبيعات. */
+export async function fetchInvoiceSources(orgId: number, ids: number[]): Promise<Map<number, string | null>> {
+  const out = new Map<number, string | null>();
+  const uniq = [...new Set(ids.filter((x) => Number.isFinite(x)))];
+  for (let i = 0; i < uniq.length; i += 200) {
+    const { data, error } = await supabase.from("gl_sales_invoices").select("id, source").eq("organization_id", orgId).in("id", uniq.slice(i, i + 200));
+    if (error) { console.error("fetchInvoiceSources", error); break; }
+    for (const r of ((data as { id: number; source: string | null }[] | null) || [])) out.set(Number(r.id), r.source);
+  }
+  return out;
+}

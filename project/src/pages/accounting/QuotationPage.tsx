@@ -20,7 +20,7 @@ type DraftItem = { description: string; qty: string; unit_price: string };
 
 export default function QuotationPage() {
   const { ownedShopId, branches } = (useAuth() as any) ?? {};
-  const { lang } = useLang();
+  const { lang, t, isRTL } = useLang();
   const [org, setOrg] = useState<{id:number;name:string}|null>(null);
   const [accounts,setAccounts] = useState<GLAccount[]>([]);
   const [parties,setParties] = useState<GLParty[]>([]);
@@ -90,13 +90,13 @@ export default function QuotationPage() {
   const save=async()=>{
     if(!org)return;
     const clean:SalesItem[]=items.map(i=>({description:i.description.trim(),qty:Number(i.qty)||0,unit_price:Number(i.unit_price)||0,line_total:Math.round((Number(i.qty)||0)*(Number(i.unit_price)||0)*100)/100})).filter(i=>i.description&&i.qty>0&&i.line_total>0);
-    if(!clean.length){alert("أدخل صنفًا واحدًا على الأقل مع الكمية والسعر.");return;}
-    if(branches?.length>1&&!branch){alert("اختر الفرع.");return;}
+    if(!clean.length){alert(t("Enter at least one item with quantity and price.", "أدخل صنفًا واحدًا على الأقل مع الكمية والسعر."));return;}
+    if(branches?.length>1&&!branch){alert(t("Select a branch.", "اختر الفرع."));return;}
     setSaving(true);
     const r=await DB.createQuotation(org.id,{branch_id:branchId,date,valid_until:validUntil||null,party_id:partyId?Number(partyId):null,customer_name:customerName.trim()||null,items:clean,discount_amount:totals.discount,tax_rate:Number(taxRate)||0,tax_inclusive:taxInclusive,notes:notes.trim()||null});
     setSaving(false);
-    if(!r.ok){alert("تعذر حفظ العرض: "+r.error);return;}
-    alert(`تم حفظ عرض السعر رقم ${r.quotationNo}`);
+    if(!r.ok){alert(t("Could not save the quotation: ", "تعذر حفظ العرض: ")+r.error);return;}
+    alert(t(`Quotation no. ${r.quotationNo} saved`, `تم حفظ عرض السعر رقم ${r.quotationNo}`));
     setShowForm(false);reset();await reload();
   };
 
@@ -109,14 +109,14 @@ export default function QuotationPage() {
 
   const convert=async()=>{
     if(!org||!convertRow)return;
-    if(convertRow.invoice_id||convertRow.status==="converted"){alert("هذا العرض تم تحويله بالفعل.");return;}
+    if(convertRow.invoice_id||convertRow.status==="converted"){alert(t("This quotation has already been converted.", "هذا العرض تم تحويله بالفعل."));return;}
     const paid=payType==="cash"?convertRow.total:payType==="credit"?0:Math.min(convertRow.total,Number((document.getElementById("quotation-paid") as HTMLInputElement)?.value)||0);
     const due=convertRow.total-paid;
-    if(paid>0&&!treasuryAcc){alert("اختر خزنة التحصيل.");return;}
-    if(due>0&&!customerAcc){alert("اختر حساب العميل/الذمم.");return;}
-    if(!revenueAcc){alert("اختر حساب إيراد المبيعات.");return;}
-    if(convertRow.tax_amount>0&&!taxAcc){alert("اختر حساب ضريبة المخرجات.");return;}
-    if(!window.confirm("سيتم إنشاء فاتورة وترحيل قيد محاسبي. هل تريد المتابعة؟"))return;
+    if(paid>0&&!treasuryAcc){alert(t("Select the collection cash account.", "اختر خزنة التحصيل."));return;}
+    if(due>0&&!customerAcc){alert(t("Select the customer/receivables account.", "اختر حساب العميل/الذمم."));return;}
+    if(!revenueAcc){alert(t("Select the sales revenue account.", "اختر حساب إيراد المبيعات."));return;}
+    if(convertRow.tax_amount>0&&!taxAcc){alert(t("Select the output tax account.", "اختر حساب ضريبة المخرجات."));return;}
+    if(!window.confirm(t("An invoice will be created and a journal entry posted. Continue?", "سيتم إنشاء فاتورة وترحيل قيد محاسبي. هل تريد المتابعة؟")))return;
     setSaving(true);
     const inv=await DB.createSalesInvoice(org.id,{
       branch_id:convertRow.branch_id,date:today(),party_id:convertRow.party_id,customer_name:convertRow.customer_name,
@@ -124,13 +124,13 @@ export default function QuotationPage() {
       customer_account_id:customerAcc?Number(customerAcc):null,revenue_account_id:Number(revenueAcc),
       tax_account_id:taxAcc?Number(taxAcc):null,tax_rate:convertRow.tax_rate,tax_inclusive:false,
       items:convertRow.items.map(i=>{const unit=convertRow.subtotal>0?i.unit_price*convertRow.subtotal/Math.max(0.01,convertRow.items.reduce((s,x)=>s+x.line_total,0)):i.unit_price;return {...i,unit_price:unit,line_total:Math.round(i.qty*unit*100)/100};}),
-      paid_amount:paid,notes:`تحويل من عرض السعر رقم ${convertRow.quotation_no}. ${convertRow.notes||""}`.trim()
+      paid_amount:paid,notes:t(`Converted from quotation no. ${convertRow.quotation_no}. ${convertRow.notes||""}`, `تحويل من عرض السعر رقم ${convertRow.quotation_no}. ${convertRow.notes||""}`).trim()
     });
-    if(!inv.ok||!inv.id){setSaving(false);alert("تعذر إنشاء الفاتورة: "+inv.error);return;}
+    if(!inv.ok||!inv.id){setSaving(false);alert(t("Could not create the invoice: ", "تعذر إنشاء الفاتورة: ")+inv.error);return;}
     const marked=await DB.markQuotationConverted(convertRow.id,inv.id);
     setSaving(false);setConvertRow(null);
-    if(!marked.ok){alert("تم إنشاء الفاتورة رقم "+inv.invoiceNo+" لكن تعذر تحديث حالة العرض: "+marked.error+". راجع الفاتورة قبل إعادة المحاولة لتجنب التكرار.");}
-    else alert("تم تحويل العرض إلى فاتورة رقم "+inv.invoiceNo);
+    if(!marked.ok){alert(t("Invoice created, no. ", "تم إنشاء الفاتورة رقم ")+inv.invoiceNo+t(" but updating the quotation status failed: ", " لكن تعذر تحديث حالة العرض: ")+marked.error+t(". Review the invoice before retrying to avoid duplicates.", ". راجع الفاتورة قبل إعادة المحاولة لتجنب التكرار."));}
+    else alert(t("Quotation converted to invoice no. ", "تم تحويل العرض إلى فاتورة رقم ")+inv.invoiceNo);
     await reload();
   };
 
@@ -139,61 +139,61 @@ export default function QuotationPage() {
     return !search||`${q.quotation_no} ${name}`.toLowerCase().includes(search.toLowerCase());
   });
   const postable=accounts.filter(a=>!a.is_group);
-  if(loading&&!org)return <div className="p-8 text-center text-slate-400">جارٍ تحميل بيانات المؤسسة…</div>;
-  if(!org)return <div className="m-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-6 text-center text-amber-300" dir="rtl">الفرع الحالي غير مرتبط بمؤسسة. اربط الفرع بمؤسسة أولًا لتفعيل عروض الأسعار.</div>;
+  if(loading&&!org)return <div className="p-8 text-center text-slate-400">{t("Loading organization data…", "جارٍ تحميل بيانات المؤسسة…")}</div>;
+  if(!org)return <div className="m-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-6 text-center text-amber-300" dir={isRTL ? "rtl" : "ltr"}>{t("The current branch is not linked to an organization. Link it to an organization first to enable quotations.", "الفرع الحالي غير مرتبط بمؤسسة. اربط الفرع بمؤسسة أولًا لتفعيل عروض الأسعار.")}</div>;
 
-  return <div className="min-h-screen p-4 lg:p-6 text-white" dir="rtl">
+  return <div className="min-h-screen p-4 lg:p-6 text-white" dir={isRTL ? "rtl" : "ltr"}>
     <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-      <div><h1 className="text-2xl font-black">عروض الأسعار</h1><p className="mt-1 text-xs text-slate-400">إنشاء ومتابعة عروض الأسعار وتحويل المقبول منها إلى فاتورة مبيعات</p></div>
-      {!showForm&&<button className={`${btn} bg-blue-600 text-white`} onClick={()=>{reset();setShowForm(true);}}><FilePlus2 size={16}/> عرض سعر جديد</button>}
+      <div><h1 className="text-2xl font-black">{t("Quotations", "عروض الأسعار")}</h1><p className="mt-1 text-xs text-slate-400">{t("Create and track quotations and convert accepted ones into a sales invoice", "إنشاء ومتابعة عروض الأسعار وتحويل المقبول منها إلى فاتورة مبيعات")}</p></div>
+      {!showForm&&<button className={`${btn} bg-blue-600 text-white`} onClick={()=>{reset();setShowForm(true);}}><FilePlus2 size={16}/> {t("New quotation", "عرض سعر جديد")}</button>}
     </div>
     {!showForm&&<>
     <div className="mb-4 grid grid-cols-1 gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-4 md:grid-cols-5">
-      <label className="text-xs text-slate-400">من تاريخ<input className={`${input} mt-1`} type="date" value={from} onChange={e=>setFrom(e.target.value)}/></label>
-      <label className="text-xs text-slate-400">إلى تاريخ<input className={`${input} mt-1`} type="date" value={to} onChange={e=>setTo(e.target.value)}/></label>
-      <label className="text-xs text-slate-400">الفرع<select className={`${input} mt-1`} value={branchFilter} onChange={e=>setBranchFilter(e.target.value)}><option value="">كل الفروع</option>{(branches||[]).map((b:any)=><option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
-      <label className="text-xs text-slate-400 md:col-span-2">بحث برقم العرض أو العميل<div className="relative mt-1"><Search className="absolute right-3 top-2.5 text-slate-500" size={15}/><input className={`${input} pr-9`} value={search} onChange={e=>setSearch(e.target.value)} placeholder="بحث..."/></div></label>
+      <label className="text-xs text-slate-400">{t("From date", "من تاريخ")}<input className={`${input} mt-1`} type="date" value={from} onChange={e=>setFrom(e.target.value)}/></label>
+      <label className="text-xs text-slate-400">{t("To date", "إلى تاريخ")}<input className={`${input} mt-1`} type="date" value={to} onChange={e=>setTo(e.target.value)}/></label>
+      <label className="text-xs text-slate-400">{t("Branch", "الفرع")}<select className={`${input} mt-1`} value={branchFilter} onChange={e=>setBranchFilter(e.target.value)}><option value="">{t("All branches", "كل الفروع")}</option>{(branches||[]).map((b:any)=><option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
+      <label className="text-xs text-slate-400 md:col-span-2">{t("Search by quotation no. or customer", "بحث برقم العرض أو العميل")}<div className="relative mt-1"><Search className="absolute right-3 top-2.5 text-slate-500" size={15}/><input className={`${input} pr-9`} value={search} onChange={e=>setSearch(e.target.value)} placeholder={t("Search...", "بحث...")}/></div></label>
     </div>
     <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
-      <div className="flex items-center justify-between border-b border-slate-800 p-4"><b className="text-sm">سجل عروض الأسعار</b><button className={`${btn} bg-slate-800 text-slate-300`} onClick={()=>void reload()}><RefreshCw size={14}/> تحديث</button></div>
-      <div className="overflow-x-auto"><table className="w-full min-w-[850px] text-right text-xs"><thead className="bg-slate-950 text-slate-400"><tr>{["رقم العرض","التاريخ","العميل","الإجمالي","الصلاحية","الحالة","الإجراءات"].map(x=><th className="p-3" key={x}>{x}</th>)}</tr></thead><tbody>
-        {filtered.map(q=><tr className="border-t border-slate-800" key={q.id}><td className="p-3 font-bold">QT-{q.quotation_year}-{String(q.quotation_no).padStart(4,"0")}</td><td className="p-3">{q.date}</td><td className="p-3">{q.customer_name||parties.find(p=>p.id===q.party_id)?.name||"—"}</td><td className="p-3 font-bold">{money(q.total)} {curAr()}</td><td className="p-3">{q.valid_until||"—"}</td><td className="p-3"><span className="rounded-lg bg-slate-800 px-2 py-1">{q.status==="converted"?"تم التحويل":q.status==="accepted"?"مقبول":q.status==="rejected"?"مرفوض":q.status==="sent"?"مرسل":"مسودة"}</span></td><td className="p-3"><div className="flex gap-2"><button title="طباعة" className="rounded-lg bg-slate-800 p-2 text-blue-300" onClick={()=>print(q)}><Printer size={15}/></button>{!q.invoice_id&&q.status!=="converted"&&<><button title="تحويل إلى فاتورة" className="rounded-lg bg-emerald-500/10 p-2 text-emerald-300" onClick={()=>{setConvertRow(q);setPayType("cash");setTreasuryAcc("");setCustomerAcc(String(parties.find(p=>p.id===q.party_id)?.account_id||""));setRevenueAcc("");setTaxAcc("");}}><ArrowRightLeft size={15}/></button><button title="حذف" className="rounded-lg bg-red-500/10 p-2 text-red-300" onClick={async()=>{if(confirm("حذف عرض السعر؟")){const r=await DB.deleteQuotation(q.id);if(!r.ok)alert(r.error);await reload();}}}><Trash2 size={15}/></button></>}</div></td></tr>)}
-        {!filtered.length&&<tr><td colSpan={7} className="p-10 text-center text-slate-500">{loading?"جارٍ التحميل…":"لا توجد عروض أسعار خلال الفترة المحددة."}</td></tr>}
+      <div className="flex items-center justify-between border-b border-slate-800 p-4"><b className="text-sm">{t("Quotations log", "سجل عروض الأسعار")}</b><button className={`${btn} bg-slate-800 text-slate-300`} onClick={()=>void reload()}><RefreshCw size={14}/> {t("Refresh", "تحديث")}</button></div>
+      <div className="overflow-x-auto"><table className="w-full min-w-[850px] text-right text-xs"><thead className="bg-slate-950 text-slate-400"><tr>{[t("Quotation no.", "رقم العرض"),t("Date", "التاريخ"),t("Customer", "العميل"),t("Total", "الإجمالي"),t("Validity", "الصلاحية"),t("Status", "الحالة"),t("Actions", "الإجراءات")].map(x=><th className="p-3" key={x}>{x}</th>)}</tr></thead><tbody>
+        {filtered.map(q=><tr className="border-t border-slate-800" key={q.id}><td className="p-3 font-bold">QT-{q.quotation_year}-{String(q.quotation_no).padStart(4,"0")}</td><td className="p-3">{q.date}</td><td className="p-3">{q.customer_name||parties.find(p=>p.id===q.party_id)?.name||"—"}</td><td className="p-3 font-bold">{money(q.total)} {curAr()}</td><td className="p-3">{q.valid_until||"—"}</td><td className="p-3"><span className="rounded-lg bg-slate-800 px-2 py-1">{q.status==="converted"?t("Converted", "تم التحويل"):q.status==="accepted"?t("Accepted", "مقبول"):q.status==="rejected"?t("Rejected", "مرفوض"):q.status==="sent"?t("Sent", "مرسل"):t("Draft", "مسودة")}</span></td><td className="p-3"><div className="flex gap-2"><button title={t("Print", "طباعة")} className="rounded-lg bg-slate-800 p-2 text-blue-300" onClick={()=>print(q)}><Printer size={15}/></button>{!q.invoice_id&&q.status!=="converted"&&<><button title={t("Convert to invoice", "تحويل إلى فاتورة")} className="rounded-lg bg-emerald-500/10 p-2 text-emerald-300" onClick={()=>{setConvertRow(q);setPayType("cash");setTreasuryAcc("");setCustomerAcc(String(parties.find(p=>p.id===q.party_id)?.account_id||""));setRevenueAcc("");setTaxAcc("");}}><ArrowRightLeft size={15}/></button><button title={t("Delete", "حذف")} className="rounded-lg bg-red-500/10 p-2 text-red-300" onClick={async()=>{if(confirm(t("Delete this quotation?", "حذف عرض السعر؟"))){const r=await DB.deleteQuotation(q.id);if(!r.ok)alert(r.error);await reload();}}}><Trash2 size={15}/></button></>}</div></td></tr>)}
+        {!filtered.length&&<tr><td colSpan={7} className="p-10 text-center text-slate-500">{loading?t("Loading…", "جارٍ التحميل…"):t("No quotations in the selected period.", "لا توجد عروض أسعار خلال الفترة المحددة.")}</td></tr>}
       </tbody></table></div>
     </div>
     </>}
 
     {showForm&&<section className="w-full rounded-2xl border border-slate-800 bg-slate-900 p-4 lg:p-6">
-      <div className="mb-5 flex items-center justify-between border-b border-slate-800 pb-4"><div><h2 className="text-xl font-black">إنشاء عرض سعر</h2><p className="mt-1 text-xs text-slate-400">أدخل بيانات العميل والأصناف والضريبة والملاحظات</p></div><button className={`${btn} bg-slate-800 text-slate-300`} onClick={()=>setShowForm(false)}><X size={16}/> رجوع</button></div>
+      <div className="mb-5 flex items-center justify-between border-b border-slate-800 pb-4"><div><h2 className="text-xl font-black">{t("Create quotation", "إنشاء عرض سعر")}</h2><p className="mt-1 text-xs text-slate-400">{t("Enter customer, items, tax and notes", "أدخل بيانات العميل والأصناف والضريبة والملاحظات")}</p></div><button className={`${btn} bg-slate-800 text-slate-300`} onClick={()=>setShowForm(false)}><X size={16}/> {t("Back", "رجوع")}</button></div>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-        <label className="text-xs text-slate-400">التاريخ<input className={`${input} mt-1`} type="date" value={date} onChange={e=>setDate(e.target.value)}/></label>
-        <label className="text-xs text-slate-400">صالح حتى<input className={`${input} mt-1`} type="date" value={validUntil} min={date} onChange={e=>setValidUntil(e.target.value)}/></label>
-        <label className="text-xs text-slate-400">الفرع<select className={`${input} mt-1`} value={branch} onChange={e=>setBranch(e.target.value)}><option value="">اختر الفرع</option>{(branches||[]).map((b:any)=><option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
-        <div><label className="text-xs text-slate-400">العميل<select className={`${input} mt-1`} value={partyId} onChange={e=>{setPartyId(e.target.value);setCustomerName("");}}><option value="">عميل جديد / اسم يدوي</option>{parties.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label><div className="mt-1 flex gap-2"><button type="button" onClick={()=>{setPartyEditorRow(null);setPartyEditorOpen(true);}} className="text-[11px] font-bold text-emerald-300">+ إنشاء</button>{partyId&&<button type="button" onClick={()=>{setPartyEditorRow(parties.find(p=>p.id===Number(partyId))||null);setPartyEditorOpen(true);}} className="text-[11px] font-bold text-blue-300">تحرير</button>}</div></div>
-        {!partyId&&<label className="text-xs text-slate-400 md:col-span-2">اسم العميل<input className={`${input} mt-1`} value={customerName} onChange={e=>setCustomerName(e.target.value)} placeholder="اسم العميل أو المنشأة"/></label>}
+        <label className="text-xs text-slate-400">{t("Date", "التاريخ")}<input className={`${input} mt-1`} type="date" value={date} onChange={e=>setDate(e.target.value)}/></label>
+        <label className="text-xs text-slate-400">{t("Valid until", "صالح حتى")}<input className={`${input} mt-1`} type="date" value={validUntil} min={date} onChange={e=>setValidUntil(e.target.value)}/></label>
+        <label className="text-xs text-slate-400">{t("Branch", "الفرع")}<select className={`${input} mt-1`} value={branch} onChange={e=>setBranch(e.target.value)}><option value="">{t("Select branch", "اختر الفرع")}</option>{(branches||[]).map((b:any)=><option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
+        <div><label className="text-xs text-slate-400">{t("Customer", "العميل")}<select className={`${input} mt-1`} value={partyId} onChange={e=>{setPartyId(e.target.value);setCustomerName("");}}><option value="">{t("New customer / manual name", "عميل جديد / اسم يدوي")}</option>{parties.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label><div className="mt-1 flex gap-2"><button type="button" onClick={()=>{setPartyEditorRow(null);setPartyEditorOpen(true);}} className="text-[11px] font-bold text-emerald-300">{t("+ Create", "+ إنشاء")}</button>{partyId&&<button type="button" onClick={()=>{setPartyEditorRow(parties.find(p=>p.id===Number(partyId))||null);setPartyEditorOpen(true);}} className="text-[11px] font-bold text-blue-300">{t("Edit", "تحرير")}</button>}</div></div>
+        {!partyId&&<label className="text-xs text-slate-400 md:col-span-2">{t("Customer name", "اسم العميل")}<input className={`${input} mt-1`} value={customerName} onChange={e=>setCustomerName(e.target.value)} placeholder={t("Customer or company name", "اسم العميل أو المنشأة")}/></label>}
       </div>
-      <div className="mt-5 overflow-x-auto"><table className="w-full min-w-[650px] text-xs"><thead className="text-slate-400"><tr><th className="p-2 text-right">الصنف / البيان</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th><th></th></tr></thead><tbody>{items.map((it,i)=><tr key={i} className="border-t border-slate-800"><td className="p-2"><input className={input} value={it.description} onChange={e=>setItem(i,{description:e.target.value})} placeholder="اسم الصنف"/></td><td className="p-2"><input className={`${input} w-24`} type="number" min="0" value={it.qty} onChange={e=>setItem(i,{qty:e.target.value})}/></td><td className="p-2"><input className={`${input} w-28`} type="number" min="0" step="0.01" value={it.unit_price} onChange={e=>setItem(i,{unit_price:e.target.value})}/></td><td className="p-2 text-center">{money((Number(it.qty)||0)*(Number(it.unit_price)||0))}</td><td><button className="text-red-300" onClick={()=>setItems(old=>old.length>1?old.filter((_,n)=>n!==i):old)}><X size={15}/></button></td></tr>)}</tbody></table><button className={`${btn} mt-3 bg-slate-800 text-slate-200`} onClick={()=>setItems(old=>[...old,{description:"",qty:"1",unit_price:""}])}><Plus size={14}/> إضافة صنف</button></div>
+      <div className="mt-5 overflow-x-auto"><table className="w-full min-w-[650px] text-xs"><thead className="text-slate-400"><tr><th className="p-2 text-right">{t("Item / description", "الصنف / البيان")}</th><th>{t("Quantity", "الكمية")}</th><th>{t("Unit price", "سعر الوحدة")}</th><th>{t("Total", "الإجمالي")}</th><th></th></tr></thead><tbody>{items.map((it,i)=><tr key={i} className="border-t border-slate-800"><td className="p-2"><input className={input} value={it.description} onChange={e=>setItem(i,{description:e.target.value})} placeholder={t("Item name", "اسم الصنف")}/></td><td className="p-2"><input className={`${input} w-24`} type="number" min="0" value={it.qty} onChange={e=>setItem(i,{qty:e.target.value})}/></td><td className="p-2"><input className={`${input} w-28`} type="number" min="0" step="0.01" value={it.unit_price} onChange={e=>setItem(i,{unit_price:e.target.value})}/></td><td className="p-2 text-center">{money((Number(it.qty)||0)*(Number(it.unit_price)||0))}</td><td><button className="text-red-300" onClick={()=>setItems(old=>old.length>1?old.filter((_,n)=>n!==i):old)}><X size={15}/></button></td></tr>)}</tbody></table><button className={`${btn} mt-3 bg-slate-800 text-slate-200`} onClick={()=>setItems(old=>[...old,{description:"",qty:"1",unit_price:""}])}><Plus size={14}/> {t("Add item", "إضافة صنف")}</button></div>
       <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-4">
-        <label className="text-xs text-slate-400">نسبة الضريبة %<input className={`${input} mt-1`} type="number" min="0" value={taxRate} onChange={e=>setTaxRate(e.target.value)}/></label>
-        <label className="text-xs text-slate-400">الخصم<input className={`${input} mt-1`} type="number" min="0" value={discount} onChange={e=>setDiscount(e.target.value)}/></label>
-        <label className="flex items-center gap-2 pt-5 text-xs text-slate-300"><input type="checkbox" checked={taxInclusive} onChange={e=>setTaxInclusive(e.target.checked)}/> الأسعار شاملة الضريبة</label>
-        <label className="text-xs text-slate-400">ملاحظات<textarea className={`${input} mt-1`} rows={2} value={notes} onChange={e=>setNotes(e.target.value)}/></label>
+        <label className="text-xs text-slate-400">{t("Tax rate %", "نسبة الضريبة %")}<input className={`${input} mt-1`} type="number" min="0" value={taxRate} onChange={e=>setTaxRate(e.target.value)}/></label>
+        <label className="text-xs text-slate-400">{t("Discount", "الخصم")}<input className={`${input} mt-1`} type="number" min="0" value={discount} onChange={e=>setDiscount(e.target.value)}/></label>
+        <label className="flex items-center gap-2 pt-5 text-xs text-slate-300"><input type="checkbox" checked={taxInclusive} onChange={e=>setTaxInclusive(e.target.checked)}/> {t("Prices include tax", "الأسعار شاملة الضريبة")}</label>
+        <label className="text-xs text-slate-400">{t("Notes", "ملاحظات")}<textarea className={`${input} mt-1`} rows={2} value={notes} onChange={e=>setNotes(e.target.value)}/></label>
       </div>
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 pt-4"><div className="text-sm leading-7"><div>قبل الضريبة: <b>{money(totals.subtotal)}</b></div><div>الضريبة: <b>{money(totals.tax)}</b></div><div className="text-lg font-black text-emerald-300">الإجمالي: {money(totals.total)} {curAr()}</div></div><button disabled={saving} className={`${btn} bg-blue-600 px-6 py-3 text-white disabled:opacity-50`} onClick={()=>void save()}>{saving?"جارٍ الحفظ…":"حفظ عرض السعر"}</button></div>
-      <p className="mt-3 text-[11px] text-amber-300">حفظ العرض لا ينشئ قيدًا محاسبيًا ولا يخصم المخزون.</p>
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 pt-4"><div className="text-sm leading-7"><div>{t("Before tax:", "قبل الضريبة:")} <b>{money(totals.subtotal)}</b></div><div>{t("Tax:", "الضريبة:")} <b>{money(totals.tax)}</b></div><div className="text-lg font-black text-emerald-300">{t("Total:", "الإجمالي:")} {money(totals.total)} {curAr()}</div></div><button disabled={saving} className={`${btn} bg-blue-600 px-6 py-3 text-white disabled:opacity-50`} onClick={()=>void save()}>{saving?t("Saving…", "جارٍ الحفظ…"):t("Save quotation", "حفظ عرض السعر")}</button></div>
+      <p className="mt-3 text-[11px] text-amber-300">{t("Saving the quotation does not create a journal entry or deduct stock.", "حفظ العرض لا ينشئ قيدًا محاسبيًا ولا يخصم المخزون.")}</p>
     </section>}
 
     {convertRow&&<div className="fixed inset-0 z-[110] flex items-center justify-center overflow-y-auto bg-black/70 p-3"><div className="my-6 w-full max-w-xl rounded-2xl border border-slate-700 bg-slate-900 p-5">
-      <div className="mb-4 flex justify-between"><h2 className="font-black">تحويل العرض إلى فاتورة</h2><button onClick={()=>setConvertRow(null)}><X/></button></div>
-      <p className="mb-4 text-sm text-slate-400">عرض رقم {convertRow.quotation_no} — الإجمالي {money(convertRow.total)} {curAr()}</p>
-      <label className="mb-3 block text-xs text-slate-400">طريقة السداد<select className={`${input} mt-1`} value={payType} onChange={e=>setPayType(e.target.value as DB.SalesPayType)}><option value="cash">نقدي</option><option value="credit">آجل</option><option value="partial">جزئي</option></select></label>
-      {payType!=="credit"&&<label className="mb-3 block text-xs text-slate-400">خزنة التحصيل<select className={`${input} mt-1`} value={treasuryAcc} onChange={e=>setTreasuryAcc(e.target.value)}><option value="">اختر الخزنة</option>{cashBankOptions(accounts,treasuries).map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></label>}
-      {payType!=="cash"&&<label className="mb-3 block text-xs text-slate-400">حساب العميل / الذمم<select className={`${input} mt-1`} value={customerAcc} onChange={e=>setCustomerAcc(e.target.value)}><option value="">اختر الحساب</option>{postable.filter(a=>a.type==="asset").map(a=><option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}</select></label>}
-      {payType==="partial"&&<label className="mb-3 block text-xs text-slate-400">المبلغ المدفوع<input id="quotation-paid" className={`${input} mt-1`} type="number" min="0" max={convertRow.total} defaultValue="0"/></label>}
-      <label className="mb-3 block text-xs text-slate-400">حساب إيراد المبيعات<select className={`${input} mt-1`} value={revenueAcc} onChange={e=>setRevenueAcc(e.target.value)}><option value="">اختر حساب الإيراد</option>{postable.filter(a=>a.type==="revenue").map(a=><option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}</select></label>
-      {convertRow.tax_amount>0&&<label className="mb-4 block text-xs text-slate-400">حساب ضريبة المخرجات<select className={`${input} mt-1`} value={taxAcc} onChange={e=>setTaxAcc(e.target.value)}><option value="">اختر حساب الضريبة</option>{postable.filter(a=>a.type==="liability").map(a=><option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}</select></label>}
-      <div className="flex justify-end gap-2"><button className={`${btn} bg-slate-800 text-slate-300`} onClick={()=>setConvertRow(null)}>إلغاء</button><button disabled={saving} className={`${btn} bg-emerald-600 text-white`} onClick={()=>void convert()}>{saving?"جارٍ التحويل…":"إنشاء الفاتورة وترحيل القيد"}</button></div>
-      <p className="mt-3 text-[11px] text-amber-300">التحويل ينشئ فاتورة ويرحّل قيدًا محاسبيًا. لا توجد معاملة SQL ذرّية حتى الآن؛ لا تعاود المحاولة إذا ظهرت رسالة تفيد بإنشاء الفاتورة مع فشل تحديث العرض قبل مراجعة الفاتورة.</p>
+      <div className="mb-4 flex justify-between"><h2 className="font-black">{t("Convert quotation to invoice", "تحويل العرض إلى فاتورة")}</h2><button onClick={()=>setConvertRow(null)}><X/></button></div>
+      <p className="mb-4 text-sm text-slate-400">{t("Quotation no.", "عرض رقم")} {convertRow.quotation_no} {t("— Total", "— الإجمالي")} {money(convertRow.total)} {curAr()}</p>
+      <label className="mb-3 block text-xs text-slate-400">{t("Payment method", "طريقة السداد")}<select className={`${input} mt-1`} value={payType} onChange={e=>setPayType(e.target.value as DB.SalesPayType)}><option value="cash">{t("Cash", "نقدي")}</option><option value="credit">{t("On credit", "آجل")}</option><option value="partial">{t("Partial", "جزئي")}</option></select></label>
+      {payType!=="credit"&&<label className="mb-3 block text-xs text-slate-400">{t("Collection cash account", "خزنة التحصيل")}<select className={`${input} mt-1`} value={treasuryAcc} onChange={e=>setTreasuryAcc(e.target.value)}><option value="">{t("Select cash account", "اختر الخزنة")}</option>{cashBankOptions(accounts,treasuries).map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></label>}
+      {payType!=="cash"&&<label className="mb-3 block text-xs text-slate-400">{t("Customer / receivables account", "حساب العميل / الذمم")}<select className={`${input} mt-1`} value={customerAcc} onChange={e=>setCustomerAcc(e.target.value)}><option value="">{t("Select account", "اختر الحساب")}</option>{postable.filter(a=>a.type==="asset").map(a=><option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}</select></label>}
+      {payType==="partial"&&<label className="mb-3 block text-xs text-slate-400">{t("Amount paid", "المبلغ المدفوع")}<input id="quotation-paid" className={`${input} mt-1`} type="number" min="0" max={convertRow.total} defaultValue="0"/></label>}
+      <label className="mb-3 block text-xs text-slate-400">{t("Sales revenue account", "حساب إيراد المبيعات")}<select className={`${input} mt-1`} value={revenueAcc} onChange={e=>setRevenueAcc(e.target.value)}><option value="">{t("Select revenue account", "اختر حساب الإيراد")}</option>{postable.filter(a=>a.type==="revenue").map(a=><option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}</select></label>
+      {convertRow.tax_amount>0&&<label className="mb-4 block text-xs text-slate-400">{t("Output tax account", "حساب ضريبة المخرجات")}<select className={`${input} mt-1`} value={taxAcc} onChange={e=>setTaxAcc(e.target.value)}><option value="">{t("Select tax account", "اختر حساب الضريبة")}</option>{postable.filter(a=>a.type==="liability").map(a=><option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}</select></label>}
+      <div className="flex justify-end gap-2"><button className={`${btn} bg-slate-800 text-slate-300`} onClick={()=>setConvertRow(null)}>{t("Cancel", "إلغاء")}</button><button disabled={saving} className={`${btn} bg-emerald-600 text-white`} onClick={()=>void convert()}>{saving?t("Converting…", "جارٍ التحويل…"):t("Create invoice and post entry", "إنشاء الفاتورة وترحيل القيد")}</button></div>
+      <p className="mt-3 text-[11px] text-amber-300">{t("Conversion creates an invoice and posts a journal entry. There is no atomic SQL transaction yet; do not retry if a message says the invoice was created but updating the quotation failed, before reviewing the invoice.", "التحويل ينشئ فاتورة ويرحّل قيدًا محاسبيًا. لا توجد معاملة SQL ذرّية حتى الآن؛ لا تعاود المحاولة إذا ظهرت رسالة تفيد بإنشاء الفاتورة مع فشل تحديث العرض قبل مراجعة الفاتورة.")}</p>
     </div></div>}
     <PartyQuickEditor open={partyEditorOpen} onClose={()=>setPartyEditorOpen(false)} orgId={org.id} branchId={branchId} type="customer" accounts={accounts} party={partyEditorRow} onSaved={async(saved)=>{setParties(await DB.fetchParties(org.id,"customer"));setPartyId(String(saved.id));setCustomerName("");}} />
   </div>;

@@ -235,7 +235,7 @@ const OPERATIONS: OpEntry[] = [
   ] },
   { type: 'item', id: 'orders',    icon: <ShoppingCart size={17} />,    labelEn: 'Orders',    labelAr: 'الطلبات' },
 
-  { type: 'group', key: 'sales', icon: <TrendingUp size={17} />, labelEn: 'Sales', labelAr: 'المبيعات', homePage: 'sales-reconciliation', children: [
+  { type: 'group', key: 'sales', icon: <TrendingUp size={17} />, labelEn: 'Sales', labelAr: 'المبيعات', homePage: 'sales-invoice', children: [
     { labelEn: 'Sales',                labelAr: 'المبيعات',       page: 'sales-invoice' },
     { labelEn: 'POS',                  labelAr: 'نقاط البيع',     page: 'pos' },
     { labelEn: 'POS Ledger',           labelAr: 'دفتر نقاط البيع', section: 'pos-ledger', perm: 'pos-ledger' },
@@ -614,7 +614,11 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
                     c.section ? (c.perm ? (!permissions || permissions.includes(c.perm)) : accOk) : (c.placeholder ? true : hasPerm(permissions, c.page!));
                   const onParent = () => {
                     if (entry.homeSection) { setAccSection?.(entry.homeSection); setPage('accounting'); }
-                    else if (entry.homePage) { setPage(entry.homePage); }
+                    else if (entry.homePage) {
+                      // صفحة المجموعة الرئيسية؛ وإن لم تكن للمستخدم صلاحيتها نفتح أول صفحة مسموحة في المجموعة.
+                      const firstOk = entry.children.find((c) => !c.section && c.page && !c.placeholder && hasPerm(permissions, c.page));
+                      setPage(hasPerm(permissions, entry.homePage) ? entry.homePage : (firstOk?.page ?? entry.homePage));
+                    }
                     setSidebarOpen(false);
                   };
 

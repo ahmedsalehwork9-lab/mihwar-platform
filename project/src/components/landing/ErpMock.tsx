@@ -26,7 +26,7 @@ function Spark({ vals, color }: { vals: number[]; color: string }) {
 function Kpi({ label, value, delta, up, vals, color, icon }: { label: string; value: string; delta: string; up: boolean; vals: number[]; color: string; icon: ReactNode }) {
   return (
     <div className="rounded-xl border border-[#E6E8ED] bg-[#ffffff] p-2.5 sm:p-3">
-      <div className="mb-1.5 flex items-center justify-between text-[10px] font-bold text-[#6b7a99] sm:text-[11px]"><span>{label}</span><span style={{ color }}>{icon}</span></div>
+      <div className="mb-1.5 flex items-center justify-between text-[10px] font-bold text-[#5b6a8a] sm:text-[11px]"><span>{label}</span><span style={{ color }}>{icon}</span></div>
       <div className="text-base font-black leading-none text-[#0B1F44] sm:text-lg" dir="ltr" style={{ textAlign: "start" }}>{value}</div>
       <div className="mt-2 flex items-end justify-between">
         <span className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${up ? "bg-[#16a34a1a] text-[#15803d]" : "bg-[#e5484d1a] text-[#b42318]"}`} dir="ltr">{up ? <TrendingUp size={10} /> : <TrendingDown size={10} />}{delta}</span>
@@ -63,9 +63,9 @@ export function ErpDashboardMock() {
           </aside>
           <div className="min-w-0 flex-1 p-2.5 sm:p-3.5">
             <div className="mb-3 flex items-center justify-between gap-2">
-              <div><div className="text-sm font-black text-[#0B1F44]">{t("Control panel", "لوحة التحكم")}</div><div className="text-[10px] text-[#6b7a99]">{t("Main branch · This month", "الفرع الرئيسي · هذا الشهر")}</div></div>
+              <div><div className="text-sm font-black text-[#0B1F44]">{t("Control panel", "لوحة التحكم")}</div><div className="text-[10px] text-[#5b6a8a]">{t("Main branch · This month", "الفرع الرئيسي · هذا الشهر")}</div></div>
               <div className="flex items-center gap-2">
-                <span className="hidden items-center gap-1 rounded-lg border border-[#E6E8ED] bg-[#ffffff] px-2 py-1 text-[10px] text-[#9aa7c0] md:flex"><Search size={11} />{t("Search…", "بحث…")}</span>
+                <span className="hidden items-center gap-1 rounded-lg border border-[#E6E8ED] bg-[#ffffff] px-2 py-1 text-[10px] text-[#5b6a8a] md:flex"><Search size={11} />{t("Search…", "بحث…")}</span>
                 <span className="relative rounded-lg border border-[#E6E8ED] bg-[#ffffff] p-1.5 text-[#0B1F44]"><Bell size={13} /><span className="absolute -end-0.5 -top-0.5 h-2 w-2 rounded-full bg-[#e5484d]" /></span>
               </div>
             </div>
@@ -78,7 +78,7 @@ export function ErpDashboardMock() {
             <div className="mt-2.5 grid gap-2.5 md:grid-cols-[1.6fr_1fr]">
               <div className="rounded-xl border border-[#E6E8ED] bg-[#ffffff] p-3">
                 <div className="mb-1 flex items-center justify-between text-[11px] font-bold text-[#0B1F44]"><span>{t("Sales vs purchases", "المبيعات مقابل المشتريات")}</span>
-                  <span className="flex gap-2 text-[10px] font-semibold text-[#6b7a99]"><i className="inline-block h-1.5 w-3 self-center rounded-full" style={{ background: BLUE }} />{t("Sales", "مبيعات")}<i className="inline-block h-1.5 w-3 self-center rounded-full" style={{ background: CYAN }} />{t("Purchases", "مشتريات")}</span></div>
+                  <span className="flex gap-2 text-[10px] font-semibold text-[#5b6a8a]"><i className="inline-block h-1.5 w-3 self-center rounded-full" style={{ background: BLUE }} />{t("Sales", "مبيعات")}<i className="inline-block h-1.5 w-3 self-center rounded-full" style={{ background: CYAN }} />{t("Purchases", "مشتريات")}</span></div>
                 <svg viewBox="0 0 300 100" className="h-24 w-full" preserveAspectRatio="none" aria-hidden="true">
                   {[25, 50, 75].map((y) => <line key={y} x1="0" x2="300" y1={y} y2={y} stroke="#E6E8ED" strokeWidth="1" />)}
                   <path d={area.area} fill={BLUE} opacity="0.10" /><path d={area.line} fill="none" stroke={BLUE} strokeWidth="2.2" strokeLinejoin="round" />
@@ -146,15 +146,15 @@ export function ErpBranchesMock() {
           <div key={b.n} className="relative rounded-xl border border-[#E6E8ED] bg-[#ffffff] p-3">
             <span className="absolute -top-3 start-1/2 hidden h-3 w-px bg-[#007BFF] sm:block" aria-hidden="true" />
             <div className="flex items-center justify-between"><span className="text-sm font-extrabold text-[#0B1F44]">{b.n}</span><span className="rounded-full bg-[#16a34a1a] px-2 py-0.5 text-[10px] font-bold text-[#15803d]">{t("Active", "نشط")}</span></div>
-            <div className="mt-0.5 text-[11px] text-[#6b7a99]">{b.c}</div>
-            <div className="mt-3 text-[10px] font-semibold text-[#6b7a99]">{t("Today's sales", "مبيعات اليوم")}</div>
+            <div className="mt-0.5 text-[11px] text-[#5b6a8a]">{b.c}</div>
+            <div className="mt-3 text-[10px] font-semibold text-[#5b6a8a]">{t("Today's sales", "مبيعات اليوم")}</div>
             <div className="text-lg font-black text-[#0B1F44]" dir="ltr" style={{ textAlign: "start" }}>{b.s}</div>
             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#E6E8ED]"><div className="h-full rounded-full bg-gradient-to-r from-[#007BFF] to-[#00C2FF]" style={{ width: `${b.v}%` }} /></div>
             <div className="mt-2 flex gap-1.5 text-[10px] font-bold text-[#4b5b78]"><span className="rounded bg-[#F4F6FA] px-1.5 py-0.5">{t("2 warehouses", "مخزنان")}</span><span className="rounded bg-[#F4F6FA] px-1.5 py-0.5">POS</span></div>
           </div>
         ))}
       </div>
-      <p className="mt-3 text-center text-[11px] text-[#6b7a99]">{t("Illustrative data", "بيانات توضيحية")}</p>
+      <p className="mt-3 text-center text-[11px] text-[#5b6a8a]">{t("Illustrative data", "بيانات توضيحية")}</p>
     </div>
   );
 }
@@ -171,7 +171,7 @@ export function ErpReportsMock() {
     <div className="rounded-2xl bg-[#ffffff] p-4 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.55)] sm:p-5" data-testid="erp-reports">
       <div className="mb-3 flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
         {[t("Income statement", "قائمة الدخل"), t("Balance sheet", "الميزانية"), t("Cash flows", "التدفقات النقدية")].map((x, i) => <span key={x} className={`rounded-full px-3 py-1 ${i === 0 ? "bg-[#0B1F44] text-[#ffffff]" : "bg-[#F4F6FA] text-[#4b5b78]"}`}>{x}</span>)}
-        <span className="ms-auto text-[10px] font-semibold text-[#9aa7c0]">{t("vs previous period", "مقارنة بالفترة السابقة")}</span>
+        <span className="ms-auto text-[10px] font-semibold text-[#5b6a8a]">{t("vs previous period", "مقارنة بالفترة السابقة")}</span>
       </div>
       <div className="grid gap-4 md:grid-cols-2">
         <div>
@@ -181,11 +181,11 @@ export function ErpReportsMock() {
               <g key={m}>
                 <rect x={8 + i * 39} y={95 - rev[i]} width="14" height={rev[i]} rx="3" fill={BLUE} />
                 <rect x={24 + i * 39} y={95 - cost[i]} width="14" height={cost[i]} rx="3" fill={CYAN} />
-                <text x={23 + i * 39} y="107" fontSize="7" textAnchor="middle" fill="#6b7a99">{m.slice(0, 3)}</text>
+                <text x={23 + i * 39} y="107" fontSize="7" textAnchor="middle" fill="#5b6a8a">{m.slice(0, 3)}</text>
               </g>
             ))}
           </svg>
-          <div className="mt-1 flex gap-3 text-[10px] font-semibold text-[#6b7a99]"><span><i className="me-1 inline-block h-2 w-2 rounded-sm" style={{ background: BLUE }} />{t("Revenue", "الإيرادات")}</span><span><i className="me-1 inline-block h-2 w-2 rounded-sm" style={{ background: CYAN }} />{t("Costs", "التكاليف")}</span></div>
+          <div className="mt-1 flex gap-3 text-[10px] font-semibold text-[#5b6a8a]"><span><i className="me-1 inline-block h-2 w-2 rounded-sm" style={{ background: BLUE }} />{t("Revenue", "الإيرادات")}</span><span><i className="me-1 inline-block h-2 w-2 rounded-sm" style={{ background: CYAN }} />{t("Costs", "التكاليف")}</span></div>
         </div>
         <table className="w-full self-start text-[11px]">
           <tbody>
@@ -199,7 +199,7 @@ export function ErpReportsMock() {
           </tbody>
         </table>
       </div>
-      <p className="mt-3 text-center text-[11px] text-[#9aa7c0]">{t("Illustrative data", "بيانات توضيحية")}</p>
+      <p className="mt-3 text-center text-[11px] text-[#5b6a8a]">{t("Illustrative data", "بيانات توضيحية")}</p>
     </div>
   );
 }

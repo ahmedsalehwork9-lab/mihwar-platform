@@ -1345,3 +1345,20 @@ html body .text-\[9px\] { font-size: 10px; }
   html body .text-\[9px\],
   html body .text-\[10px\] { font-size: 11px; }
 }
+
+/* =============================================================
+   تباين الألوان (WCAG AA ≥ 4.5:1) — المرحلة 4
+   ============================================================= */
+/* أزرار نصها أبيض: درجات 700 بدل 600 (الداكن) — الفاتح معرّف في light-tokens.css */
+html:not(.light) .bg-emerald-600 { background-color: #047857; }
+html:not(.light) .bg-emerald-600:hover { background-color: #065f46; }
+html:not(.light) .bg-orange-600 { background-color: #c2410c; }
+html:not(.light) .bg-orange-600:hover { background-color: #9a3412; }
+html.light .bg-orange-600 { background-color: #c2410c; }
+html.light .bg-orange-600:hover { background-color: #9a3412; }
+/* رمادي ثانوي على الخلفية الداكنة */
+html:not(.light) .text-slate-500 { color: #94a3b8; }
+html:not(.light) .text-slate-600 { color: #8b9bb4; }
+/* الوضع الفاتح: نص ثانوي على خلفيات رمادية فاتحة */
+html.light .bg-slate-100 .text-slate-500,
+html.light .bg-slate-100.text-slate-500 { color: #334155 !important; }

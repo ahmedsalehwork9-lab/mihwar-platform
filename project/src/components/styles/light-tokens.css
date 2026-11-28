@@ -168,9 +168,9 @@ html.light .bg-amber-600.text-white, html.light .bg-amber-700.text-white,
 html.light .bg-indigo-600.text-white, html.light .bg-cyan-600.text-white,
 html.light .bg-blue-600 .text-white, html.light .bg-emerald-600 .text-white, html.light .bg-red-600 .text-white,
 html.light [data-active="true"].bg-blue-600 { color: #FFFFFF !important; }
-html.light .bg-emerald-500, html.light .bg-emerald-600 { background-color: #059669; }
+html.light .bg-emerald-500, html.light .bg-emerald-600 { background-color: #047857; }
 html.light .bg-emerald-500.text-emerald-950, html.light .bg-emerald-500.text-slate-950 { color: #FFFFFF !important; }
-html.light .bg-emerald-500:hover, html.light .bg-emerald-600:hover { background-color: #047857; }
+html.light .bg-emerald-500:hover, html.light .bg-emerald-600:hover { background-color: #065f46; }
 html.light .bg-red-500, html.light .bg-red-600 { background-color: var(--danger-color); }
 html.light .bg-red-500:hover, html.light .bg-red-600:hover { background-color: #B91C1C; }
 html.light .bg-purple-600, html.light .bg-purple-500 { background-color: var(--accent-color); }

@@ -36,7 +36,7 @@ type LogoProps = { size?: number; onDark?: boolean; mono?: boolean; stacked?: bo
 
 /** Symbol + wordmark. `size` = symbol width in px. The wordmark is always Latin (brand name), so it keeps dir="ltr" in RTL pages. */
 export function BrandLogo({ size = 40, onDark = false, mono = false, stacked = false, showSub = true, className = "" }: LogoProps) {
-  const ink = onDark ? "text-white" : "text-brand-navy"; const accent = mono ? ink : "text-brand-blue";
+  const ink = onDark ? "text-[#ffffff]" : "text-brand-navy"; const accent = mono ? ink : "text-brand-blue";
   return (
     <div dir="ltr" className={`inline-flex ${stacked ? "flex-col items-center text-center" : "items-center"} gap-${stacked ? 2 : 3} ${className}`} data-testid="brand-logo">
       <BrandMark size={size} onDark={onDark} mono={mono} />

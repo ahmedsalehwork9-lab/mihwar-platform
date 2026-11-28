@@ -42,6 +42,7 @@ import { useLang } from '../context/LanguageContext';
 import { ThemeToggle } from './ThemeToggle';
 import BranchSwitcher from './BranchSwitcher';
 import TrialBanner from './TrialBanner';
+import InstallAppButton from '../pwa/InstallAppButton';
 import { registerNavPages, type NavPageInput } from '../pages/lib/permModel';
 
 // ══════════════════════════════════════════════════════════════════════
@@ -663,6 +664,8 @@ export default function Layout({ page, setPage, accSection, setAccSection, child
             <span className="text-slate-400 text-xs font-medium">{t('Theme', 'المظهر')}</span>
             <ThemeToggle />
           </div>
+
+          <InstallAppButton />
 
           <button
             onClick={() => setLang(lang === 'en' ? 'ar' : 'en')}

@@ -5,6 +5,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
+import PwaUpdateBar from './pwa/PwaUpdateBar';
 import { OrgConfigProvider } from './context/OrgConfigContext';
 import { NotificationProvider } from './context/NotificationContext';
 
@@ -283,6 +284,7 @@ export default function App() {
                   <AppContent />
                 </OrgConfigProvider>
               </AuthProvider>
+              <PwaUpdateBar />
             </LanguageProvider>
           }
         />

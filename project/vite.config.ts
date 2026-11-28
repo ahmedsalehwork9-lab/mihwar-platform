@@ -6,40 +6,48 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
-      // يحذف الـ Service Worker نفسه ويمسح الكاش عند أول فتح،
-      // فيتحمّل الموقع من النت مباشرة ويظهر أي تحديث فورًا (بدون معاناة كاش).
-      selfDestroying: true,
-      // generateSW: Vite PWA generates the service worker automatically
-      // This avoids the swSrc/swDest conflict with injectManifest
+      // 'prompt' وليس 'autoUpdate': ده نظام ERP فيه فواتير وسندات بتتكتب على الشاشة.
+      // autoUpdate بيعمل reload تلقائي وممكن يضيّع شغل مش محفوظ؛ prompt بيسيب المستخدم يقرر.
+      registerType: 'prompt',
+      // التسجيل بيتم يدويًا من src/pwa/registerPwa.ts عبر virtual:pwa-register
+      injectRegister: false,
       strategies: 'generateSW',
+      manifestFilename: 'manifest.webmanifest',
+      // مانيفست واحد فقط (المصدر الوحيد). بيتحقن تلقائيًا في index.html
       manifest: {
-        name: 'محور',
-        short_name: 'محور',
-        description: 'منصة ذكية لإدارة المخزون والطلبات بين المحلات',
-        theme_color: '#0f172a',
-        background_color: '#020617',
-        display: 'standalone',
-        orientation: 'portrait-primary',
+        id: '/',
+        name: 'MIHWAR CLOUD ERP',
+        short_name: 'MIHWAR',
+        description: 'نظام تخطيط موارد المؤسسات السحابي: مبيعات، مشتريات، مخزون، محاسبة ونقاط بيع',
         lang: 'ar',
         dir: 'rtl',
         start_url: '/',
+        scope: '/',
+        display: 'standalone',
+        theme_color: '#0B1F44',
+        background_color: '#06122B',
+        categories: ['business', 'productivity'],
         icons: [
-          { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
-          { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+          { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: '/icon-maskable-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+          { src: '/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
       workbox: {
+        // precache للملفات الثابتة فقط (JS/CSS/shell/صور/خطوط) — لا أي بيانات
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        globIgnores: ['landing/**'],
         navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/api/, /^\/verify/, /\/[^/?]+\.[^/]+$/],
         cleanupOutdatedCaches: true,
-        skipWaiting: true,
+        // في وضع prompt: لا skipWaiting تلقائي. التفعيل بعد ضغط المستخدم على «تحديث».
+        skipWaiting: false,
         clientsClaim: true,
-        // Never cache Supabase API calls
-        navigateFallbackDenylist: [/^\/api/, /^\/verify/],
+        // أي طلب Supabase/API يروح للشبكة دائمًا، ولا يوجد runtime caching لأي بيانات
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
+            urlPattern: ({ url }: { url: URL }) => url.hostname.endsWith('.supabase.co') || url.hostname.endsWith('.supabase.in'),
             handler: 'NetworkOnly',
           },
         ],

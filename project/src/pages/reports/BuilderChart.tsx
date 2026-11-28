@@ -70,8 +70,8 @@ export function ChartView({ data, cfg, rows, measField, t, dimLabel }: {
       {cfg.chart === "area" && <path d={`M${x(0)},${H - pad} ` + data.map((d, i) => `L${x(i)},${y(d.value)}`).join(" ") + ` L${x(data.length - 1)},${H - pad} Z`} fill={pal[0]} fillOpacity="0.18" />}
       {(cfg.chart === "line" || cfg.chart === "area") && <path d={data.map((d, i) => `${i ? "L" : "M"}${x(i)},${y(d.value)}`).join(" ")} fill="none" stroke={pal[0]} strokeWidth="2.5" />}
       {(cfg.chart === "line" || cfg.chart === "area") && data.map((d, i) => <circle key={i} cx={x(i)} cy={y(d.value)} r="3" fill={pal[0]}><title>{`${d.label}: ${fmtV(d.value)}`}</title></circle>)}
-      {cfg.values && data.length <= 14 && data.map((d, i) => <text key={`v${i}`} x={x(i)} y={Math.max(10, y(d.value) - 6)} textAnchor="middle" fontSize="8" fill="#94a3b8">{fmtV(d.value)}</text>)}
-      {data.map((d, i) => <text key={i} x={x(i)} y={H - 8} textAnchor="middle" fontSize="8" fill="#64748b">{short(d.label)}</text>)}
+      {cfg.values && data.length <= 14 && data.map((d, i) => <text key={`v${i}`} x={x(i)} y={Math.max(10, y(d.value) - 6)} textAnchor="middle" fontSize="10" fill="#94a3b8">{fmtV(d.value)}</text>)}
+      {data.map((d, i) => <text key={i} x={x(i)} y={H - 8} textAnchor="middle" fontSize="10" fill="#64748b">{short(d.label)}</text>)}
     </svg></div>
   );
 }

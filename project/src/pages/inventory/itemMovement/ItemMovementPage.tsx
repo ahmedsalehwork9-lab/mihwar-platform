@@ -52,8 +52,8 @@ function LineChart({ pts, title }: { pts: LinePt[]; title: string }) {
         <line x1={P} y1={y(0)} x2={W - P} y2={y(0)} stroke="#334155" strokeDasharray="3 3" />
         <polyline fill="none" stroke="#3b82f6" strokeWidth="2" points={pts.map((p, i) => `${x(i)},${y(p.value)}`).join(" ")} />
         {pts.map((p, i) => <circle key={i} cx={x(i)} cy={y(p.value)} r="3" fill="#3b82f6"><title>{`${p.label}: ${qf(p.value)}`}</title></circle>)}
-        <text x={P} y={H - 4} fontSize="8" fill="#64748b">{pts[0].label}</text><text x={W - P} y={H - 4} fontSize="8" fill="#64748b" textAnchor="end">{pts[pts.length - 1].label}</text>
-        <text x={P} y={10} fontSize="8" fill="#64748b">{qf(mx)}</text>
+        <text x={P} y={H - 4} fontSize="10" fill="#64748b">{pts[0].label}</text><text x={W - P} y={H - 4} fontSize="8" fill="#64748b" textAnchor="end">{pts[pts.length - 1].label}</text>
+        <text x={P} y={10} fontSize="10" fill="#64748b">{qf(mx)}</text>
       </svg>
     </div>
   );

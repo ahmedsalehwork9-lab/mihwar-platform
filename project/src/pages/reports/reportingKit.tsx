@@ -118,7 +118,7 @@ export function LineDual({ a, b, labels, aName, bName, aColor = "#3b82f6", bColo
         {a.map((v, i) => <circle key={i} cx={x(i)} cy={y(v)} r="3" fill={aColor}><title>{`${aName ? aName + " · " : ""}${labels[i]}: ${money(v)}`}</title></circle>)}
         {b && <path d={path(b)} fill="none" stroke={bColor} strokeWidth="2.5" />}
         {b && b.map((v, i) => <circle key={`b${i}`} cx={x(i)} cy={y(v)} r="3" fill={bColor}><title>{`${bName ? bName + " · " : ""}${labels[i]}: ${money(v)}`}</title></circle>)}
-        {labels.map((l, i) => <text key={`l${i}`} x={x(i)} y={H - 6} textAnchor="middle" fontSize="9" fill="#64748b">{l}</text>)}
+        {labels.map((l, i) => <text key={`l${i}`} x={x(i)} y={H - 6} textAnchor="middle" fontSize="11" fill="#64748b">{l}</text>)}
       </svg>
       {(aName || bName) && (
         <div className="flex items-center gap-4 justify-center text-[11px] mt-1" data-testid="legend">

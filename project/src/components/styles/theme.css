@@ -1331,3 +1331,17 @@ html.light aside .text-white, html.light aside .text-slate-100 { color:#fff !imp
 html.light aside .border-slate-700, html.light aside .border-slate-800 { border-color:rgba(255,255,255,.12) !important; }
 /* ═══ END LIGHT THEME POLISH ═══ */
 
+
+/* =============================================================
+   حد أدنى لحجم الخط (وضوح النصوص والأرقام)
+   - الجوال (≤640px): أي نص أصغر من 11px يُرفع إلى 11px.
+   - باقي المقاسات: 8px/9px تُرفع إلى 10px.
+   يمسّ فقط الأصناف text-[8px] / text-[9px] / text-[10px] — لا تأثير على الطباعة (HTML مستقل).
+   ============================================================= */
+html body .text-\[8px\],
+html body .text-\[9px\] { font-size: 10px; }
+@media (max-width: 640px) {
+  html body .text-\[8px\],
+  html body .text-\[9px\],
+  html body .text-\[10px\] { font-size: 11px; }
+}

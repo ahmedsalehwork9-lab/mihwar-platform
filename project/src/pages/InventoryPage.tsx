@@ -2219,7 +2219,7 @@ export default function InventoryPage({ onNavigate }: { onNavigate?: (p: any) =>
       <section
         className={`lg:hidden flex-col sm:flex-row items-center justify-between gap-3 mb-4 ${isSearching ? 'hidden md:flex' : 'flex'}`}
       >
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <button
             onClick={() => importRef.current?.click()}
             disabled={importing}
@@ -3172,7 +3172,7 @@ function StatusDonut({ inStock, low, out, t }: { inStock: number; low: number; o
             })}
           </g>
           <text x="70" y="66" textAnchor="middle" fill="#fff" fontSize="20" fontWeight="800">{total}</text>
-          <text x="70" y="84" textAnchor="middle" fill="#64748b" fontSize="9">{t('items', 'صنف')}</text>
+          <text x="70" y="84" textAnchor="middle" fill="#64748b" fontSize="10">{t('items', 'صنف')}</text>
         </svg>
         <div className="space-y-1.5 text-xs flex-1">
           {segs.map((s, i) => (

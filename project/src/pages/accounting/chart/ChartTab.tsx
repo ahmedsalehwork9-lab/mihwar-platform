@@ -361,7 +361,7 @@ export default function ChartTab({ org, shop, accounts, reload, busy, setBusy }:
         </div>
         <div className="flex flex-wrap items-center gap-2 mt-2.5 text-[11px] text-slate-500">
           <span data-testid="result-count">{filtering ? t(`${matchCount} of ${accounts.length} accounts match`, `${matchCount} من ${accounts.length} حساب مطابق`) : t(`${accounts.length} accounts`, `${accounts.length} حساب`)}</span>
-          <span className="ms-auto flex items-center gap-1.5">
+          <span className="ms-auto flex flex-wrap items-center gap-1.5">
             <button type="button" onClick={() => setPref({ view: "tree" })} aria-pressed={prefs.view === "tree"} data-testid="view-tree" className={`${BTN_SOFT} !py-1.5 ${prefs.view === "tree" ? "!bg-blue-600 !text-[#fff]" : ""}`}><ListTree size={13} /> {t("Tree", "شجرة")}</button>
             <button type="button" onClick={() => setPref({ view: "flat" })} aria-pressed={prefs.view === "flat"} data-testid="view-flat" className={`${BTN_SOFT} !py-1.5 ${prefs.view === "flat" ? "!bg-blue-600 !text-[#fff]" : ""}`}><List size={13} /> {t("List", "قائمة")}</button>
             {prefs.view === "tree" && !filtering && (<>

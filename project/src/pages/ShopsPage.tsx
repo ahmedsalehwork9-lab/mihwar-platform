@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback, memo } from 'react';
 import { supabase } from './lib/supabase';
+import { smartMatch } from './lib/smartSearch';
 import {
   Store,
   CheckCircle,
@@ -847,10 +848,7 @@ export default function ShopsPage() {
   };
 
   const filteredShops = shops.filter(shop => {
-    const matchesSearch =
-      (shop.shop_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (shop.city || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (shop.phone || '').includes(searchTerm);
+    const matchesSearch = smartMatch(searchTerm.trim(), shop.shop_name, shop.city, shop.phone);
     const matchesTab =
       activeTab === 'all' ? true :
       activeTab === 'active' ? shop.is_active :

@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useCallback, memo } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from './lib/supabase';
+import { smartMatch } from './lib/smartSearch';
 import {
   Search, ShoppingCart, Plus, Minus, Trash2, X,
   MessageCircle, MapPin, Store, Tag,
@@ -241,14 +242,9 @@ export default function ShopPublicPage() {
   // ── Filtered products ─────────────────────────────────────
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = search.trim();
     if (!q) return products;
-    return products.filter(p =>
-      p.product_name.toLowerCase().includes(q) ||
-      p.product_code.toLowerCase().includes(q) ||
-      (p.brand?.toLowerCase().includes(q)) ||
-      (p.model?.toLowerCase().includes(q))
-    );
+    return products.filter(p => smartMatch(q, p.product_name, p.product_code, p.brand, p.model));
   }, [products, search]);
 
   const brands = useMemo(() =>

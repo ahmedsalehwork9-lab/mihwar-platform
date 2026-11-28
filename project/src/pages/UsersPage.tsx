@@ -1,5 +1,6 @@
 ﻿import { useEffect, useState } from 'react';
 import { supabase } from './lib/supabase';
+import { smartMatch } from './lib/smartSearch';
 import UserAccessModal from "../components/UserAccessModal";
 import { useAuth } from "../context/AuthContext";
 import { loadUsers, loadTemplates, type UserRow, type ShopLite } from "./admin/permApi";
@@ -98,12 +99,7 @@ export default function UsersPage() {
 
   // منطق البحث
   const filteredUsers = users.filter(user => {
-    const search = searchTerm.toLowerCase();
-    return (
-      user.full_name?.toLowerCase().includes(search) ||
-      user.email?.toLowerCase().includes(search) ||
-      user.phone?.includes(search)
-    );
+    return smartMatch(searchTerm.trim(), user.full_name, user.email, user.phone);
   });
 
   const handleEditEmail = (user: Profile) => {

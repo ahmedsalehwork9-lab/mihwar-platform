@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { supabase } from './lib/supabase';
+import { smartMatch } from './lib/smartSearch';
 import { useLang } from '../context/LanguageContext';
 import OrgAdminsPanel from '../components/OrgAdminsPanel';
 import {
@@ -493,12 +494,9 @@ function DetailsDrawer({ org, allGroups, onClose, onRefresh, t, isRTL, locale }:
 
   // ── Filtered available shops ──────────────────────────────────────────
   const filteredShops = useMemo(() => {
-    const q = shopSearch.trim().toLowerCase();
+    const q = shopSearch.trim();
     if (!q) return availShops;
-    return availShops.filter(s =>
-      s.shop_name.toLowerCase().includes(q) ||
-      (s.city ?? '').toLowerCase().includes(q)
-    );
+    return availShops.filter(s => smartMatch(q, s.shop_name, s.city));
   }, [availShops, shopSearch]);
 
   return (
@@ -943,13 +941,9 @@ export default function OrganizationsPage() {
 
   // ── Search (client-side) ─────────────────────────────────────────────
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = search.trim();
     if (!q) return organizations;
-    return organizations.filter(
-      (o) =>
-        o.name?.toLowerCase().includes(q) ||
-        String(o.id).includes(q),
-    );
+    return organizations.filter((o) => smartMatch(q, o.name, o.id));
   }, [organizations, search]);
 
   // ── Keep selectedOrg in sync after re-fetch ──────────────────────────

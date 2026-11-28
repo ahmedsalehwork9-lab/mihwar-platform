@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { supabase } from './lib/supabase';
+import { smartMatch } from './lib/smartSearch';
 import { useLang } from '../context/LanguageContext';
 import {
   Package,
@@ -204,7 +205,7 @@ export default function GlobalInventoryPage() {
   // ─────────────────────────────────────────────────────────────
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = search.trim();
     if (!q) return products;
     return products.filter(p => {
       const shopEntry = shopMap[p.shop_id];
@@ -213,14 +214,7 @@ export default function GlobalInventoryPage() {
       const scopeLabel = isRTL
         ? SCOPE_CONFIG[effScope].labelAr
         : SCOPE_CONFIG[effScope].labelEn;
-      return (
-        p.part_name?.toLowerCase().includes(q)    ||
-        p.part_number?.toLowerCase().includes(q)  ||
-        p.brand?.toLowerCase().includes(q)         ||
-        p.model?.toLowerCase().includes(q)         ||
-        shopName.toLowerCase().includes(q)         ||
-        scopeLabel.toLowerCase().includes(q)
-      );
+      return smartMatch(q, p.part_name, p.part_number, p.brand, p.model, shopName, scopeLabel);
     });
   }, [search, products, shopMap, isRTL]);
 

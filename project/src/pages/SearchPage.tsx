@@ -1,6 +1,7 @@
 import { curNow } from "./lib/orgConfig";
 import { useEffect, useMemo, useState, useCallback, memo, useRef } from 'react';
 import { supabase } from './lib/supabase';
+import { smartMatch } from './lib/smartSearch';
 import { useAuth } from '../context/AuthContext';
 import {
   Search,
@@ -1386,19 +1387,13 @@ export default function SearchPage() {
   // ─────────────────────────────────────────────────────────────
 
   const filtered = useMemo<EnrichedProduct[]>(() => {
-    const q = query.trim().toLowerCase();
+    const q = query.trim();
     const brandOk = (p: EnrichedProduct) => brandFilter === 'all' || p.brand === brandFilter;
     if (!q) return visibleProducts.filter(brandOk);
 
     return visibleProducts.filter(p => {
       if (!brandOk(p)) return false;
-      return (
-        p.product_name.toLowerCase().includes(q)   ||
-        p.product_code.toLowerCase().includes(q) ||
-        p.model.toLowerCase().includes(q)        ||
-        (p.brand?.toLowerCase().includes(q) ?? false) ||
-        p.shop_name.toLowerCase().includes(q)
-      );
+      return smartMatch(q, p.product_name, p.product_code, p.model, p.brand, p.shop_name);
     });
   }, [visibleProducts, query, brandFilter]);
 

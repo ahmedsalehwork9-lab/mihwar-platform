@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { supabase } from './lib/supabase';
+import { smartMatch } from './lib/smartSearch';
 import {
   ArrowLeftRight,
   Clock,
@@ -497,12 +498,7 @@ function ProductSelect({ value, onChange, products, disabled = false }: ProductS
 
   const filteredProducts = useMemo(
     () =>
-      products.filter(
-        (p) =>
-          p.name.toLowerCase().includes(query.toLowerCase()) ||
-          p.part_number.toLowerCase().includes(query.toLowerCase()) ||
-          p.brand.toLowerCase().includes(query.toLowerCase()),
-      ),
+      products.filter((p) => smartMatch(query.trim(), p.name, p.part_number, p.brand)),
     [products, query],
   );
 
@@ -1118,15 +1114,10 @@ export default function TransfersPage() {
 
   // ── Table filter ────────────────────────────────────────────────────
   const filtered = useMemo(() => {
-    const q = tableSearch.toLowerCase().trim();
+    const q = tableSearch.trim();
     return transfers.filter((t) => {
       const matchStatus = statusFilter === 'all' || t.status === statusFilter;
-      const matchSearch =
-        !q ||
-        t.transfer_number.toLowerCase().includes(q) ||
-        t.from_shop.toLowerCase().includes(q) ||
-        t.to_shop.toLowerCase().includes(q) ||
-        t.product_name.toLowerCase().includes(q);
+      const matchSearch = smartMatch(q, t.transfer_number, t.from_shop, t.to_shop, t.product_name);
       return matchStatus && matchSearch;
     });
   }, [transfers, statusFilter, tableSearch]);

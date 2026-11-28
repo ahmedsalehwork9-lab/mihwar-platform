@@ -1276,3 +1276,58 @@ html.light [data-rpt] .text-orange-400 { color:#9a3412 !important; }
 html.light [data-rpt] .text-fuchsia-400,
 html.light [data-rpt] .text-pink-400 { color:#a21caf !important; }
 html.light [data-rpt] .text-violet-400 { color:#6d28d9 !important; }
+
+/* ═══ LIGHT THEME POLISH (override block, safe to remove as a unit) — scoped to html.light, dark untouched ═══ */
+html.light body { background:#F6F8FB !important; color:#0B1F44; }
+html.light .bg-slate-950 { background-color:#F6F8FB !important; }
+html.light .bg-slate-900,
+html.light .bg-slate-900\/50,
+html.light .bg-slate-900\/60 { background-color:#fff !important; border-color:#D5DCE8; }
+html.light .bg-slate-900.border,
+html.light .bg-slate-900\/50.border,
+html.light .bg-slate-900\/60.border { box-shadow:0 1px 2px rgba(11,31,68,.06),0 1px 3px rgba(11,31,68,.04); }
+html.light .border-slate-700,
+html.light .border-slate-800 { border-color:#D5DCE8 !important; }
+html.light thead, html.light thead th, html.light .bg-slate-800\/50 { background-color:#EEF3FA !important; }
+html.light tbody tr:hover { background-color:#F1F6FD !important; }
+
+/* text hierarchy */
+html.light .text-white, html.light .text-slate-100, html.light .text-slate-200 { color:#0B1F44; }
+html.light .text-slate-300, html.light .text-slate-400 { color:#3B4A63 !important; }
+html.light .text-slate-500, html.light .text-slate-600 { color:#51607A !important; }
+html.light input::placeholder, html.light textarea::placeholder { color:#6B7A90 !important; opacity:1; }
+
+/* inputs: enabled = white, readable; disabled = light grey, still readable */
+html.light input:not([type=checkbox]):not([type=radio]):not(:disabled):not([readonly]),
+html.light select:not(:disabled), html.light textarea:not(:disabled) {
+  background-color:#fff !important; color:#0B1F44 !important; border-color:#8794AB !important; }
+html.light input:focus, html.light select:focus, html.light textarea:focus {
+  outline:none; border-color:#0057C2 !important; box-shadow:0 0 0 3px rgba(0,87,194,.25) !important; }
+html.light input:disabled, html.light select:disabled, html.light textarea:disabled,
+html.light input[readonly] {
+  background-color:#E9EDF3 !important; color:#6B7A90 !important; -webkit-text-fill-color:#6B7A90; border-color:#D5DCE8 !important; opacity:1 !important; cursor:not-allowed; }
+html.light button:disabled { opacity:1 !important; background-color:#E9EDF3 !important; color:#6B7A90 !important; border-color:#D5DCE8 !important; cursor:not-allowed; }
+
+/* accents */
+html.light .bg-blue-600, html.light .bg-blue-500 { background-color:#0057C2 !important; color:#fff !important; }
+html.light .bg-emerald-600, html.light .bg-emerald-500:not([class*="/"]) { background-color:#047857 !important; color:#fff !important; }
+html.light .bg-red-600, html.light .bg-red-500:not([class*="/"]) { background-color:#B91C1C !important; color:#fff !important; }
+html.light .text-emerald-300, html.light .text-emerald-400 { color:#047857 !important; }
+html.light .text-red-300, html.light .text-red-400 { color:#B91C1C !important; }
+html.light .text-amber-300, html.light .text-amber-400 { color:#92400E !important; }
+html.light .text-blue-300, html.light .text-blue-400 { color:#0057C2 !important; }
+
+/* soft status chips */
+html.light .bg-blue-500\/10, html.light .bg-blue-500\/15, html.light .bg-blue-500\/20 { background-color:#EAF2FF !important; color:#0057C2 !important; }
+html.light .bg-emerald-500\/10, html.light .bg-emerald-500\/15, html.light .bg-emerald-500\/20 { background-color:#E7F6EF !important; color:#047857 !important; }
+html.light .bg-red-500\/10, html.light .bg-red-500\/15, html.light .bg-red-500\/20 { background-color:#FDECEC !important; color:#B91C1C !important; }
+html.light .bg-amber-500\/10, html.light .bg-amber-500\/15, html.light .bg-amber-500\/20 { background-color:#FEF3DC !important; color:#92400E !important; }
+
+/* sidebar stays dark navy in light mode */
+html.light aside { background-color:#0B1F44 !important; }
+html.light aside .text-slate-300, html.light aside .text-slate-400 { color:#CBD5E1 !important; }
+html.light aside .text-slate-500, html.light aside .text-slate-600 { color:#94A3B8 !important; }
+html.light aside .text-white, html.light aside .text-slate-100 { color:#fff !important; }
+html.light aside .border-slate-700, html.light aside .border-slate-800 { border-color:rgba(255,255,255,.12) !important; }
+/* ═══ END LIGHT THEME POLISH ═══ */
+

@@ -44,13 +44,9 @@ export default defineConfig({
         // في وضع prompt: لا skipWaiting تلقائي. التفعيل بعد ضغط المستخدم على «تحديث».
         skipWaiting: false,
         clientsClaim: true,
-        // أي طلب Supabase/API يروح للشبكة دائمًا، ولا يوجد runtime caching لأي بيانات
-        runtimeCaching: [
-          {
-            urlPattern: ({ url }: { url: URL }) => url.hostname.endsWith('.supabase.co') || url.hostname.endsWith('.supabase.in'),
-            handler: 'NetworkOnly',
-          },
-        ],
+        // لا runtime caching إطلاقًا: أي طلب غير مُدرج في الـ precache (Supabase والـ API وغيرها)
+        // مش بيمر على الـ service worker أصلًا ويروح للشبكة مباشرة — أسرع وبدون أي كاش بيانات.
+        runtimeCaching: [],
       },
       devOptions: {
         enabled: false,

@@ -1324,11 +1324,11 @@ html.light .bg-red-500\/10, html.light .bg-red-500\/15, html.light .bg-red-500\/
 html.light .bg-amber-500\/10, html.light .bg-amber-500\/15, html.light .bg-amber-500\/20 { background-color:#FEF3DC !important; color:#92400E !important; }
 
 /* sidebar stays dark navy in light mode */
-html.light aside { background-color:#0B1F44 !important; }
-html.light aside .text-slate-300, html.light aside .text-slate-400 { color:#CBD5E1 !important; }
-html.light aside .text-slate-500, html.light aside .text-slate-600 { color:#94A3B8 !important; }
-html.light aside .text-white, html.light aside .text-slate-100 { color:#fff !important; }
-html.light aside .border-slate-700, html.light aside .border-slate-800 { border-color:rgba(255,255,255,.12) !important; }
+html.light aside:where([data-app-sidebar]) { background-color:#0B1F44 !important; }
+html.light aside:where([data-app-sidebar]) .text-slate-300, html.light aside:where([data-app-sidebar]) .text-slate-400 { color:#CBD5E1 !important; }
+html.light aside:where([data-app-sidebar]) .text-slate-500, html.light aside:where([data-app-sidebar]) .text-slate-600 { color:#94A3B8 !important; }
+html.light aside:where([data-app-sidebar]) .text-white, html.light aside:where([data-app-sidebar]) .text-slate-100 { color:#fff !important; }
+html.light aside:where([data-app-sidebar]) .border-slate-700, html.light aside:where([data-app-sidebar]) .border-slate-800 { border-color:rgba(255,255,255,.12) !important; }
 /* ═══ END LIGHT THEME POLISH ═══ */
 
 
